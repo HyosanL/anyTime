@@ -18,3 +18,93 @@ body {
   min-height: 100dvh;
   background: #ffffff;
 }
+
+.page-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  color: #64748b;
+}
+
+.onboarding {
+  padding: 3rem 1.5rem 2rem;
+}
+
+.onboarding-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.onboarding-header h1 {
+  font-size: 2rem;
+  color: #1e40af;
+  margin-bottom: 0.5rem;
+}
+
+.onboarding-header p {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.onboarding-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.onboarding-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.onboarding-form input,
+.onboarding-form select {
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.onboarding-form input:focus,
+.onboarding-form select:focus {
+  border-color: #1e40af;
+}
+
+.onboarding-form button {
+  margin-top: 0.5rem;
+  padding: 0.875rem;
+  background: #1e40af;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.onboarding-form button:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
+.error-msg {
+  color: #dc2626;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.page-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.page-header h2 {
+  font-size: 1.25rem;
+}
