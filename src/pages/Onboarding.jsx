@@ -1,22 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
-
-const DEPARTMENTS = [
-  '전산학과', '전자공학과', '기계공학과', '항공우주공학과',
-  '토목환경공학과', '기초과학과', '국방경영학과', '군사전략학과'
-];
+import { supabase } from '../supabase';
 
 export default function Onboarding() {
   const { cadet, loading, redeemCode } = useAuthContext();
   const navigate = useNavigate();
 
+  const [departments, setDepartments] = useState([]);
   const [code, setCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [classYear, setClassYear] = useState('');
   const [department, setDepartment] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    supabase.from('department').select('name').order('id').then(({ data }) => {
+      if (data) setDepartments(data.map((d) => d.name));
+    });
+  }, []);
 
   if (loading) return <div className="page-center">로딩 중...</div>;
   if (cadet) {
@@ -86,7 +89,7 @@ export default function Onboarding() {
           학과
           <select value={department} onChange={(e) => setDepartment(e.target.value)} required>
             <option value="">선택</option>
-            {DEPARTMENTS.map((d) => (
+            {departments.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
