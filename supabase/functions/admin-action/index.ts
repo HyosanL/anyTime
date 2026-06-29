@@ -246,10 +246,9 @@ Deno.serve(async (req) => {
         const username = String(payload.username ?? '').trim()
         const days = Number(payload.days) || 7
         if (!username) return json({ status: 'BAD_REQUEST' }, 400)
-        const { data: c } = await admin.from('cadet').select('device_fp').eq('username', username).maybeSingle()
         const until = new Date(Date.now() + days * 86400000).toISOString()
         await admin.from('block').insert({
-          username, device_fp: c?.device_fp ?? null, blocked_until: until, reason: payload.reason ?? null,
+          username, blocked_until: until, reason: payload.reason ?? null,
         }).throwOnError()
         return json({ status: 'OK', until })
       }
