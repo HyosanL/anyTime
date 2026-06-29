@@ -1,0 +1,30 @@
+// 족보 삭제: 게시글 비번 검증(delete_exam RPC, 유저 JWT) 후 R2 객체 제거.
+// 요청: POST { id, password }
+export async function onRequestPost(context) {
+  const { request, env, data } = context;
+  const { id, password } = await request.json().catch(() => ({}));
+  if (!id || !password) return Response.json({ status: 'BAD_REQUEST' }, { status: 400 });
+
+  const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: data.token, 'Content-Type': 'application/json' };
+
+  // 1) 파일 key 확보(삭제 전)
+  const rowRes = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/exam_archive?id=eq.${id}&select=file_url`, { headers: H });
+  const row = (await rowRes.json())?.[0];
+  if (!row) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
+
+  // 2) 비번 검증 + 행 삭제 + 레벨 -1 (유저 JWT 로 RPC)
+  const delRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/delete_exam`, {
+    method: 'POST', headers: H, body: JSON.stringify({ p_id: id, p_post_password: password }),
+  });
+  if (!delRes.ok) {
+    const t = await delRes.text();
+    if (/비밀번호/.test(t)) return Response.json({ status: 'BAD_PASSWORD' }, { status: 403 });
+    return Response.json({ status: 'ERROR' }, { status: 500 });
+  }
+  if ((await delRes.json()) === false) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
+
+  // 3) R2 객체 제거
+  if (row.file_url) await env.EXAM_FILES.delete(row.file_url);
+  return Response.json({ status: 'OK' });
+}

@@ -1,0 +1,21 @@
+# Cloudflare Pages + Functions 설정
+# - 정적 빌드 출력: dist  (Vite)
+# - Pages Functions(functions/api/*) 는 EXAM_FILES(R2) 와 아래 vars 를 사용
+# 배포: wrangler pages deploy dist   (또는 대시보드 Git 연동)
+name = "anytime"
+compatibility_date = "2024-09-01"
+pages_build_output_dir = "dist"
+
+# Functions 런타임 변수 (anon 키는 RLS 보호로 공개 안전)
+[vars]
+SUPABASE_URL = "https://yxolswmfbwisesnoyucr.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4b2xzd21mYndpc2Vzbm95dWNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTgyNTYsImV4cCI6MjA5ODI3NDI1Nn0.lJVQLSWiq0aqhZym52szF0I6lVJJHF0yRP11FxMKmbw"
+
+# R2 버킷 바인딩 (대시보드에서 'anytime-exams' 비공개 버킷 생성 필요)
+[[r2_buckets]]
+binding = "EXAM_FILES"
+bucket_name = "anytime-exams"
+
+# ※ 프론트 빌드용 VITE_ 변수(VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY)는
+#   Git 연동 배포 시 Pages 대시보드 > Settings > Environment variables 에 등록.
+#   wrangler CLI 로 로컬 빌드 후 배포하면 로컬 .env 가 사용됨.

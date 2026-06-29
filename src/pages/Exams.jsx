@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
-import { getDownloadUrl } from '../lib/storage';
+import { downloadExam, deleteExam } from '../lib/storage';
 import ExamForm from '../components/ExamForm';
 
 const DEL_MSG = {
@@ -48,10 +48,9 @@ export default function Exams() {
   async function download(ex) {
     setBusyId(ex.id);
     try {
-      const url = await getDownloadUrl(ex.file_url, `${ex.title}`);
-      window.open(url, '_blank', 'noopener');
+      await downloadExam(ex.file_url, ex.file_name || ex.title);
     } catch {
-      alert('다운로드 링크를 만들지 못했습니다.');
+      alert('다운로드에 실패했습니다.');
     } finally {
       setBusyId(null);
     }
@@ -59,17 +58,7 @@ export default function Exams() {
 
   async function confirmDelete() {
     setDelErr('');
-    const { data, error } = await supabase.functions.invoke('exam-delete', {
-      body: { id: delTarget, password: delPw },
-    });
-    let status = data?.status;
-    if (error) {
-      try {
-        status = (await error.context?.json?.())?.status;
-      } catch {
-        /* ignore */
-      }
-    }
+    const status = await deleteExam(delTarget, delPw);
     if (status === 'OK') {
       setExams((prev) => prev.filter((e) => e.id !== delTarget));
       setDelTarget(null);

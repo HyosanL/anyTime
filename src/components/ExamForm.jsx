@@ -27,7 +27,7 @@ export default function ExamForm({ courseCode, onDone }) {
 
     setSubmitting(true);
     try {
-      const key = await uploadExamFile(courseCode, file);
+      const up = await uploadExamFile(courseCode, file); // {key, file_name, file_size, mime_type}
       const { error } = await supabase.rpc('create_exam', {
         p_post_password: password,
         p_course_code: courseCode,
@@ -35,7 +35,10 @@ export default function ExamForm({ courseCode, onDone }) {
         p_src_term: srcTerm ? Number(srcTerm) : null,
         p_title: maskProfanity(title.trim()),
         p_exam_type: examType,
-        p_file_url: key,
+        p_file_url: up.key,
+        p_file_name: up.file_name,
+        p_file_size: up.file_size,
+        p_mime_type: up.mime_type,
         p_description: maskProfanity(description.trim()) || null,
       });
       if (error) {
