@@ -13,10 +13,22 @@ import Moderation from './pages/Moderation';
 import InstallPrompt from './components/InstallPrompt';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
+function BlockedScreen({ until }) {
+  const { logout } = useAuthContext();
+  return (
+    <div className="page-center" style={{ flexDirection: 'column', gap: '1rem', padding: '2rem', textAlign: 'center' }}>
+      <h2>🚫 이용이 제한되었습니다</h2>
+      <p className="muted">{new Date(until).toLocaleString('ko-KR')} 까지 차단됨.<br />관리자에게 문의하세요.</p>
+      <button className="link-btn" onClick={logout}>로그아웃</button>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }) {
-  const { session, loading } = useAuthContext();
+  const { session, loading, blockedUntil } = useAuthContext();
   if (loading) return <div className="page-center">로딩 중...</div>;
   if (!session) return <Navigate to="/login" replace />;
+  if (blockedUntil) return <BlockedScreen until={blockedUntil} />;
   return children;
 }
 

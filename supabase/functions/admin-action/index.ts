@@ -83,6 +83,11 @@ Deno.serve(async (req) => {
         }).throwOnError()
         return json({ status: 'OK' })
       }
+      case 'set_period':
+        await admin.from('period').upsert({
+          no: payload.no, start_time: payload.start_time, end_time: payload.end_time,
+        }).throwOnError()
+        return json({ status: 'OK' })
       case 'set_section':
         await admin.from('section').upsert({
           course_code: payload.course_code, year: payload.year, term: payload.term,
@@ -163,6 +168,68 @@ Deno.serve(async (req) => {
         if ((count ?? 0) <= 1) return json({ status: 'LAST_ADMIN' }, 409)
         await admin.from('cadet').update({ is_admin: false }).eq('id', c.id)
         return json({ status: 'OK' })
+      }
+      case 'add_course': {
+        const { data: code } = await admin.rpc('gen_course_code')
+        await admin.from('course').insert({
+          code, name: payload.name, department: payload.department ?? null, credits: payload.credits ?? null,
+        }).throwOnError()
+        return json({ status: 'OK', code })
+      }
+      case 'bulk_catalog': {
+        const courses = (payload.courses as any[]) ?? []
+        let created = 0
+        for (const co of courses) {
+          const { data: code } = await admin.rpc('gen_course_code')
+          await admin.from('course').insert({
+            code, name: co.name, department: co.department ?? null, credits: co.credits ?? null,
+          }).throwOnError()
+          for (const se of (co.sections ?? [])) {
+            await admin.from('section').insert({
+              course_code: code, year: se.year, term: se.term, section_no: se.section_no,
+              professor_code: se.professor_code ?? null, capacity: se.capacity ?? null,
+            }).throwOnError()
+            for (const t of (se.times ?? [])) {
+              await admin.from('section_time').insert({
+                course_code: code, year: se.year, term: se.term, section_no: se.section_no,
+                day_of_week: t.day, start_period: t.start, end_period: t.end ?? t.start, room: t.room ?? null,
+              }).throwOnError()
+            }
+          }
+          created++
+        }
+        return json({ status: 'OK', created })
+      }
+      case 'delete_catalog': {
+        const table = String(payload.table)
+        if (!['professor', 'course', 'semester', 'period', 'section', 'section_time'].includes(table)) {
+          return json({ status: 'BAD_REQUEST' }, 400)
+        }
+        await admin.from(table).delete().match(payload.key as Record<string, unknown>).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'block_user': {
+        const username = String(payload.username ?? '').trim()
+        const days = Number(payload.days) || 7
+        if (!username) return json({ status: 'BAD_REQUEST' }, 400)
+        const { data: c } = await admin.from('cadet').select('device_fp').eq('username', username).maybeSingle()
+        const until = new Date(Date.now() + days * 86400000).toISOString()
+        await admin.from('block').insert({
+          username, device_fp: c?.device_fp ?? null, blocked_until: until, reason: payload.reason ?? null,
+        }).throwOnError()
+        return json({ status: 'OK', until })
+      }
+      case 'unblock': {
+        const username = String(payload.username ?? '').trim()
+        await admin.from('block').delete().eq('username', username)
+        return json({ status: 'OK' })
+      }
+      case 'list_blocks': {
+        const { data } = await admin.from('block')
+          .select('id, username, blocked_until, reason')
+          .gt('blocked_until', new Date().toISOString())
+          .order('blocked_until', { ascending: false })
+        return json({ status: 'OK', blocks: data ?? [] })
       }
       default:
         return json({ status: 'BAD_REQUEST', detail: 'unknown action' }, 400)

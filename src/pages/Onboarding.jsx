@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signup, login, getPosition } from '../lib/auth';
+import { getDeviceFp } from '../lib/device';
 
 const STATUS_MSG = {
   INVALID_CODE: '가입코드가 올바르지 않습니다.',
@@ -8,6 +9,7 @@ const STATUS_MSG = {
   USERNAME_TAKEN: '이미 사용 중인 아이디입니다.',
   WEAK_PASSWORD: '비밀번호는 6자 이상이어야 합니다.',
   BAD_REQUEST: '입력값을 확인하세요. (아이디는 영문/숫자 3~20자)',
+  BLOCKED: '차단된 사용자/기기입니다. 관리자에게 문의하세요.',
   ERROR: '가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.',
 };
 
@@ -37,7 +39,8 @@ export default function Onboarding() {
       }
 
       setStatus('🔐 가입 처리 중…');
-      const res = await signup({ username, password, code, lat, lng });
+      const deviceFp = await getDeviceFp();
+      const res = await signup({ username, password, code, lat, lng, deviceFp });
       if (res.status !== 'OK') {
         setError(STATUS_MSG[res.status] || STATUS_MSG.ERROR);
         return;

@@ -349,6 +349,16 @@ body {
   word-break: break-all;
 }
 
+/* 관리자 과목·분반 */
+.adm-courselist { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; max-height: 340px; overflow-y: auto; }
+.adm-course { border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.5rem 0.6rem; }
+.adm-course-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.adm-course-top .rev-del-btn { color: #dc2626; }
+.adm-sections { margin-top: 0.5rem; border-top: 1px dashed #e5e7eb; padding-top: 0.5rem; }
+.adm-sec-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #475569; padding: 0.2rem 0; }
+.memo-review { padding: 0.6rem 1.5rem 0; }
+.memo-review .btn-add:disabled { background: #cbd5e1; }
+
 /* 모더레이션 대시보드 */
 .mod-status {
   padding: 0 1.5rem 0.5rem;

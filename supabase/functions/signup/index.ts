@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json('BAD_REQUEST', 405)
 
-  let body: { username?: string; password?: string; code?: string; lat?: number; lng?: number }
+  let body: { username?: string; password?: string; code?: string; lat?: number; lng?: number; deviceFp?: string }
   try {
     body = await req.json()
   } catch {
@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
   const code = (body.code ?? '').trim()
   const lat = typeof body.lat === 'number' ? body.lat : null
   const lng = typeof body.lng === 'number' ? body.lng : null
+  const deviceFp = (body.deviceFp ?? '').trim() || null
 
   if (!USERNAME_RE.test(username)) return json('BAD_REQUEST', 400, { reason: 'username' })
   if (!code) return json('BAD_REQUEST', 400, { reason: 'code' })
@@ -60,6 +61,18 @@ Deno.serve(async (req) => {
   })
   if (gateErr) return json('ERROR', 500, { detail: gateErr.message })
   if (gate !== 'OK') return json(gate as string, 403) // INVALID_CODE | OUT_OF_AREA
+
+  // 1.5) 차단 검사 (아이디 또는 기기지문)
+  const nowIso = new Date().toISOString()
+  const { data: bUser } = await admin.from('block').select('id')
+    .eq('username', username).gt('blocked_until', nowIso).limit(1)
+  let blocked = !!bUser?.length
+  if (!blocked && deviceFp) {
+    const { data: bDev } = await admin.from('block').select('id')
+      .eq('device_fp', deviceFp).gt('blocked_until', nowIso).limit(1)
+    blocked = !!bDev?.length
+  }
+  if (blocked) return json('BLOCKED', 403)
 
   // 2) 아이디 선점 확인 (합성 이메일 충돌 전에 친절한 메시지)
   const { data: existing } = await admin
@@ -88,7 +101,7 @@ Deno.serve(async (req) => {
   // 4) cadet 프로필 생성 (실패 시 생성한 Auth 계정 롤백)
   const { error: cadetErr } = await admin
     .from('cadet')
-    .insert({ id: uid, username })
+    .insert({ id: uid, username, device_fp: deviceFp })
   if (cadetErr) {
     await admin.auth.admin.deleteUser(uid)
     if (/duplicate|unique/i.test(cadetErr.message)) return json('USERNAME_TAKEN', 409)

@@ -22,9 +22,9 @@ export function getPosition() {
 
 // 가입: Edge Function 으로 가입코드+지오펜싱 서버검증 후 계정 생성.
 // 반환: { status, ... }  status='OK' 면 곧바로 로그인 시도 권장.
-export async function signup({ username, password, code, lat, lng }) {
+export async function signup({ username, password, code, lat, lng, deviceFp }) {
   const { data, error } = await supabase.functions.invoke('signup', {
-    body: { username: username.trim(), password, code: code.trim(), lat, lng },
+    body: { username: username.trim(), password, code: code.trim(), lat, lng, deviceFp },
   });
   // Edge Function 이 4xx/5xx 로 응답하면 supabase-js 가 error 를 채우고 data 는 비어 있을 수 있음.
   if (error) {

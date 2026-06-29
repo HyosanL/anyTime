@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
-import ReviewForm from '../components/ReviewForm';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -34,7 +33,6 @@ export default function Reviews() {
   const [summary, setSummary] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
 
   const profNameByCode = useMemo(
@@ -142,23 +140,9 @@ export default function Reviews() {
         )}
       </section>
 
-      <div className="rev-actions">
-        <button className="btn-add" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? '닫기' : '강의평 쓰기'}
-        </button>
-      </div>
-
-      {showForm && (
-        <ReviewForm
-          courseCode={courseCode}
-          professors={professors}
-          defaultProf={profFilter}
-          onDone={() => {
-            setShowForm(false);
-            loadAll();
-          }}
-        />
-      )}
+      <p className="account-note" style={{ padding: '0 1.5rem' }}>
+        강의평 작성은 <b>확정시간표에서 해당 수업을 눌러</b> 들어가서 할 수 있습니다(일정 기간 수강 후).
+      </p>
 
       {error && <p className="error-msg">{error}</p>}
 

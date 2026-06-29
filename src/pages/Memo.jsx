@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskProfanity } from '../lib/moderation';
+import ReviewForm from '../components/ReviewForm';
 
 // 화면6: 수업 메모 (분반 종속·휘발성). 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
@@ -11,7 +12,9 @@ export default function Memo() {
   const t = Number(term);
   const sn = Number(sectionNo);
 
-  const [header, setHeader] = useState({ name: courseCode, prof: '', times: '' });
+  const [header, setHeader] = useState({ name: courseCode, prof: '', profCode: '', times: '' });
+  const [rev, setRev] = useState({ minDays: 30, daysHeld: null }); // 강의평 자격
+  const [showReview, setShowReview] = useState(false);
   const [memos, setMemos] = useState([]);
   const [allowed, setAllowed] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -38,8 +41,21 @@ export default function Memo() {
     setHeader({
       name: course?.name ?? courseCode,
       prof: prof?.name ?? '',
+      profCode: section?.professor_code ?? '',
       times: formatTimes(times),
     });
+  }
+
+  async function loadReviewEligibility() {
+    const [{ data: tt }, { data: md }] = await Promise.all([
+      supabase.from('timetable').select('created_at')
+        .match({ course_code: courseCode, year: y, term: t, section_no: sn }).maybeSingle(),
+      supabase.rpc('get_review_min_days'),
+    ]);
+    const daysHeld = tt?.created_at
+      ? Math.floor((Date.now() - new Date(tt.created_at).getTime()) / 86400000)
+      : null;
+    setRev({ minDays: md ?? 30, daysHeld });
   }
 
   async function loadMemos() {
@@ -65,6 +81,7 @@ export default function Memo() {
   useEffect(() => {
     loadHeader();
     loadMemos();
+    loadReviewEligibility();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseCode, year, term, sectionNo]);
 
@@ -117,6 +134,33 @@ export default function Memo() {
         {header.prof && `${header.prof} · `}{header.times} · {sn}분반
       </p>
       <p className="memo-note">※ 수업 메모는 학기 종속·휘발성이며, 이 분반을 확정시간표에 등록한 생도만 보고 쓸 수 있습니다.</p>
+
+      {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화 */}
+      <section className="memo-review">
+        {(() => {
+          const eligible = rev.daysHeld != null && rev.daysHeld >= rev.minDays;
+          if (showReview && eligible) {
+            return (
+              <ReviewForm
+                courseCode={courseCode}
+                professors={header.profCode ? [{ code: header.profCode, name: header.prof }] : []}
+                defaultProf={header.profCode}
+                onDone={() => setShowReview(false)}
+              />
+            );
+          }
+          return (
+            <button
+              className="btn-add"
+              disabled={!eligible}
+              onClick={() => setShowReview(true)}
+              title={eligible ? '' : `확정시간표에 ${rev.minDays}일 이상 보유 후 작성 가능`}
+            >
+              강의평 쓰기{eligible ? '' : rev.daysHeld == null ? ' (미등록)' : ` (앞으로 ${rev.minDays - rev.daysHeld}일)`}
+            </button>
+          );
+        })()}
+      </section>
 
       {loading ? (
         <p className="muted center">불러오는 중…</p>

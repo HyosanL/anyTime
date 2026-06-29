@@ -7,6 +7,7 @@ import { logout as authLogout } from '../lib/auth';
 export function useAuth() {
   const [session, setSession] = useState(null);
   const [cadet, setCadet] = useState(null);
+  const [blockedUntil, setBlockedUntil] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,6 +43,8 @@ export function useAuth() {
       .eq('id', uid)
       .maybeSingle();
     setCadet(data ?? null);
+    const { data: blk } = await supabase.rpc('get_my_block');
+    setBlockedUntil(blk || null);
     setLoading(false);
   }
 
@@ -54,5 +57,5 @@ export function useAuth() {
     setCadet(null);
   }
 
-  return { session, cadet, loading, refreshCadet, logout };
+  return { session, cadet, blockedUntil, loading, refreshCadet, logout };
 }

@@ -44,10 +44,37 @@ const MASK_RE = new RegExp(
 const NEGATIVE_RE = new RegExp(`(${NEGATIVE.map(ESC).join('|')})`, 'gi');
 const MASK_RUN = /\*{2,}/;
 
-// 작성 시 욕설 "부분"만 마스킹: "시발교수" -> "**교수", "tlqkf" -> "*****"
+// korcen 이 플래그한 토큰에서 "욕설 부분"만 찾아 마스킹(가장 짧은 비속어 substring부터).
+function findBadSpan(w) {
+  for (let len = 2; len <= w.length; len++) {
+    for (let i = 0; i + len <= w.length; i++) {
+      const s = w.slice(i, i + len);
+      if (s.includes('*')) continue;
+      if (kcheck(s)) return [i, len];
+    }
+  }
+  return null;
+}
+function maskTokenByKorcen(tok) {
+  let w = tok, guard = 0;
+  while (kcheck(w) && guard++ < 12) {
+    const span = findBadSpan(w);
+    if (!span) break;
+    w = w.slice(0, span[0]) + '*'.repeat(span[1]) + w.slice(span[0] + span[1]);
+  }
+  return w;
+}
+
+// 작성 시 욕설 "부분"만 마스킹.
+//  1) 사전(빠르고 정확)  2) korcen 검출분(사전에 없어도 부분 마스킹: "싯팔교수" -> "**교수")
 export function maskProfanity(text) {
   if (!text) return text;
-  return text.replace(MASK_RE, (m) => '*'.repeat(m.length));
+  let out = text.replace(MASK_RE, (m) => '*'.repeat(m.length));
+  if (!kcheck(out)) return out;
+  return out
+    .split(/(\s+)/)
+    .map((tok) => (tok.trim() && kcheck(tok) ? maskTokenByKorcen(tok) : tok))
+    .join('');
 }
 
 export function containsProfanity(text) {
