@@ -1,41 +1,47 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuthContext } from '../contexts/AuthContext';
-import { supabase } from '../supabase';
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { signup, login, getPosition } from '../lib/auth';
+
+const STATUS_MSG = {
+  INVALID_CODE: '유효하지 않거나 이미 사용된 가입코드입니다.',
+  OUT_OF_AREA: '캠퍼스 범위 밖입니다. 위치 권한을 켜고 교내에서 다시 시도하세요.',
+  USERNAME_TAKEN: '이미 사용 중인 아이디입니다.',
+  WEAK_PASSWORD: '비밀번호는 6자 이상이어야 합니다.',
+  BAD_REQUEST: '입력값을 확인하세요. (아이디는 영문/숫자 3~20자)',
+  ERROR: '가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.',
+};
 
 export default function Onboarding() {
-  const { cadet, loading, redeemCode } = useAuthContext();
   const navigate = useNavigate();
-
-  const [departments, setDepartments] = useState([]);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [classYear, setClassYear] = useState('');
-  const [department, setDepartment] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    supabase.from('department').select('name').order('id').then(({ data }) => {
-      if (data) setDepartments(data.map((d) => d.name));
-    });
-  }, []);
-
-  if (loading) return <div className="page-center">로딩 중...</div>;
-  if (cadet) {
-    navigate('/courses', { replace: true });
-    return null;
-  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSubmitting(true);
     try {
-      await redeemCode(code.trim(), nickname.trim(), Number(classYear), department);
-      navigate('/courses', { replace: true });
+      // 위치 권한 → 좌표 (지오펜싱 서버검증용)
+      const { lat, lng, error: posError } = await getPosition();
+      if (posError === 'DENIED') {
+        setError('위치 권한이 필요합니다. 권한을 허용하고 다시 시도하세요.');
+        return;
+      }
+
+      const res = await signup({ username, password, code, lat, lng });
+      if (res.status !== 'OK') {
+        setError(STATUS_MSG[res.status] || STATUS_MSG.ERROR);
+        return;
+      }
+
+      // 가입 성공 → 곧바로 로그인 → 홈
+      await login(username, password);
+      navigate('/', { replace: true });
     } catch (err) {
-      setError(err.message || '가입에 실패했습니다.');
+      setError(err.message || STATUS_MSG.ERROR);
     } finally {
       setSubmitting(false);
     }
@@ -45,54 +51,45 @@ export default function Onboarding() {
     <div className="onboarding">
       <div className="onboarding-header">
         <h1>애타</h1>
-        <p>공군사관학교 수강평 · 수강신청 도움</p>
+        <p>공군사관학교 강의정보 공유</p>
       </div>
 
       <form onSubmit={handleSubmit} className="onboarding-form">
         <label>
-          인증코드
+          아이디
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="영문/숫자 3~20자"
+            autoCapitalize="none"
+            autoComplete="username"
+            required
+          />
+        </label>
+
+        <label>
+          비밀번호
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="6자 이상"
+            autoComplete="new-password"
+            minLength={6}
+            required
+          />
+        </label>
+
+        <label>
+          가입코드
           <input
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="발급받은 코드 입력"
+            placeholder="발급받은 코드"
             required
           />
-        </label>
-
-        <label>
-          닉네임
-          <input
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="익명 닉네임"
-            maxLength={20}
-            required
-          />
-        </label>
-
-        <label>
-          기수
-          <input
-            type="number"
-            value={classYear}
-            onChange={(e) => setClassYear(e.target.value)}
-            placeholder="예: 82"
-            min={70}
-            max={90}
-            required
-          />
-        </label>
-
-        <label>
-          학과
-          <select value={department} onChange={(e) => setDepartment(e.target.value)} required>
-            <option value="">선택</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
         </label>
 
         {error && <p className="error-msg">{error}</p>}
@@ -101,6 +98,10 @@ export default function Onboarding() {
           {submitting ? '가입 중...' : '가입하기'}
         </button>
       </form>
+
+      <p className="auth-switch">
+        이미 계정이 있나요? <Link to="/login">로그인</Link>
+      </p>
     </div>
   );
 }

@@ -108,3 +108,63 @@ body {
 .page-header h2 {
   font-size: 1.25rem;
 }
+
+.auth-switch {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.auth-switch a {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+/* 홈 (M3 자리표시자) */
+.home {
+  padding: 1.5rem;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.home-header h1 {
+  font-size: 1.5rem;
+  color: #1e40af;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.home-card {
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.home-hello {
+  font-size: 1.05rem;
+  margin-bottom: 0.35rem;
+}
+
+.home-sub {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.home-todo {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-align: center;
+}

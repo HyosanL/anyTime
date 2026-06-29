@@ -1,16 +1,22 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import Onboarding from './pages/Onboarding';
-import CourseList from './pages/CourseList';
-import CourseDetail from './pages/CourseDetail';
-import Timetable from './pages/Timetable';
-import MyTimetable from './pages/MyTimetable';
-import Memo from './pages/Memo';
+import Login from './pages/Login';
+import Home from './pages/Home';
 
+// 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function ProtectedRoute({ children }) {
-  const { cadet, loading } = useAuthContext();
+  const { session, loading } = useAuthContext();
   if (loading) return <div className="page-center">로딩 중...</div>;
-  if (!cadet) return <Navigate to="/" replace />;
+  if (!session) return <Navigate to="/login" replace />;
+  return children;
+}
+
+// 이미 로그인했으면 홈으로 (가입/로그인 화면 가드).
+function PublicOnly({ children }) {
+  const { session, loading } = useAuthContext();
+  if (loading) return <div className="page-center">로딩 중...</div>;
+  if (session) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -19,12 +25,10 @@ export default function App() {
     <AuthProvider>
       <div className="app">
         <Routes>
-          <Route path="/" element={<Onboarding />} />
-          <Route path="/courses" element={<ProtectedRoute><CourseList /></ProtectedRoute>} />
-          <Route path="/courses/:id" element={<ProtectedRoute><CourseDetail /></ProtectedRoute>} />
-          <Route path="/timetable" element={<ProtectedRoute><Timetable /></ProtectedRoute>} />
-          <Route path="/my-timetable" element={<ProtectedRoute><MyTimetable /></ProtectedRoute>} />
-          <Route path="/memo" element={<ProtectedRoute><Memo /></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
+          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </AuthProvider>
