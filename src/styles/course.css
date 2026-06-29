@@ -1,0 +1,424 @@
+/* course.css — 강의 검색 · 강의평 · 족보 · 수업메모 · 작성폼 (Course 그룹)
+   색은 모두 tokens.css 의 var(--...) 만 사용. */
+
+/* ============================================================
+   강의 검색 — 카탈로그 리스트 (일반 웹앱 목록 형태)
+   ============================================================ */
+.section-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.5rem var(--pad) 1rem;
+}
+
+.section-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease;
+}
+.section-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.section-card.is-on {
+  border-color: var(--primary-weak-border);
+  background: var(--primary-weak);
+}
+
+.section-info { flex: 1; min-width: 0; }
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.section-name { min-width: 0; }
+.section-code {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--chip-fg);
+  background: var(--chip-bg);
+  border-radius: var(--r-full);
+  padding: 0.1rem 0.5rem;
+}
+
+.section-sub {
+  font-size: 0.83rem;
+  color: var(--text-2);
+  margin-top: 0.25rem;
+}
+.section-sub .dot::before {
+  content: "·";
+  margin: 0 0.4rem;
+  color: var(--text-3);
+}
+
+.section-times {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-top: 0.35rem;
+}
+.section-time-ic { font-size: 0.85rem; filter: grayscale(0.1); }
+
+.section-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+.section-review-link {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-weak);
+  border: 1px solid var(--primary-weak-border);
+  border-radius: var(--r-full);
+  padding: 0.18rem 0.65rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.section-review-link:hover { background: var(--card-hover); color: var(--primary-strong); }
+
+.section-toggle { align-self: center; flex: none; }
+
+/* ============================================================
+   별점 (Reviews 공용)
+   ============================================================ */
+.stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  line-height: 1;
+}
+.stars-track {
+  position: relative;
+  display: inline-block;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.stars-off { color: var(--border-strong); }
+.stars-on {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  color: var(--star);
+  white-space: nowrap;
+}
+.stars em {
+  font-style: normal;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+/* ============================================================
+   강의평 — 집계 카드 + 리뷰 목록
+   ============================================================ */
+.rev-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.7rem var(--pad) 0.3rem;
+}
+.rev-sum-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.rev-sum-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.rev-sum-top strong { font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+
+.rev-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.rev-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 0.2rem 0.6rem;
+}
+.rev-metric-label { color: var(--text-3); }
+.rev-metric-value { font-weight: 700; color: var(--text-2); }
+.rev-metric.rev-fail {
+  background: var(--danger-weak);
+  border-color: var(--danger-border);
+}
+.rev-metric.rev-fail .rev-metric-label,
+.rev-metric.rev-fail .rev-metric-value { color: var(--danger); }
+
+.rev-hint { padding: 0 var(--pad) 0.4rem; }
+
+.rev-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.4rem var(--pad) 1rem;
+}
+.rev-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.rev-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.rev-card-top strong { font-size: 0.95rem; font-weight: 700; }
+
+.rev-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+.rev-comment {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 0.55rem 0.7rem;
+}
+
+.rev-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+.rev-actions-left { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rev-like {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--danger-weak);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--r-full);
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.06s ease;
+}
+.rev-like:hover { filter: brightness(0.97); }
+.rev-like:active { transform: scale(0.96); }
+.rev-report { color: var(--danger); }
+
+/* 인라인 삭제(비번) */
+.rev-del {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.rev-del input {
+  width: auto;
+  max-width: 8.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  border-radius: var(--r-sm);
+}
+
+/* ============================================================
+   족보
+   ============================================================ */
+.exam-card { gap: 0.4rem; }
+.exam-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+.exam-meta-ic { font-size: 0.8rem; }
+
+.rev-actions { padding: 0.7rem var(--pad) 0.2rem; }
+
+/* ============================================================
+   수업 메모
+   ============================================================ */
+.memo-head { padding: 0.7rem var(--pad) 0.2rem; }
+.memo-sub {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.memo-note { margin-top: 0.3rem; }
+
+.memo-review { padding: 0.6rem var(--pad) 0.3rem; }
+
+.memo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.4rem var(--pad);
+  padding: 1rem 1.1rem;
+}
+.memo-form textarea { min-height: 64px; }
+.memo-form-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.memo-form-row input { flex: 1; min-width: 0; }
+.memo-form-row .btn-add { flex: none; }
+
+.memo-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.4rem var(--pad) 1rem;
+}
+.memo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem 1.05rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.memo-content {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.memo-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.memo-date { font-size: 0.74rem; color: var(--text-3); }
+.memo-actions { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+
+/* ============================================================
+   작성 폼 (강의평 · 족보 공용 표면)
+   ============================================================ */
+.rev-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0.5rem var(--pad) 1rem;
+  padding: 1.1rem 1.15rem 1.2rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.rev-form-field { gap: 0.35rem; }
+
+.exam-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 0.8fr;
+  gap: 0.6rem;
+}
+.exam-file-note { margin: 0; }
+
+/* 별점 입력 */
+.rev-scores-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.score-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+.rev-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.score-label { font-size: 0.86rem; font-weight: 600; color: var(--text-2); }
+.score-stars {
+  display: inline-flex;
+  gap: 0.1rem;
+}
+.score-stars .star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--border-strong);
+  padding: 0.1rem;
+  transition: color 0.12s ease, transform 0.06s ease;
+}
+.score-stars .star:hover { transform: scale(1.12); }
+.score-stars .star.on { color: var(--star); }
+
+/* 체크박스 묶음 */
+.rev-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.rev-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+@media (max-width: 360px) {
+  .exam-row { grid-template-columns: 1fr 1fr; }
+}

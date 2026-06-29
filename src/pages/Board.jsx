@@ -45,45 +45,71 @@ export default function Board() {
 
   return (
     <div className="page noscreenshot">
-      <header className="page-header row">
+      <header className="page-header">
         <Link to="/boards" className="link-btn">← 게시판</Link>
         <h2>{title}</h2>
-        {!isHot && enabled ? <button className="link-btn" onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</button> : <span style={{ width: '2.5rem' }} />}
+        {!isHot && enabled && <button className="link-btn" onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</button>}
       </header>
 
-      {!enabled && <p className="muted center">익명게시판이 비활성화되었습니다.</p>}
+      {!enabled && (
+        <div className="empty">
+          <span className="empty-emoji">🚧</span>
+          <span>익명게시판이 비활성화되었습니다.</span>
+        </div>
+      )}
 
       {writing && !isHot && enabled && (
-        <form className="board-write" onSubmit={submit}>
+        <form className="card board-write" onSubmit={submit}>
           <input className="board-title-input" value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="제목" />
-          <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용" />
-          <div className="board-write-row">
+          <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 있나요?" />
+          <label className="board-file-field">
+            <span className="board-file-label">📷 이미지 첨부{file ? ` · ${file.name}` : ''}</span>
             <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용 비번" />
-          </div>
+          </label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용 비밀번호" />
           {err && <p className="error-msg">{err}</p>}
-          <button className="btn-add" disabled={busy}>{busy ? '등록 중…' : '등록'}</button>
+          <button className="btn-add btn-block" disabled={busy}>{busy ? '등록 중…' : '글 등록'}</button>
         </form>
       )}
 
-      <ul className="post-list">
-        {posts.length === 0 && <p className="muted center">글이 없습니다.</p>}
-        {posts.map((p) => (
-          <li key={p.id} className="post-item">
-            <Link to={`/board/post/${p.id}`}>
-              <p className="post-title">{p.image_key ? '🖼 ' : ''}{p.title || '(제목 없음)'}</p>
-              <p className="post-preview">{preview(p.content)}</p>
-              <div className="post-meta">👍 {p.like_count} · 👎 {p.dislike_count} · 💬 {p.comment_count}{p.hot ? ' · 🔥' : ''}</div>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {enabled && (
+        <>
+          <ul className="list">
+            {posts.length === 0 && (
+              <li className="empty">
+                <span className="empty-emoji">📝</span>
+                <span>아직 글이 없습니다.{!isHot ? ' 첫 글을 남겨보세요.' : ''}</span>
+              </li>
+            )}
+            {posts.map((p) => (
+              <li key={p.id}>
+                <Link to={`/board/post/${p.id}`} className="list-row board-post-row">
+                  <span className="row-body">
+                    <span className="row-title">
+                      {p.image_key && <span className="post-img-flag">🖼</span>}
+                      <span className="row-title-text">{p.title || '(제목 없음)'}</span>
+                      {p.hot && <span className="tag tag-warn">🔥 HOT</span>}
+                    </span>
+                    <span className="row-snippet">{preview(p.content)}</span>
+                    <span className="row-meta">
+                      <span className="metric">👍 {p.like_count}</span>
+                      <span className="metric">👎 {p.dislike_count}</span>
+                      <span className="metric">💬 {p.comment_count}</span>
+                    </span>
+                  </span>
+                  <span className="row-trail"><span className="row-chevron">›</span></span>
+                </Link>
+              </li>
+            ))}
+          </ul>
 
-      <div className="pager">
-        <button className="link-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← 최신</button>
-        <span className="muted">{page + 1}페이지</span>
-        <button className="link-btn" disabled={posts.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>이전 글 →</button>
-      </div>
+          <div className="pager">
+            <button className="btn-ghost btn-sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← 최신</button>
+            <span className="pager-now">{page + 1}페이지</span>
+            <button className="btn-ghost btn-sm" disabled={posts.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>이전 글 →</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

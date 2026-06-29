@@ -1,0 +1,219 @@
+/* board.css — 익명게시판 목록 · 게시글 · 댓글
+   모든 색은 tokens.css 의 var(--...) 만 사용한다.
+   공유 클래스(.list, .list-row, .row- 계열, .card, .tag, .btn 계열, .empty, .note, .rev-del-btn 등)는
+   base.css 에 있으므로 여기서 재정의하지 않는다. */
+
+/* ---------- 스크린샷/이미지 보호(반드시 유지) ----------
+   게시판 화면은 텍스트 선택·이미지 저장/드래그를 억제한다. */
+.noscreenshot {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.noscreenshot input,
+.noscreenshot textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+.noscreenshot img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  user-drag: none;
+  pointer-events: none;
+}
+
+/* ============================================================
+   게시판 목록 (Boards.jsx)
+   ============================================================ */
+
+/* 검색 결과가 없을 때 '새 게시판' 인라인 카드 */
+.board-create {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  margin: 0.35rem var(--pad) 0.3rem;
+  padding: 0.85rem 1rem;
+  background: var(--primary-weak);
+  border: 1px solid var(--primary-weak-border);
+  border-radius: var(--r-lg);
+}
+.board-create-text { font-size: 0.84rem; color: var(--text-2); line-height: 1.4; }
+
+/* HOT 게시판 강조 행 */
+.board-row-hot {
+  background: var(--warn-weak);
+  border-color: var(--warn-border);
+}
+.board-row-hot:hover { background: var(--warn-weak); filter: brightness(0.985); }
+.board-lead-hot {
+  background: var(--warn-weak);
+  color: var(--warn);
+  border: 1px solid var(--warn-border);
+}
+
+/* 즐겨찾기 별 토글 */
+.fav-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--r-full);
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-3); font-size: 1.15rem; line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.06s ease;
+}
+.fav-btn:hover { background: var(--card-hover); }
+.fav-btn:active { transform: scale(0.9); }
+.fav-btn.on { color: var(--star); }
+
+/* ============================================================
+   글 목록 (Board.jsx)
+   ============================================================ */
+
+/* 글쓰기 폼(카드) */
+.board-write {
+  margin: 0.5rem var(--pad) 0.2rem;
+  padding: 1rem 1.05rem;
+  display: flex; flex-direction: column; gap: 0.7rem;
+}
+.board-title-input { font-weight: 650; }
+.board-file-field {
+  position: relative;
+  display: flex; align-items: center;
+  padding: 0.6rem 0.8rem;
+  background: var(--input-bg);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.board-file-field:hover { border-color: var(--primary); background: var(--card-hover); }
+.board-file-label {
+  font-size: 0.85rem; color: var(--text-2); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.board-file-field input[type="file"] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+
+/* 글 행: 제목 앞 이미지 표시 */
+.board-post-row { align-items: flex-start; }
+.post-img-flag { flex: none; }
+
+/* 페이지네이션 */
+.pager {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0.4rem var(--pad) 0.6rem;
+}
+.pager-now {
+  font-size: 0.8rem; font-weight: 600; color: var(--text-3);
+}
+
+/* ============================================================
+   게시글 상세 (Post.jsx)
+   ============================================================ */
+
+.post-detail {
+  margin: 0.6rem var(--pad);
+  padding: 1.1rem 1.15rem;
+  display: flex; flex-direction: column; gap: 0.7rem;
+}
+.post-title-detail {
+  font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--text); line-height: 1.35;
+}
+.post-content {
+  font-size: 0.95rem; color: var(--text); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
+.post-image, .board-img {
+  width: 100%; border-radius: var(--r-md);
+  border: 1px solid var(--border); display: block;
+}
+.board-img-ph {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 120px; border-radius: var(--r-md);
+  background: var(--card-hover); color: var(--text-3); font-size: 0.85rem;
+}
+
+/* 리액션 바 — 알약 버튼 */
+.post-react {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  padding-top: 0.5rem; border-top: 1px solid var(--border);
+}
+.react-pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--chip-bg); color: var(--text-2);
+  border: 1px solid transparent; border-radius: var(--r-full);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.06s ease;
+}
+.react-pill b { font-weight: 700; color: var(--text); }
+.react-pill:hover { background: var(--card-active); }
+.react-pill:active { transform: scale(0.95); }
+.react-report:hover { background: var(--danger-weak); color: var(--danger); }
+.react-report:hover b { color: var(--danger); }
+.post-del-toggle { margin-left: auto; }
+.post-del-row {
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.post-del-row input { flex: 1; }
+
+/* ---------- 댓글 폼(게시판 전용) ---------- */
+.comment-form {
+  margin: 0.3rem var(--pad) 0.6rem;
+  padding: 0.9rem 1rem;
+  display: flex; flex-direction: column; gap: 0.6rem;
+}
+.comment-reply-hint {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.82rem; color: var(--primary); font-weight: 600;
+}
+.comment-form-row {
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.comment-form-row input { flex: 1; }
+
+/* ---------- 댓글 리스트 ---------- */
+.comment-list {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.2rem var(--pad) 0.5rem;
+}
+.comment {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 0.8rem 0.95rem;
+}
+.comment-body {
+  font-size: 0.92rem; color: var(--text); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+.comment-actions {
+  display: flex; align-items: center; gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+/* 대댓글 들여쓰기 */
+.reply {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  margin-left: 0.9rem;
+  background: var(--surface);
+  border-left: 2px solid var(--border-strong);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+}
+.reply-arrow { color: var(--text-3); margin-right: 0.15rem; }
+.reply .comment-actions { margin-top: 0.3rem; }
+
+/* 댓글 삭제 인라인 비번 입력 */
+.comment-del {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+}
+.comment-del input {
+  width: 5.5rem; padding: 0.35rem 0.55rem; font-size: 0.82rem;
+}

@@ -77,11 +77,14 @@ export default function Moderation() {
   if (!isAdmin) {
     return (
       <div className="page">
-        <header className="page-header row">
+        <header className="page-header">
           <Link to="/admin" className="link-btn">← 관리자</Link>
-          <h2>모더레이션</h2><span style={{ width: '2.5rem' }} />
+          <h2>모더레이션</h2>
         </header>
-        <p className="muted center">관리자 권한이 없습니다.</p>
+        <div className="empty">
+          <span className="empty-emoji">🔒</span>
+          <p>관리자 권한이 없습니다.</p>
+        </div>
       </div>
     );
   }
@@ -90,7 +93,7 @@ export default function Moderation() {
 
   return (
     <div className="page">
-      <header className="page-header row">
+      <header className="page-header">
         <Link to="/admin" className="link-btn">← 관리자</Link>
         <h2>모더레이션</h2>
         <button className="link-btn" onClick={load}>새로고침</button>
@@ -102,13 +105,18 @@ export default function Moderation() {
       </p>
 
       <ul className="mod-list">
-        {items.length === 0 && <p className="muted center">게시글이 없습니다.</p>}
+        {items.length === 0 && (
+          <li className="empty">
+            <span className="empty-emoji">🗂️</span>
+            <p>게시글이 없습니다.</p>
+          </li>
+        )}
         {items.map((it) => (
-          <li key={`${it.type}-${it.id}`} className={`mod-card ${it.flags.length ? 'flagged' : ''}`}>
+          <li key={`${it.type}-${it.id}`} className={`card mod-card ${it.flags.length ? 'flagged' : ''}`}>
             <div className="mod-card-top">
-              <span className="mod-type">{TYPE_LABEL[it.type]}</span>
+              <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
               <span className="mod-course">{it.course_code}{it.meta?.section_no ? `·${it.meta.section_no}분반` : ''}</span>
-              {it.flags.length > 0 && <span className="mod-badge">⚠ {it.flags.join(', ')}</span>}
+              {it.flags.length > 0 && <span className="tag tag-warn mod-badge">⚠ {it.flags.join(', ')}</span>}
               <span className="mod-time">{new Date(it.created_at).toLocaleString('ko-KR')}</span>
             </div>
 
@@ -116,7 +124,7 @@ export default function Moderation() {
               <div className="mod-edit">
                 <textarea value={edit.text} onChange={(e) => setEdit({ ...edit, text: e.target.value })} rows={3} />
                 <div className="mod-edit-actions">
-                  <button className="btn-add" onClick={saveEdit}>저장</button>
+                  <button className="btn-add btn-sm" onClick={saveEdit}>저장</button>
                   <button className="rev-del-btn" onClick={() => setEdit(null)}>취소</button>
                 </div>
               </div>
@@ -126,7 +134,7 @@ export default function Moderation() {
 
             <div className="mod-actions">
               <button className="rev-del-btn" onClick={() => setEdit({ type: it.type, id: it.id, text: editableText(it) })}>수정</button>
-              <button className="btn-remove" onClick={() => remove(it)}>삭제</button>
+              <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
             </div>
           </li>
         ))}

@@ -73,12 +73,11 @@ export default function Exams() {
       <header className="page-header row">
         <Link to="/search" className="link-btn">← 검색</Link>
         <h2>{courseName} 족보</h2>
-        <span style={{ width: '2.5rem' }} />
       </header>
 
       <div className="rev-actions">
-        <button className="btn-add" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? '닫기' : '족보 올리기'}
+        <button className={`btn-block ${showForm ? 'btn-remove' : 'btn-add'}`} onClick={() => setShowForm((v) => !v)}>
+          {showForm ? '닫기' : '＋ 족보 올리기'}
         </button>
       </div>
 
@@ -94,23 +93,27 @@ export default function Exams() {
 
       <ul className="rev-list">
         {loading ? (
-          <p className="muted center">불러오는 중…</p>
+          <li className="muted center">불러오는 중…</li>
         ) : exams.length === 0 ? (
-          <p className="muted center">아직 올라온 족보가 없습니다.</p>
+          <li className="empty">
+            <span className="empty-emoji">📂</span>
+            아직 올라온 족보가 없습니다.
+          </li>
         ) : (
           exams.map((ex) => (
-            <li key={ex.id} className="rev-card">
+            <li key={ex.id} className="rev-card exam-card">
               <div className="rev-card-top">
                 <strong>{ex.title}</strong>
-                <span className="tag">{ex.exam_type ?? '기타'}</span>
+                <span className="tag tag-accent">{ex.exam_type ?? '기타'}</span>
               </div>
               <p className="exam-meta">
-                {ex.src_year ? `${ex.src_year}-${ex.src_term ?? '?'}` : '출처 미상'}
+                <span className="exam-meta-ic" aria-hidden="true">📅</span>
+                {ex.src_year ? `${ex.src_year}-${ex.src_term ?? '?'}학기 출처` : '출처 미상'}
               </p>
               {ex.description && <p className="rev-comment">{ex.description}</p>}
               <div className="rev-card-bottom">
-                <button className="btn-add" onClick={() => download(ex)} disabled={busyId === ex.id}>
-                  {busyId === ex.id ? '…' : '다운로드'}
+                <button className="btn-add btn-sm" onClick={() => download(ex)} disabled={busyId === ex.id}>
+                  {busyId === ex.id ? '…' : '⬇ 다운로드'}
                 </button>
                 {delTarget === ex.id ? (
                   <span className="rev-del">
@@ -120,8 +123,8 @@ export default function Exams() {
                       onChange={(e) => setDelPw(e.target.value)}
                       placeholder="게시글 비번"
                     />
-                    <button onClick={confirmDelete}>확인</button>
-                    <button onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
+                    <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
+                    <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
                   </span>
                 ) : (
                   <button className="rev-del-btn" onClick={() => { setDelTarget(ex.id); setDelErr(''); }}>삭제</button>

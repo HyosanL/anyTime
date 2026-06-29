@@ -130,22 +130,29 @@ export default function CourseSearch() {
       {loading ? (
         <p className="muted center">불러오는 중…</p>
       ) : filtered.length === 0 ? (
-        <p className="muted center">결과가 없습니다.</p>
+        <div className="empty">
+          <span className="empty-emoji">🔍</span>
+          검색 결과가 없습니다.
+        </div>
       ) : (
         <ul className="section-list">
           {filtered.map((s) => {
             const on = registered.has(s.key);
             return (
-              <li key={s.key} className="section-card">
+              <li key={s.key} className={`section-card${on ? ' is-on' : ''}`}>
                 <div className="section-info">
                   <p className="section-title">
-                    {s.course_name} <span className="section-code">{s.course_code}-{s.section_no}</span>
+                    <span className="section-name">{s.course_name}</span>
+                    <span className="section-code">{s.course_code}-{s.section_no}</span>
                   </p>
                   <p className="section-sub">
                     {s.professor_name ?? '교수 미정'}
-                    {s.credits != null && ` · ${s.credits}학점`}
+                    {s.credits != null && <span className="dot">{s.credits}학점</span>}
                   </p>
-                  <p className="section-times">{formatTimes(s.times)}</p>
+                  <p className="section-times">
+                    <span className="section-time-ic" aria-hidden="true">🕒</span>
+                    {formatTimes(s.times)}
+                  </p>
                   <span className="section-links">
                     <Link
                       className="section-review-link"
@@ -159,11 +166,11 @@ export default function CourseSearch() {
                   </span>
                 </div>
                 <button
-                  className={on ? 'btn-remove' : 'btn-add'}
+                  className={`section-toggle ${on ? 'btn-remove' : 'btn-add'} btn-sm`}
                   onClick={() => (on ? remove(s) : add(s))}
                   disabled={busyKey === s.key}
                 >
-                  {busyKey === s.key ? '…' : on ? '제거' : '추가'}
+                  {busyKey === s.key ? '…' : on ? '제거' : '＋ 추가'}
                 </button>
               </li>
             );

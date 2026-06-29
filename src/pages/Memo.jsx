@@ -134,13 +134,14 @@ export default function Memo() {
       <header className="page-header row">
         <Link to="/" className="link-btn">← 홈</Link>
         <h2>{header.name} 메모</h2>
-        <span style={{ width: '2.5rem' }} />
       </header>
 
-      <p className="memo-sub">
-        {header.prof && `${header.prof} · `}{header.times} · {sn}분반
-      </p>
-      <p className="memo-note">※ 수업 메모는 학기 종속·휘발성이며, 이 분반을 확정시간표에 등록한 생도만 보고 쓸 수 있습니다.</p>
+      <div className="memo-head">
+        <p className="memo-sub">
+          {[header.prof, header.times, `${sn}분반`].filter(Boolean).join(' · ')}
+        </p>
+        <p className="memo-note note">※ 수업 메모는 학기 종속·휘발성이며, 이 분반을 확정시간표에 등록한 생도만 보고 쓸 수 있습니다.</p>
+      </div>
 
       {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화 */}
       <section className="memo-review">
@@ -158,12 +159,12 @@ export default function Memo() {
           }
           return (
             <button
-              className="btn-add"
+              className="btn-add btn-block"
               disabled={!eligible}
               onClick={() => setShowReview(true)}
               title={eligible ? '' : `확정시간표에 ${rev.minDays}일 이상 보유 후 작성 가능`}
             >
-              강의평 쓰기{eligible ? '' : rev.daysHeld == null ? ' (미등록)' : ` (앞으로 ${rev.minDays - rev.daysHeld}일)`}
+              ✍️ 강의평 쓰기{eligible ? '' : rev.daysHeld == null ? ' (미등록)' : ` (앞으로 ${rev.minDays - rev.daysHeld}일)`}
             </button>
           );
         })()}
@@ -172,14 +173,14 @@ export default function Memo() {
       {loading ? (
         <p className="muted center">불러오는 중…</p>
       ) : !allowed ? (
-        <p className="muted center">
+        <div className="empty">
+          <span className="empty-emoji">🔒</span>
           이 분반을 확정시간표에 등록한 생도만 메모를 볼 수 있습니다.
-          <br />
           <Link to="/search" className="section-review-link">강의 검색에서 추가하기 →</Link>
-        </p>
+        </div>
       ) : (
         <>
-          <form className="memo-form" onSubmit={submit}>
+          <form className="memo-form card" onSubmit={submit}>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -201,27 +202,34 @@ export default function Memo() {
           </form>
 
           <ul className="memo-list">
-            {memos.length === 0 && <p className="muted center">아직 메모가 없습니다.</p>}
+            {memos.length === 0 && (
+              <li className="empty">
+                <span className="empty-emoji">📝</span>
+                아직 메모가 없습니다.
+              </li>
+            )}
             {memos.map((m) => (
               <li key={m.id} className="memo-card">
                 <p className="memo-content">{m.content}</p>
                 <div className="memo-card-bottom">
                   <span className="memo-date">{new Date(m.created_at).toLocaleString('ko-KR')}</span>
-                  <button className="rev-del-btn" onClick={() => report(m.id)} style={{ color: '#dc2626' }}>🚨 신고</button>
-                  {delTarget === m.id ? (
-                    <span className="rev-del">
-                      <input
-                        type="password"
-                        value={delPw}
-                        onChange={(e) => setDelPw(e.target.value)}
-                        placeholder="비번"
-                      />
-                      <button onClick={confirmDelete}>확인</button>
-                      <button onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
-                    </span>
-                  ) : (
-                    <button className="rev-del-btn" onClick={() => { setDelTarget(m.id); setDelErr(''); }}>삭제</button>
-                  )}
+                  <span className="memo-actions">
+                    <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>
+                    {delTarget === m.id ? (
+                      <span className="rev-del">
+                        <input
+                          type="password"
+                          value={delPw}
+                          onChange={(e) => setDelPw(e.target.value)}
+                          placeholder="비번"
+                        />
+                        <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
+                        <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
+                      </span>
+                    ) : (
+                      <button className="rev-del-btn" onClick={() => { setDelTarget(m.id); setDelErr(''); }}>삭제</button>
+                    )}
+                  </span>
                 </div>
                 {delTarget === m.id && delErr && <p className="error-msg">{delErr}</p>}
               </li>

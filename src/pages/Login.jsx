@@ -29,39 +29,44 @@ export default function Login() {
   return (
     <div className="onboarding">
       <div className="onboarding-header">
-        <h1>애타</h1>
-        <p>로그인</p>
+        <span className="onboarding-logo">애</span>
+        <h1 className="onboarding-title">애타</h1>
+        <p className="onboarding-subtitle">다시 만나서 반가워요. 로그인하세요.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="onboarding-form">
-        <label>
-          아이디
+      <form onSubmit={handleSubmit} className="card auth-card onboarding-form">
+        <label className="field">
+          <span className="field-label">아이디</span>
           <input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            placeholder="아이디"
             autoCapitalize="none"
             autoComplete="username"
             required
           />
         </label>
 
-        <label>
-          비밀번호
+        <label className="field">
+          <span className="field-label">비밀번호</span>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="비밀번호"
             autoComplete="current-password"
             required
           />
         </label>
 
-        {error && <p className="error-msg">{error}</p>}
+        <div className="auth-actions">
+          {error && <p className="error-msg">{error}</p>}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? '로그인 중...' : '로그인'}
-        </button>
+          <button type="submit" className="btn-add btn-block btn-lg" disabled={submitting}>
+            {submitting ? '로그인 중...' : '로그인'}
+          </button>
+        </div>
       </form>
 
       <p className="auth-switch">

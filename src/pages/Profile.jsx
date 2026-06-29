@@ -4,6 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
 import { supabase } from '../supabase';
 import Badge, { badgeOf } from '../components/Badge';
+import ThemeToggle from '../components/ThemeToggle';
 
 const TIERS = [
   { key: 'gray', label: '그레이', min: 0 },
@@ -64,71 +65,80 @@ export default function Profile() {
 
   return (
     <div className="page">
-      <header className="page-header row">
+      <header className="page-header">
         <Link to="/" className="link-btn">← 홈</Link>
         <h2>프로필</h2>
-        <span style={{ width: '2.5rem' }} />
       </header>
 
-      <section className="profile-card">
-        <Badge tier={tier} level={count} size={64} />
-        <p className="profile-name">{cadet?.username}</p>
-        <p className="profile-tier">{TIERS.find((t) => t.key === tier)?.label} · Lv.{count}</p>
-      </section>
+      <div className="home-body">
+        <section className="card profile-card">
+          <Badge tier={tier} level={count} size={64} />
+          <p className="profile-name">{cadet?.username}</p>
+          <p className="profile-tier">{TIERS.find((t) => t.key === tier)?.label} · Lv.{count}</p>
 
-      <section className="profile-progress">
-        {next ? (
-          <>
-            <div className="progress-head">
-              <span>다음 등급 <strong>{next.label}</strong></span>
-              <span>{count} / {next.min}</span>
+          <div className="profile-progress">
+            {next ? (
+              <>
+                <div className="progress-head">
+                  <span>다음 등급 <strong>{next.label}</strong></span>
+                  <span>{count} / {next.min}</span>
+                </div>
+                <div className="progress-bar"><span style={{ width: `${pct}%` }} /></div>
+                <p className="note progress-note">
+                  {next.min - count}회 더 작성하면 {next.label} 등급이 됩니다.
+                </p>
+              </>
+            ) : (
+              <p className="muted center">최고 등급(레인보우)에 도달했습니다 🌈</p>
+            )}
+          </div>
+        </section>
+
+        <section className="card profile-tiers">
+          <p className="section-label profile-tiers-label">레벨 등급</p>
+          {TIERS.map((t) => (
+            <div key={t.key} className={`tier-row ${count >= t.min ? 'reached' : ''}`}>
+              <Badge tier={t.key} level={t.min} size={22} />
+              <span className="tier-label">{t.label}</span>
+              <span className="tier-min">{t.min}회+</span>
             </div>
-            <div className="progress-bar"><span style={{ width: `${pct}%` }} /></div>
-            <p className="muted" style={{ fontSize: '0.78rem', marginTop: '0.4rem' }}>
-              {next.min - count}회 더 작성하면 {next.label} 등급이 됩니다.
-            </p>
-          </>
-        ) : (
-          <p className="muted center">최고 등급(레인보우)에 도달했습니다 🌈</p>
-        )}
-      </section>
+          ))}
+          <p className="note profile-todo">강의평·수업메모·족보 작성 +1 / 삭제 −1로 레벨이 오릅니다.</p>
+        </section>
 
-      <section className="profile-tiers">
-        {TIERS.map((t) => (
-          <div key={t.key} className={`tier-row ${count >= t.min ? 'reached' : ''}`}>
-            <Badge tier={t.key} level={t.min} size={22} />
-            <span className="tier-label">{t.label}</span>
-            <span className="tier-min">{t.min}회+</span>
+        <section className="card account-sec">
+          <h3 className="account-sec-title">화면 테마</h3>
+          <p className="account-note">시스템 설정을 따르거나 라이트·다크를 직접 고를 수 있습니다.</p>
+          <div className="account-theme">
+            <ThemeToggle />
           </div>
-        ))}
-      </section>
+        </section>
 
-      <p className="home-todo">강의평·수업메모·족보 작성 +1 / 삭제 −1로 레벨이 오릅니다.</p>
+        <section className="card account-sec">
+          <h3 className="account-sec-title">비밀번호 변경</h3>
+          <form className="account-form" onSubmit={onChangePw}>
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="새 비밀번호(6자 이상)" autoComplete="new-password" />
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" autoComplete="new-password" />
+            <button type="submit" className="btn-add btn-block" disabled={busy}>변경</button>
+          </form>
+          {pwMsg && <p className="account-msg">{pwMsg}</p>}
+        </section>
 
-      <section className="account-sec">
-        <h3>비밀번호 변경</h3>
-        <form className="account-form" onSubmit={onChangePw}>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="새 비밀번호(6자 이상)" autoComplete="new-password" />
-          <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" autoComplete="new-password" />
-          <button type="submit" className="btn-add" disabled={busy}>변경</button>
-        </form>
-        {pwMsg && <p className="account-msg">{pwMsg}</p>}
-      </section>
-
-      <section className="account-sec danger">
-        <h3>회원 탈퇴</h3>
-        <p className="account-note">탈퇴하면 프로필·확정시간표·레벨 등 계정 정보가 모두 삭제됩니다. (익명으로 남긴 강의평·메모·족보는 작성자 식별 정보가 없어 그대로 유지됩니다.)</p>
-        {!confirming ? (
-          <button className="btn-danger" onClick={() => { setConfirming(true); setDelMsg(''); }}>회원 탈퇴</button>
-        ) : (
-          <div className="account-form">
-            <input type="password" value={delPw} onChange={(e) => setDelPw(e.target.value)} placeholder="비밀번호 확인" autoComplete="current-password" />
-            <button className="btn-danger" onClick={onDelete} disabled={busy}>탈퇴 확정</button>
-            <button className="rev-del-btn" onClick={() => { setConfirming(false); setDelPw(''); setDelMsg(''); }}>취소</button>
-          </div>
-        )}
-        {delMsg && <p className="account-msg">{delMsg}</p>}
-      </section>
+        <section className="card account-sec danger">
+          <h3 className="account-sec-title">회원 탈퇴</h3>
+          <p className="account-note">탈퇴하면 프로필·확정시간표·레벨 등 계정 정보가 모두 삭제됩니다. (익명으로 남긴 강의평·메모·족보는 작성자 식별 정보가 없어 그대로 유지됩니다.)</p>
+          {!confirming ? (
+            <button className="btn-danger-soft btn-block" onClick={() => { setConfirming(true); setDelMsg(''); }}>회원 탈퇴</button>
+          ) : (
+            <div className="account-form">
+              <input type="password" value={delPw} onChange={(e) => setDelPw(e.target.value)} placeholder="비밀번호 확인" autoComplete="current-password" />
+              <button className="btn-danger btn-block" onClick={onDelete} disabled={busy}>탈퇴 확정</button>
+              <button className="rev-del-btn" onClick={() => { setConfirming(false); setDelPw(''); setDelMsg(''); }}>취소</button>
+            </div>
+          )}
+          {delMsg && <p className="account-msg">{delMsg}</p>}
+        </section>
+      </div>
     </div>
   );
 }

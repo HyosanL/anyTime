@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
 import Onboarding from './pages/Onboarding';
@@ -16,6 +16,7 @@ import Boards from './pages/Boards';
 import Board from './pages/Board';
 import Post from './pages/Post';
 import InstallPrompt from './components/InstallPrompt';
+import BottomNav, { showTabbar } from './components/BottomNav';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function BlockedScreen({ until }) {
@@ -63,7 +64,7 @@ function GeoBanner() {
   const { geo, refreshCadet } = useAuthContext();
   if (!geo || geo.expired || geo.daysLeft == null || geo.daysLeft > 10) return null;
   return (
-    <div className="install-banner" style={{ background: '#b45309' }}>
+    <div className="banner-warn">
       <span>위치 인증 만료 {geo.daysLeft}일 전 — 교내에서 갱신하세요.</span>
       <GeoVerifyButton onDone={refreshCadet} label="위치 확인" />
     </div>
@@ -87,13 +88,13 @@ function PublicOnly({ children }) {
   return children;
 }
 
-export default function App() {
+function AppShell() {
+  const { pathname } = useLocation();
   return (
-    <AuthProvider>
-      <div className="app">
-        <InstallPrompt />
-        <GeoBanner />
-        <Routes>
+    <div className={`app${showTabbar(pathname) ? ' has-tabbar' : ''}`}>
+      <InstallPrompt />
+      <GeoBanner />
+      <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
           <Route path="/reviews/:courseCode" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
@@ -107,9 +108,17 @@ export default function App() {
           <Route path="/board/post/:id" element={<ProtectedRoute><Post /></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <BottomNav />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
     </AuthProvider>
   );
 }

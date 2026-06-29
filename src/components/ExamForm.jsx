@@ -55,24 +55,24 @@ export default function ExamForm({ courseCode, onDone }) {
 
   return (
     <form className="rev-form" onSubmit={handleSubmit}>
-      <label className="rev-form-field">
-        제목
+      <label className="field rev-form-field">
+        <span className="field-label">제목</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 2025-2 중간 정리" />
       </label>
 
       <div className="exam-row">
-        <label className="rev-form-field">
-          종류
+        <label className="field rev-form-field">
+          <span className="field-label">종류</span>
           <select value={examType} onChange={(e) => setExamType(e.target.value)}>
             {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
-        <label className="rev-form-field">
-          연도
+        <label className="field rev-form-field">
+          <span className="field-label">연도</span>
           <input type="number" value={srcYear} onChange={(e) => setSrcYear(e.target.value)} placeholder="2025" />
         </label>
-        <label className="rev-form-field">
-          학기
+        <label className="field rev-form-field">
+          <span className="field-label">학기</span>
           <select value={srcTerm} onChange={(e) => setSrcTerm(e.target.value)}>
             <option value="">-</option>
             <option value="1">1</option>
@@ -81,25 +81,25 @@ export default function ExamForm({ courseCode, onDone }) {
         </label>
       </div>
 
-      <label className="rev-form-field">
-        설명
+      <label className="field rev-form-field">
+        <span className="field-label">설명</span>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="내용·출처 등(선택)" />
       </label>
 
-      <label className="rev-form-field">
-        파일 (100MB 이하)
+      <label className="field rev-form-field">
+        <span className="field-label">파일 (100MB 이하)</span>
         <input type="file" accept=".pdf,.ppt,.pptx,.hwp,.docx,.zip,.jpg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        <span className="account-note" style={{ margin: 0 }}>용량이 크면 PDF 압축 후 올려주세요(스캔본은 화질만 유지되게).</span>
+        <span className="account-note exam-file-note">용량이 크면 PDF 압축 후 올려주세요(스캔본은 화질만 유지되게).</span>
       </label>
 
-      <label className="rev-form-field">
-        게시글 비밀번호
+      <label className="field rev-form-field">
+        <span className="field-label">게시글 비밀번호</span>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용" />
       </label>
 
       {error && <p className="error-msg">{error}</p>}
 
-      <button type="submit" className="btn-add" disabled={submitting}>
+      <button type="submit" className="btn-add btn-block" disabled={submitting}>
         {submitting ? '업로드 중…' : '족보 올리기'}
       </button>
     </form>

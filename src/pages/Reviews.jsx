@@ -8,8 +8,10 @@ function Stars({ value }) {
   const v = Number(value);
   return (
     <span className="stars" title={v.toFixed(2)}>
-      <span className="stars-on" style={{ width: `${(v / 5) * 100}%` }}>★★★★★</span>
-      <span className="stars-off">★★★★★</span>
+      <span className="stars-track">
+        <span className="stars-off">★★★★★</span>
+        <span className="stars-on" style={{ width: `${(v / 5) * 100}%` }}>★★★★★</span>
+      </span>
       <em>{v.toFixed(1)}</em>
     </span>
   );
@@ -119,7 +121,6 @@ export default function Reviews() {
       <header className="page-header row">
         <Link to="/search" className="link-btn">← 검색</Link>
         <h2>{courseName} 강의평</h2>
-        <span style={{ width: '2.5rem' }} />
       </header>
 
       {/* 집계 (평점·과락률) */}
@@ -127,27 +128,36 @@ export default function Reviews() {
         {loading ? (
           <p className="muted center">불러오는 중…</p>
         ) : shownSummary.length === 0 ? (
-          <p className="muted center">아직 집계된 평점이 없습니다.</p>
+          <div className="empty">
+            <span className="empty-emoji">⭐</span>
+            아직 집계된 평점이 없습니다.
+          </div>
         ) : (
           shownSummary.map((s) => (
             <div key={s.professor_code ?? 'none'} className="rev-sum-card">
               <div className="rev-sum-top">
                 <strong>{s.professor_name ?? profNameByCode[s.professor_code] ?? '교수 미정'}</strong>
-                <span className="rev-count">{s.review_count}개</span>
+                <span className="tag tag-primary">{s.review_count}개</span>
               </div>
               <Stars value={s.avg_overall} />
               <div className="rev-metrics">
                 {METRICS.map(([k, label]) => (
-                  <span key={k}>{label} {s[k] != null ? Number(s[k]).toFixed(1) : '-'}</span>
+                  <span key={k} className="rev-metric">
+                    <span className="rev-metric-label">{label}</span>
+                    <span className="rev-metric-value">{s[k] != null ? Number(s[k]).toFixed(1) : '-'}</span>
+                  </span>
                 ))}
-                <span className="rev-fail">과락률 {Math.round((s.fail_ratio ?? 0) * 100)}%</span>
+                <span className="rev-metric rev-fail">
+                  <span className="rev-metric-label">과락률</span>
+                  <span className="rev-metric-value">{Math.round((s.fail_ratio ?? 0) * 100)}%</span>
+                </span>
               </div>
             </div>
           ))
         )}
       </section>
 
-      <p className="account-note" style={{ padding: '0 1.5rem' }}>
+      <p className="account-note rev-hint">
         강의평 작성은 <b>확정시간표에서 해당 수업을 눌러</b> 들어가서 할 수 있습니다(일정 기간 수강 후).
       </p>
 
@@ -156,7 +166,10 @@ export default function Reviews() {
       {/* 리뷰 목록 */}
       <ul className="rev-list">
         {!loading && shownReviews.length === 0 && (
-          <p className="muted center">첫 강의평을 남겨보세요.</p>
+          <li className="empty">
+            <span className="empty-emoji">✍️</span>
+            첫 강의평을 남겨보세요.
+          </li>
         )}
         {shownReviews.map((r) => (
           <li key={r.id} className="rev-card">
@@ -164,17 +177,19 @@ export default function Reviews() {
               <strong>{r.professor_name ?? profNameByCode[r.professor_code] ?? '교수 미정'}</strong>
               <Stars value={r.overall} />
             </div>
-            <div className="rev-tags">
-              {r.fail && <span className="tag tag-warn">과락</span>}
-              {r.teamplay && <span className="tag">팀플</span>}
-              {r.presentation && <span className="tag">발표</span>}
-            </div>
+            {(r.fail || r.teamplay || r.presentation) && (
+              <div className="rev-tags">
+                {r.fail && <span className="tag tag-warn">과락</span>}
+                {r.teamplay && <span className="tag">팀플</span>}
+                {r.presentation && <span className="tag">발표</span>}
+              </div>
+            )}
             {r.prof_comment && <p className="rev-comment">👤 {r.prof_comment}</p>}
             {r.course_comment && <p className="rev-comment">📘 {r.course_comment}</p>}
             <div className="rev-card-bottom">
-              <span>
+              <span className="rev-actions-left">
                 <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
-                <button className="rev-del-btn" onClick={() => report(r.id)} style={{ marginLeft: '0.5rem', color: '#dc2626' }}>🚨 신고</button>
+                <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>
               </span>
               {delTarget === r.id ? (
                 <span className="rev-del">
@@ -184,8 +199,8 @@ export default function Reviews() {
                     onChange={(e) => setDelPw(e.target.value)}
                     placeholder="게시글 비번"
                   />
-                  <button onClick={confirmDelete}>확인</button>
-                  <button onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
+                  <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
+                  <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
                 </span>
               ) : (
                 <button className="rev-del-btn" onClick={() => { setDelTarget(r.id); setDelErr(''); }}>삭제</button>

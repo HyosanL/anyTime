@@ -1,0 +1,346 @@
+/* admin.css — 관리자 · 모더레이션 (Admin 그룹) */
+
+/* ====================== 공통 ====================== */
+
+/* 작업 결과 배너(성공/실패) */
+.admin-msg {
+  margin: 0.6rem var(--pad) 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--r-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.admin-msg.is-ok {
+  background: var(--success-weak);
+  color: var(--success);
+}
+.admin-msg.is-fail {
+  background: var(--danger-weak);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.admin-cards { gap: 1rem; }
+
+/* 카드 아이콘은 기능별로 너무 파랗지 않게 살짝 중성화 */
+.admin-card .card-ic {
+  background: var(--primary-weak);
+  color: var(--primary);
+}
+
+/* 카드 내부 섹션 라벨(여백만 조정 — 색/타입은 base) */
+.adm-sub-label {
+  padding: 0;
+  margin: 0.4rem 0 0.1rem;
+}
+
+.adm-divider {
+  margin: 0.4rem 0;
+}
+
+/* 카드 안쪽 검색바: 좌우 패딩 제거(카드가 이미 패딩 가짐) */
+.adm-inline-search {
+  padding: 0 0 0.2rem;
+}
+
+/* ====================== 모던 리스트(과목/교수) ====================== */
+.adm-list {
+  padding: 0;
+  gap: 0.5rem;
+}
+.adm-list-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.adm-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.adm-item.open {
+  border-color: var(--primary-weak-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.adm-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.8rem;
+}
+.adm-item-body { flex: 1; min-width: 0; }
+.adm-item-title {
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-item-sub {
+  font-size: 0.78rem;
+  color: var(--text-3);
+  margin-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-item-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.adm-empty-row {
+  text-align: center;
+  padding: 1rem 0.5rem;
+}
+
+/* 펼친 분반/시간 영역 */
+.adm-expand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.4rem 0.8rem 0.85rem;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+
+/* 분반 칩 행 */
+.adm-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.adm-chip-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+/* ====================== 폼 그리드 ====================== */
+.adm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+.adm-form-grid .field { min-width: 0; }
+.adm-field-wide { grid-column: 1 / -1; }
+
+.adm-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* 체크박스 필드 */
+.adm-check-field { justify-content: flex-start; }
+.adm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: var(--text-2);
+  padding: 0.35rem 0;
+}
+
+/* ====================== CSV 업로드 ====================== */
+.adm-steps {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.84rem;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.adm-steps li::marker { color: var(--text-3); }
+
+.adm-file-label {
+  cursor: pointer;
+  position: relative;
+}
+.adm-file-input { display: none; }
+
+.adm-csv-area {
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-height: 110px;
+}
+
+code {
+  background: var(--chip-bg);
+  color: var(--text-2);
+  border-radius: var(--r-sm);
+  padding: 0.05rem 0.35rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ====================== 태그 묶음 ====================== */
+.adm-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+/* ====================== 가입코드 ====================== */
+.adm-code-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: var(--primary-weak);
+  border: 1px solid var(--primary-weak-border);
+  border-radius: var(--r-md);
+}
+.adm-code-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.adm-code-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ====================== 설정(지오펜싱·기간) ====================== */
+.adm-setting-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.adm-setting-field { flex: 1; min-width: 0; }
+.adm-unit {
+  font-weight: 500;
+  color: var(--text-3);
+}
+.adm-setting-save {
+  flex: none;
+  margin-bottom: 1px;
+}
+
+/* ====================== 게시판 토글 ====================== */
+.adm-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.adm-toggle-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.adm-toggle-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ====================== 모더레이션 ====================== */
+.mod-status {
+  padding: 0.6rem var(--pad);
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+.mod-flag-n {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.mod-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.5rem var(--pad) 1rem;
+}
+
+.mod-card {
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.mod-card.flagged {
+  border-color: var(--warn-border);
+  box-shadow: 0 0 0 1px var(--warn-border);
+}
+
+.mod-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.mod-course {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.mod-time {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+
+.mod-text {
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mod-text mark {
+  background: var(--warn-weak);
+  color: var(--warn);
+  border-radius: var(--r-sm);
+  padding: 0 0.15rem;
+  font-weight: 600;
+}
+
+.mod-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.mod-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mod-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}

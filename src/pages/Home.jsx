@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import Badge, { badgeOf } from '../components/Badge';
+import ThemeToggle from '../components/ThemeToggle';
 import TimetableGrid from '../components/TimetableGrid';
 import { getCatalog, buildMyTimetable, saveTimetableCache, readTimetableCache } from '../lib/cache';
 
@@ -57,48 +58,61 @@ export default function Home() {
   }, [session?.user?.id]);
 
   return (
-    <div className="home">
-      <header className="home-header">
-        <h1>애타</h1>
-        <button className="link-btn" onClick={logout}>로그아웃</button>
+    <div className="page home">
+      <header className="page-header">
+        <span className="home-brand">애타</span>
+        <div className="home-header-actions">
+          <ThemeToggle />
+          <button className="link-btn" onClick={logout}>로그아웃</button>
+        </div>
       </header>
 
-      <Link to="/profile" className="home-card">
-        <Badge tier={tier} level={count} size={26} />
-        <div className="home-card-text">
-          <p className="home-hello">
-            <strong>{cadet?.username}</strong> 님, 환영합니다
-          </p>
-        </div>
-        <span className="home-card-arrow">›</span>
-      </Link>
-
-      <section className="home-tt">
-        <div className="home-tt-head">
-          <h2>{current ? `${current.year}-${current.term} ` : ''}시간표</h2>
-          {offline && <span className="cache-tag">오프라인</span>}
-        </div>
-        {loading ? (
-          <p className="muted center">불러오는 중…</p>
-        ) : (
-          <TimetableGrid mine={mine} periods={periods} />
-        )}
-      </section>
-
-      <nav className="home-nav">
-        <Link to="/search" className="nav-tile">
-          <span className="nav-tile-title">강의 검색</span>
+      <div className="home-body">
+        <Link to="/profile" className="card home-profile">
+          <Badge tier={tier} level={count} size={48} />
+          <div className="home-profile-text">
+            <p className="home-hello">
+              <strong>{cadet?.username}</strong> 님, 환영합니다
+            </p>
+            <p className="home-tier">{tier === 'rainbow' ? '레인보우' : tier === 'gold' ? '골드' : tier === 'silver' ? '실버' : '그레이'} · Lv.{count}</p>
+          </div>
+          <span className="home-profile-arrow row-chevron">›</span>
         </Link>
-        <Link to="/boards" className="nav-tile" style={{ background: '#0f766e' }}>
-          <span className="nav-tile-title">익명게시판</span>
-        </Link>
-        {isAdmin && (
-          <Link to="/admin" className="nav-tile nav-tile-admin">
-            <span className="nav-tile-title">관리자</span>
-            <span className="nav-tile-sub">카탈로그·가입코드·게시글 관리</span>
+
+        <section className="card home-tt">
+          <div className="home-tt-head">
+            <h2 className="card-title">{current ? `${current.year}-${current.term} ` : ''}시간표</h2>
+            {offline && <span className="cache-tag">오프라인</span>}
+          </div>
+          <div className="home-tt-body">
+            {loading ? (
+              <p className="muted center">불러오는 중…</p>
+            ) : (
+              <TimetableGrid mine={mine} periods={periods} />
+            )}
+          </div>
+        </section>
+
+        <nav className="home-nav">
+          <Link to="/search" className="nav-tile">
+            <span className="nav-tile-ic" aria-hidden="true">🔍</span>
+            <span className="nav-tile-title">강의 검색</span>
+            <span className="nav-tile-sub">과목·교수 평가 찾기</span>
           </Link>
-        )}
-      </nav>
+          <Link to="/boards" className="nav-tile nav-tile-accent">
+            <span className="nav-tile-ic" aria-hidden="true">💬</span>
+            <span className="nav-tile-title">익명게시판</span>
+            <span className="nav-tile-sub">자유롭게 이야기 나누기</span>
+          </Link>
+          {isAdmin && (
+            <Link to="/admin" className="nav-tile nav-tile-admin nav-tile-wide">
+              <span className="nav-tile-ic" aria-hidden="true">🛠️</span>
+              <span className="nav-tile-title">관리자</span>
+              <span className="nav-tile-sub">카탈로그·가입코드·게시글 관리</span>
+            </Link>
+          )}
+        </nav>
+      </div>
     </div>
   );
 }

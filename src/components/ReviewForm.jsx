@@ -81,8 +81,8 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
 
   return (
     <form className="rev-form" onSubmit={handleSubmit}>
-      <label className="rev-form-field">
-        교수
+      <label className="field rev-form-field">
+        <span className="field-label">교수</span>
         <select value={prof} onChange={(e) => setProf(e.target.value)}>
           {professors.length === 0 && <option value="">교수 정보 없음</option>}
           {professors.map((p) => (
@@ -91,21 +91,22 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
         </select>
       </label>
 
-      <p className="score-legend">
-        <span>← 부정적</span>
-        <span>별점이 많을수록 긍정적</span>
-        <span>긍정적 →</span>
-      </p>
-      <div className="rev-scores">
-        {SCORES.map(([key, label, required]) => (
-          <ScoreRow
-            key={key}
-            label={label}
-            required={required}
-            value={scores[key]}
-            onChange={(v) => setScore(key, v)}
-          />
-        ))}
+      <div className="rev-scores-block">
+        <p className="score-legend">
+          <span>← 부정적</span>
+          <span>긍정적 →</span>
+        </p>
+        <div className="rev-scores">
+          {SCORES.map(([key, label, required]) => (
+            <ScoreRow
+              key={key}
+              label={label}
+              required={required}
+              value={scores[key]}
+              onChange={(v) => setScore(key, v)}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="rev-checks">
@@ -114,23 +115,23 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
         <label><input type="checkbox" checked={presentation} onChange={(e) => setPresentation(e.target.checked)} /> 발표 있음</label>
       </div>
 
-      <label className="rev-form-field">
-        교수 평
+      <label className="field rev-form-field">
+        <span className="field-label">교수 평</span>
         <textarea value={profComment} onChange={(e) => setProfComment(e.target.value)} rows={2} placeholder="수업 스타일, 성적 등" />
       </label>
-      <label className="rev-form-field">
-        과목 평
+      <label className="field rev-form-field">
+        <span className="field-label">과목 평</span>
         <textarea value={courseComment} onChange={(e) => setCourseComment(e.target.value)} rows={2} placeholder="난이도, 과제 등" />
       </label>
 
-      <label className="rev-form-field">
-        게시글 비밀번호
+      <label className="field rev-form-field">
+        <span className="field-label">게시글 비밀번호</span>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="수정·삭제용" />
       </label>
 
       {error && <p className="error-msg">{error}</p>}
 
-      <button type="submit" className="btn-add" disabled={submitting}>
+      <button type="submit" className="btn-add btn-block" disabled={submitting}>
         {submitting ? '등록 중…' : '강의평 등록'}
       </button>
     </form>

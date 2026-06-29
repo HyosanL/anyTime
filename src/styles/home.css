@@ -1,0 +1,348 @@
+/* home.css — 홈 대시보드 · 프로필 · 시간표 그리드 (Home/Profile 그룹)
+   색은 전부 tokens.css 의 var(--...) 만 사용. */
+
+/* ============================================================
+   공통 본문 래퍼 (홈/프로필 카드 스택)
+   ============================================================ */
+.home-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.85rem var(--pad) 1.5rem;
+}
+
+/* ============================================================
+   홈 헤더
+   ============================================================ */
+.home-brand {
+  grid-column: 1;
+  justify-self: start;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.home-header-actions {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ============================================================
+   프로필 요약 카드 (홈 → /profile 링크)
+   ============================================================ */
+.home-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.95rem 1.05rem;
+  color: var(--text);
+  transition: background 0.15s ease, transform 0.06s ease, border-color 0.15s ease;
+}
+.home-profile:hover { background: var(--card-hover); border-color: var(--border-strong); }
+.home-profile:active { transform: scale(0.992); background: var(--card-active); }
+.home-profile-text { flex: 1; min-width: 0; }
+.home-hello {
+  font-size: 0.98rem;
+  color: var(--text);
+}
+.home-hello strong { font-weight: 700; }
+.home-tier {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  margin-top: 0.15rem;
+}
+.home-profile-arrow { flex: none; }
+
+/* ============================================================
+   홈 시간표 카드
+   ============================================================ */
+.home-tt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.95rem 1.05rem 0.65rem;
+}
+.home-tt-body {
+  padding: 0 0.65rem 0.85rem;
+}
+
+/* ============================================================
+   홈 단축 타일 (보조 네비)
+   ============================================================ */
+.home-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+.nav-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 1rem 1rem 1.05rem;
+  min-height: 104px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  transition: background 0.15s ease, transform 0.06s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.nav-tile:hover { background: var(--card-hover); border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.nav-tile:active { transform: scale(0.985); background: var(--card-active); }
+.nav-tile-wide { grid-column: 1 / -1; }
+
+.nav-tile-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 0.35rem;
+  border-radius: var(--r-md);
+  background: var(--primary-weak);
+  color: var(--primary);
+  font-size: 1.2rem;
+}
+.nav-tile-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.nav-tile-sub {
+  font-size: 0.76rem;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+/* accent(게시판) 변형 — teal 토큰 */
+.nav-tile-accent .nav-tile-ic {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+/* admin 변형 — 강조 보더 + chip 아이콘 */
+.nav-tile-admin {
+  border-color: var(--primary-weak-border);
+  background: var(--primary-weak);
+}
+.nav-tile-admin:hover { background: var(--primary-weak); border-color: var(--primary); }
+.nav-tile-admin .nav-tile-ic {
+  background: var(--card);
+  color: var(--primary);
+}
+.nav-tile-admin .nav-tile-title { color: var(--primary-strong); }
+
+/* ============================================================
+   프로필 카드
+   ============================================================ */
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.3rem;
+  padding: 1.5rem 1.1rem 1.25rem;
+}
+.profile-name {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-top: 0.5rem;
+}
+.profile-tier {
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+/* 다음 등급 진행바 */
+.profile-progress {
+  width: 100%;
+  margin-top: 1rem;
+}
+.progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-2);
+  margin-bottom: 0.45rem;
+}
+.progress-head strong { color: var(--text); font-weight: 700; }
+.progress-bar {
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--chip-bg);
+  overflow: hidden;
+}
+.progress-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--primary);
+  transition: width 0.4s ease;
+}
+.progress-note {
+  margin-top: 0.5rem;
+  text-align: left;
+}
+
+/* ============================================================
+   레벨 등급 목록
+   ============================================================ */
+.profile-tiers {
+  padding: 0.4rem 1.05rem 1rem;
+}
+.profile-tiers-label {
+  padding: 0.6rem 0 0.35rem;
+  margin: 0;
+}
+.tier-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+.tier-row:first-of-type { border-top: none; }
+.tier-row.reached { opacity: 1; }
+.tier-label {
+  flex: 1;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.tier-min {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+.profile-todo {
+  margin-top: 0.75rem;
+}
+
+/* ============================================================
+   계정 섹션 (테마 / 비밀번호 / 탈퇴)
+   ============================================================ */
+.account-sec {
+  padding: 1rem 1.05rem 1.1rem;
+}
+.account-sec-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.55rem;
+}
+.account-sec.danger .account-sec-title { color: var(--danger); }
+.account-theme {
+  margin-top: 0.65rem;
+}
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+.account-msg {
+  font-size: 0.82rem;
+  color: var(--text-2);
+  margin-top: 0.6rem;
+}
+
+/* ============================================================
+   시간표 그리드 (TimetableGrid)
+   - 셀 배경은 컴포넌트 inline style(데이터 PALETTE) 이 칠한다.
+   - 셀 안 텍스트는 항상 밝은 파스텔 위 → var(--on-pastel).
+   ============================================================ */
+.tt-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tt {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+  table-layout: fixed;
+}
+.tt th,
+.tt td {
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* 헤더 행(요일) */
+.tt thead th {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-2);
+  padding: 0.25rem 0;
+}
+.tt-corner { width: 34px; }
+
+/* 좌측 교시 열 */
+.tt-period {
+  width: 34px;
+  font-weight: 700;
+}
+.tt-pno {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+.tt-ptime {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-top: 0.1rem;
+}
+
+/* 빈 칸 */
+.tt tbody td {
+  height: 46px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+/* 과목이 든 칸 (배경은 inline 파스텔) */
+.tt tbody td[style] {
+  border-color: transparent;
+}
+.tt-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.2rem 0.15rem;
+  border-radius: var(--r-sm);
+  color: var(--on-pastel);
+  transition: filter 0.12s ease, transform 0.06s ease;
+}
+.tt-cell:active { transform: scale(0.97); }
+.tt-cell:hover { filter: brightness(0.97); }
+.tt-course {
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--on-pastel);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.tt-room {
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--on-pastel);
+  opacity: 0.78;
+}

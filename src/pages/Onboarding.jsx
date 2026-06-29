@@ -56,13 +56,14 @@ export default function Onboarding() {
   return (
     <div className="onboarding">
       <div className="onboarding-header">
-        <h1>애타</h1>
-        <p>공군사관학교 강의정보 공유</p>
+        <span className="onboarding-logo">애</span>
+        <h1 className="onboarding-title">애타</h1>
+        <p className="onboarding-subtitle">공군사관학교 강의정보 공유</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="onboarding-form">
-        <label>
-          아이디
+      <form onSubmit={handleSubmit} className="card auth-card onboarding-form">
+        <label className="field">
+          <span className="field-label">아이디</span>
           <input
             type="text"
             value={username}
@@ -74,8 +75,8 @@ export default function Onboarding() {
           />
         </label>
 
-        <label>
-          비밀번호
+        <label className="field">
+          <span className="field-label">비밀번호</span>
           <input
             type="password"
             value={password}
@@ -87,8 +88,8 @@ export default function Onboarding() {
           />
         </label>
 
-        <label>
-          가입코드
+        <label className="field">
+          <span className="field-label">가입코드</span>
           <input
             type="text"
             value={code}
@@ -98,12 +99,14 @@ export default function Onboarding() {
           />
         </label>
 
-        {status && <p className="status-msg">{status}</p>}
-        {error && <p className="error-msg">{error}</p>}
+        <div className="auth-actions">
+          {status && <p className="status-msg">{status}</p>}
+          {error && <p className="error-msg">{error}</p>}
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? '진행 중…' : '가입하기'}
-        </button>
+          <button type="submit" className="btn-add btn-block btn-lg" disabled={submitting}>
+            {submitting ? '진행 중…' : '가입하기'}
+          </button>
+        </div>
       </form>
 
       <p className="auth-switch">
