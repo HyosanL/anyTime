@@ -13,15 +13,16 @@ function ScoreRow({ label, required, value, onChange }) {
   return (
     <div className="score-row">
       <span className="score-label">{label}{required && ' *'}</span>
-      <span className="score-btns">
+      <span className="score-stars">
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             type="button"
             key={n}
-            className={value === n ? 'on' : ''}
+            className={`star ${value != null && n <= value ? 'on' : ''}`}
+            aria-label={`${n}점`}
             onClick={() => onChange(value === n ? null : n)}
           >
-            {n}
+            ★
           </button>
         ))}
       </span>
@@ -89,6 +90,11 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
         </select>
       </label>
 
+      <p className="score-legend">
+        <span>← 부정적</span>
+        <span>별점이 많을수록 긍정적</span>
+        <span>긍정적 →</span>
+      </p>
       <div className="rev-scores">
         {SCORES.map(([key, label, required]) => (
           <ScoreRow
@@ -102,7 +108,7 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
       </div>
 
       <div className="rev-checks">
-        <label><input type="checkbox" checked={fail} onChange={(e) => setFail(e.target.checked)} /> 과락 있음</label>
+        <label><input type="checkbox" checked={fail} onChange={(e) => setFail(e.target.checked)} /> 나는 과락이다.</label>
         <label><input type="checkbox" checked={teamplay} onChange={(e) => setTeamplay(e.target.checked)} /> 팀플 있음</label>
         <label><input type="checkbox" checked={presentation} onChange={(e) => setPresentation(e.target.checked)} /> 발표 있음</label>
       </div>

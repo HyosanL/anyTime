@@ -617,24 +617,29 @@ body {
   font-weight: 400;
   outline: none;
 }
+.score-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.score-legend span:nth-child(2) { color: #cbd5e1; }
 .rev-scores { display: flex; flex-direction: column; gap: 0.4rem; }
 .score-row { display: flex; align-items: center; justify-content: space-between; }
 .score-label { font-size: 0.82rem; font-weight: 600; color: #374151; }
-.score-btns { display: flex; gap: 0.25rem; }
-.score-btns button {
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  border-radius: 6px;
-  font-size: 0.85rem;
+.score-stars { display: flex; gap: 0.1rem; }
+.score-stars .star {
+  border: none;
+  background: none;
+  padding: 0.1rem 0.15rem;
+  font-size: 1.45rem;
+  line-height: 1;
+  color: #d1d5db;
   cursor: pointer;
+  transition: color 0.1s;
 }
-.score-btns button.on {
-  background: #1e40af;
-  color: #fff;
-  border-color: #1e40af;
-}
+.score-stars .star.on { color: #f59e0b; }
 .rev-checks {
   display: flex;
   flex-wrap: wrap;
