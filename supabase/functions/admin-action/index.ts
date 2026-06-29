@@ -146,15 +146,14 @@ Deno.serve(async (req) => {
         return json({ status: 'OK', items })
       }
       case 'list_admins': {
-        const { data } = await admin.from('admin').select('id, cadet:cadet(username)')
-        const admins = (data ?? []).map((a) => ({ id: a.id, username: a.cadet?.username ?? '(알수없음)' }))
-        return json({ status: 'OK', admins })
+        const { data } = await admin.from('cadet').select('id, username').eq('is_admin', true)
+        return json({ status: 'OK', admins: (data ?? []).map((c) => ({ id: c.id, username: c.username })) })
       }
       case 'grant_admin': {
         const username = String(payload.username ?? '').trim()
         const { data: c } = await admin.from('cadet').select('id').eq('username', username).maybeSingle()
         if (!c) return json({ status: 'NO_USER' }, 404)
-        await admin.from('admin').upsert({ id: c.id }, { onConflict: 'id', ignoreDuplicates: true })
+        await admin.from('cadet').update({ is_admin: true }).eq('id', c.id)
         return json({ status: 'OK' })
       }
       case 'revoke_admin': {
@@ -162,9 +161,9 @@ Deno.serve(async (req) => {
         const { data: c } = await admin.from('cadet').select('id').eq('username', username).maybeSingle()
         if (!c) return json({ status: 'NO_USER' }, 404)
         // 마지막 관리자 제거 방지
-        const { count } = await admin.from('admin').select('id', { count: 'exact', head: true })
+        const { count } = await admin.from('cadet').select('id', { count: 'exact', head: true }).eq('is_admin', true)
         if ((count ?? 0) <= 1) return json({ status: 'LAST_ADMIN' }, 409)
-        await admin.from('admin').delete().eq('id', c.id)
+        await admin.from('cadet').update({ is_admin: false }).eq('id', c.id)
         return json({ status: 'OK' })
       }
       default:
