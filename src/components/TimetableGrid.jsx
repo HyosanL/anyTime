@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { dayLabel } from '../lib/cache';
 
 // 과목별 파스텔 색 (course_code 순서대로 배정)
@@ -45,6 +46,7 @@ export default function TimetableGrid({ mine, periods }) {
           room: t.room,
           color: colorByCourse[s.course_code],
           isStart: p === t.start_period,
+          memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
         };
       }
     })
@@ -79,10 +81,10 @@ export default function TimetableGrid({ mine, periods }) {
                 return (
                   <td key={d} style={c ? { background: c.color } : undefined}>
                     {c?.isStart && (
-                      <span className="tt-cell">
+                      <Link className="tt-cell" to={c.memoTo} title="수업 메모">
                         <span className="tt-course">{c.label}</span>
                         {c.room && <span className="tt-room">{c.room}</span>}
-                      </span>
+                      </Link>
                     )}
                   </td>
                 );

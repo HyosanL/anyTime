@@ -154,7 +154,63 @@ body {
   border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
+  text-decoration: none;
+  color: inherit;
 }
+.home-card-arrow {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 1.4rem;
+}
+
+/* 프로필 */
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+}
+.profile-name { font-size: 1.2rem; font-weight: 700; }
+.profile-tier { font-size: 0.85rem; color: #64748b; }
+.profile-progress { padding: 0 1.5rem 1rem; }
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: #475569;
+  margin-bottom: 0.4rem;
+}
+.progress-bar {
+  height: 0.5rem;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #60a5fa, #1e40af);
+  border-radius: 999px;
+}
+.profile-tiers {
+  padding: 0.5rem 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.tier-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  opacity: 0.5;
+}
+.tier-row.reached { opacity: 1; border-color: #c7d2fe; background: #f5f7ff; }
+.tier-label { font-weight: 600; font-size: 0.88rem; }
+.tier-min { margin-left: auto; font-size: 0.78rem; color: #94a3b8; }
 
 .home-card-text {
   display: flex;
@@ -302,6 +358,10 @@ body {
   flex-direction: column;
   gap: 0.1rem;
   padding: 0.15rem;
+  height: 100%;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
 }
 
 .tt-course {
@@ -475,6 +535,71 @@ body {
   color: #94a3b8;
   margin-top: 0.3rem;
 }
+
+/* ===== 수업 메모 ===== */
+.memo-sub {
+  padding: 0 1.5rem;
+  font-size: 0.85rem;
+  color: #475569;
+  margin-top: 0.2rem;
+}
+.memo-note {
+  padding: 0.4rem 1.5rem 0;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+.memo-form {
+  margin: 0.8rem 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.memo-form textarea {
+  padding: 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  outline: none;
+  resize: vertical;
+}
+.memo-form-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.memo-form-row input {
+  flex: 1;
+  padding: 0.55rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+.memo-list {
+  list-style: none;
+  padding: 0.8rem 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.memo-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+}
+.memo-content {
+  font-size: 0.9rem;
+  color: #1e293b;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.memo-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.6rem;
+}
+.memo-date { font-size: 0.72rem; color: #94a3b8; }
 
 /* ===== 강의평 ===== */
 .stars {

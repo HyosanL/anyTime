@@ -37,7 +37,16 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
+
+  // 호출자(생도) JWT 로 동작하는 클라이언트 → delete_exam 안에서 auth.uid() 유지
+  // (작성자의 레벨 -1 을 정확히 반영하기 위함)
+  const authHeader = req.headers.get('Authorization') ?? ''
+  const userClient = createClient(url, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  })
 
   // 1) 파일 key 미리 확보 (삭제되면 못 읽으므로)
   const { data: row } = await admin
@@ -47,8 +56,8 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!row) return json('NOT_FOUND', 404)
 
-  // 2) 비밀번호 검증 + 행 삭제 (DB RPC)
-  const { data: ok, error } = await admin.rpc('delete_exam', {
+  // 2) 비밀번호 검증 + 행 삭제 + 레벨 -1 (유저 JWT 로 RPC 호출)
+  const { data: ok, error } = await userClient.rpc('delete_exam', {
     p_id: id,
     p_post_password: password,
   })

@@ -58,14 +58,15 @@ export default function Home() {
         <button className="link-btn" onClick={logout}>로그아웃</button>
       </header>
 
-      <section className="home-card">
+      <Link to="/profile" className="home-card">
         <Badge tier={tier} level={count} size={26} />
         <div className="home-card-text">
           <p className="home-hello">
             <strong>{cadet?.username}</strong> 님, 환영합니다
           </p>
         </div>
-      </section>
+        <span className="home-card-arrow">›</span>
+      </Link>
 
       <section className="home-tt">
         <div className="home-tt-head">
