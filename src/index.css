@@ -227,6 +227,95 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
+/* 확정시간표 */
+.home-tt {
+  margin-bottom: 1.5rem;
+}
+
+.home-tt-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.home-tt-head h2 {
+  font-size: 1rem;
+  color: #334155;
+}
+
+.tt-wrap {
+  overflow-x: auto;
+}
+
+.tt {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.tt th,
+.tt td {
+  border: 1px solid #e5e7eb;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.tt thead th {
+  padding: 0.35rem 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.tt-corner {
+  width: 2.2rem;
+}
+
+.tt-period {
+  width: 2.2rem;
+  padding: 0.2rem;
+  background: #f8fafc;
+  line-height: 1.1;
+}
+
+.tt-pno {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.tt-ptime {
+  display: block;
+  font-size: 0.6rem;
+  color: #94a3b8;
+}
+
+.tt td {
+  height: 2.6rem;
+  padding: 0;
+}
+
+.tt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.15rem;
+}
+
+.tt-course {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.15;
+}
+
+.tt-room {
+  font-size: 0.58rem;
+  color: #64748b;
+}
+
 /* 홈 네비 타일 */
 .home-nav {
   display: grid;

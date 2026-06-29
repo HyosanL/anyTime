@@ -90,6 +90,19 @@ export async function clearCatalog() {
   await tx.done;
 }
 
+// 확정시간표 행 캐시 (오프라인 표시용 write-through)
+const TT_KEY = 'timetable';
+
+export async function saveTimetableCache(rows) {
+  const db = await getDB();
+  await db.put(STORE, rows, TT_KEY);
+}
+
+export async function readTimetableCache() {
+  const db = await getDB();
+  return (await db.get(STORE, TT_KEY)) ?? [];
+}
+
 // ---------------------------------------------------------------------
 //  조회 헬퍼: 분반(section)을 화면용으로 조립 (과목명·교수명·강의시간 조인)
 // ---------------------------------------------------------------------
@@ -142,6 +155,15 @@ export function buildSections(catalog) {
     .sort((a, b) => a.course_name.localeCompare(b.course_name, 'ko'));
 
   return { current, sections };
+}
+
+// 내 확정시간표: 현재 학기 등록 분반(시간 조인) + 교시 목록
+export function buildMyTimetable(catalog, rows) {
+  const { current, sections } = buildSections(catalog);
+  const keys = new Set((rows ?? []).map(sectionKey));
+  const mine = sections.filter((s) => keys.has(s.key));
+  const periods = [...(catalog.period ?? [])].sort((a, b) => a.no - b.no);
+  return { current, mine, periods };
 }
 
 // "월1, 수1" 같은 강의시간 요약 문자열
