@@ -27,15 +27,12 @@ export default function Onboarding() {
     setError('');
     setSubmitting(true);
     try {
-      // 위치 권한 → 좌표 (지오펜싱 서버검증용)
+      // 위치 권한 → 좌표 (지오펜싱 필수)
       setStatus('📍 위치 확인 중… (권한 요청에 응답해 주세요)');
-      const { lat, lng, error: posError } = await getPosition();
-      if (posError === 'DENIED') {
-        setError('위치 권한이 필요합니다. 권한을 허용하고 다시 시도하세요.');
+      const { lat, lng } = await getPosition();
+      if (lat == null || lng == null) {
+        setError('위치 확인이 필요합니다. 위치 권한을 켜고 교내에서 다시 시도하세요.');
         return;
-      }
-      if (posError === 'UNAVAILABLE') {
-        setStatus('⚠️ 위치를 가져오지 못해 코드로만 확인합니다…');
       }
 
       setStatus('🔐 가입 처리 중…');

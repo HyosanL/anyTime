@@ -8,6 +8,7 @@ export function useAuth() {
   const [session, setSession] = useState(null);
   const [cadet, setCadet] = useState(null);
   const [blockedUntil, setBlockedUntil] = useState(null);
+  const [geo, setGeo] = useState({ expired: false, daysLeft: null }); // 지오펜싱 재인증 상태
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,12 +40,21 @@ export function useAuth() {
   async function fetchCadet(uid) {
     const { data } = await supabase
       .from('cadet')
-      .select('id, username, post_count')
+      .select('id, username, post_count, geo_verified_at')
       .eq('id', uid)
       .maybeSingle();
     setCadet(data ?? null);
     const { data: blk } = await supabase.rpc('get_my_block');
     setBlockedUntil(blk || null);
+    const { data: vd } = await supabase.rpc('get_geo_valid_days');
+    const validDays = vd ?? 90;
+    if (data?.geo_verified_at) {
+      const expiresAt = new Date(data.geo_verified_at).getTime() + validDays * 86400000;
+      const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
+      setGeo({ expired: daysLeft <= 0, daysLeft });
+    } else {
+      setGeo({ expired: false, daysLeft: validDays });
+    }
     setLoading(false);
   }
 
@@ -57,5 +67,5 @@ export function useAuth() {
     setCadet(null);
   }
 
-  return { session, cadet, blockedUntil, loading, refreshCadet, logout };
+  return { session, cadet, blockedUntil, geo, loading, refreshCadet, logout };
 }

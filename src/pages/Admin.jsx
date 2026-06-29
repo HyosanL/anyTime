@@ -49,6 +49,7 @@ export default function Admin() {
   const [admins, setAdmins] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [currentCode, setCurrentCode] = useState('');
+  const [setting, setSetting] = useState({});
 
   // 폼 상태
   const [q, setQ] = useState('');
@@ -69,6 +70,7 @@ export default function Admin() {
     call('list_admins').then((r) => r.ok && setAdmins(r.data.admins ?? []));
     call('list_blocks').then((r) => r.ok && setBlocks(r.data.blocks ?? []));
     call('get_signup_code').then((r) => r.ok && setCurrentCode(r.data.code ?? ''));
+    call('get_app_setting').then((r) => r.ok && setSetting(r.data.setting ?? {}));
   }
   useEffect(() => {
     supabase.rpc('is_admin').then(({ data }) => { setIsAdmin(!!data); if (data) loadAll(); });
@@ -200,6 +202,22 @@ export default function Admin() {
           <input placeholder="새 가입코드" value={newCode} onChange={(e) => setNewCode(e.target.value)} />
           <button className="btn-add" onClick={async () => { if (!newCode.trim()) return; const r = await run('set_signup_code', { code: newCode.trim() }, `가입코드 변경`); if (r.ok) setNewCode(''); }}>변경</button>
         </div>
+      </Section>
+
+      <Section title="설정 (지오펜싱 · 기간)">
+        {[
+          ['review_min_days', '강의평 작성 자격(일)'],
+          ['geo_valid_days', '위치 재인증 유효기간(일)'],
+          ['radius_m', '지오펜싱 반경(m)'],
+          ['campus_lat', '캠퍼스 위도'],
+          ['campus_lng', '캠퍼스 경도'],
+        ].map(([k, label]) => (
+          <div className="admin-row" key={k} style={{ marginBottom: '0.3rem' }}>
+            <span style={{ flex: 1, fontSize: '0.82rem' }}>{label}</span>
+            <input type="number" step="any" value={setting[k] ?? ''} onChange={(e) => setSetting({ ...setting, [k]: e.target.value })} />
+            <button className="btn-add" onClick={() => run('set_app_setting', { field: k, value: Number(setting[k]) }, `${label} 변경`)}>저장</button>
+          </div>
+        ))}
       </Section>
 
       <Section title="아이디 / 기기 차단">

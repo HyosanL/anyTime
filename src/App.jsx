@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
+import { verifyGeo } from './lib/geo';
 import Onboarding from './pages/Onboarding';
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -24,11 +26,53 @@ function BlockedScreen({ until }) {
   );
 }
 
+function GeoVerifyButton({ onDone, label }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  async function go() {
+    setBusy(true); setMsg('📍 위치 확인 중…');
+    const r = await verifyGeo();
+    setBusy(false);
+    if (r === 'OK') { setMsg('✅ 인증됨'); onDone?.(); }
+    else setMsg(r === 'OUT_OF_AREA' ? '캠퍼스 범위 밖입니다.' : r === 'NO_LOCATION' ? '위치 권한이 필요합니다.' : '인증 실패');
+  }
+  return (
+    <span>
+      <button className="btn-add" disabled={busy} onClick={go}>{label || '위치 확인'}</button>
+      {msg && <span className="muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{msg}</span>}
+    </span>
+  );
+}
+
+function GeoBlockScreen() {
+  const { refreshCadet, logout } = useAuthContext();
+  return (
+    <div className="page-center" style={{ flexDirection: 'column', gap: '1rem', padding: '2rem', textAlign: 'center' }}>
+      <h2>📍 위치 재인증이 필요합니다</h2>
+      <p className="muted">정기 위치 인증이 만료되었습니다.<br />교내에서 위치 확인을 한 번 하면 다시 이용할 수 있습니다.</p>
+      <GeoVerifyButton onDone={refreshCadet} label="위치 확인하고 계속" />
+      <button className="link-btn" onClick={logout}>로그아웃</button>
+    </div>
+  );
+}
+
+function GeoBanner() {
+  const { geo, refreshCadet } = useAuthContext();
+  if (!geo || geo.expired || geo.daysLeft == null || geo.daysLeft > 10) return null;
+  return (
+    <div className="install-banner" style={{ background: '#b45309' }}>
+      <span>위치 인증 만료 {geo.daysLeft}일 전 — 교내에서 갱신하세요.</span>
+      <GeoVerifyButton onDone={refreshCadet} label="위치 확인" />
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }) {
-  const { session, loading, blockedUntil } = useAuthContext();
+  const { session, loading, blockedUntil, geo } = useAuthContext();
   if (loading) return <div className="page-center">로딩 중...</div>;
   if (!session) return <Navigate to="/login" replace />;
   if (blockedUntil) return <BlockedScreen until={blockedUntil} />;
+  if (geo?.expired) return <GeoBlockScreen />;
   return children;
 }
 
@@ -45,6 +89,7 @@ export default function App() {
     <AuthProvider>
       <div className="app">
         <InstallPrompt />
+        <GeoBanner />
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />

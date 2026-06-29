@@ -54,6 +54,18 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
+      case 'get_app_setting': {
+        const { data } = await admin.from('app_setting')
+          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days').eq('id', 1).maybeSingle()
+        return json({ status: 'OK', setting: data ?? {} })
+      }
+      case 'set_app_setting': {
+        const allow = ['geo_valid_days', 'review_min_days', 'radius_m', 'campus_lat', 'campus_lng']
+        const field = String(payload.field)
+        if (!allow.includes(field)) return json({ status: 'BAD_REQUEST' }, 400)
+        await admin.from('app_setting').update({ [field]: payload.value }).eq('id', 1).throwOnError()
+        return json({ status: 'OK' })
+      }
       case 'get_signup_code': {
         const { data } = await admin.from('app_setting').select('signup_code').eq('id', 1).maybeSingle()
         return json({ status: 'OK', code: data?.signup_code ?? '' })

@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
   // 4) cadet 프로필 생성 (실패 시 생성한 Auth 계정 롤백)
   const { error: cadetErr } = await admin
     .from('cadet')
-    .insert({ id: uid, username, device_fp: deviceFp })
+    .insert({ id: uid, username, device_fp: deviceFp, geo_verified_at: new Date().toISOString() })
   if (cadetErr) {
     await admin.auth.admin.deleteUser(uid)
     if (/duplicate|unique/i.test(cadetErr.message)) return json('USERNAME_TAKEN', 409)
