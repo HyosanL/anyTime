@@ -22,7 +22,7 @@ export default function ExamForm({ courseCode, onDone }) {
     setError('');
     if (!title.trim()) return setError('제목을 입력하세요.');
     if (!file) return setError('파일을 선택하세요.');
-    if (file.size > 20 * 1024 * 1024) return setError('파일은 20MB 이하여야 합니다.');
+    if (file.size > 100 * 1024 * 1024) return setError('파일은 100MB 이하여야 합니다.');
     if (password.length < 2) return setError('게시글 비밀번호를 입력하세요(삭제용).');
 
     setSubmitting(true);
@@ -84,8 +84,9 @@ export default function ExamForm({ courseCode, onDone }) {
       </label>
 
       <label className="rev-form-field">
-        파일 (20MB 이하)
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        파일 (100MB 이하)
+        <input type="file" accept=".pdf,.ppt,.pptx,.hwp,.docx,.zip,.jpg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <span className="account-note" style={{ margin: 0 }}>용량이 크면 PDF 압축 후 올려주세요(스캔본은 화질만 유지되게).</span>
       </label>
 
       <label className="rev-form-field">
