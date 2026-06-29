@@ -147,10 +147,18 @@ body {
 }
 
 .home-card {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
   background: #f1f5f9;
   border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
+}
+
+.home-card-text {
+  display: flex;
+  flex-direction: column;
 }
 
 .home-hello {
@@ -167,4 +175,74 @@ body {
   font-size: 0.85rem;
   color: #94a3b8;
   text-align: center;
+}
+
+/* 사각 메탈 뱃지 (유튜브 실버버튼 스타일) */
+.badge-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16%;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.55),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.28),
+    0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* 가운데 재생 버튼(▶) — CSS 삼각형 */
+.badge-play {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0.5em 0 0.5em 0.85em;
+  border-color: transparent transparent transparent rgba(30, 30, 30, 0.7);
+  margin-left: 0.12em;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
+  font-size: inherit;
+}
+
+.badge { font-size: 1.4rem; } /* ▶ 크기 스케일 기준 */
+
+/* 그레이 (건메탈) */
+.badge-gray {
+  background: linear-gradient(135deg, #c2c6cc 0%, #8b9097 38%, #e4e7ea 50%, #777c83 62%, #aab0b7 100%);
+}
+/* 실버 */
+.badge-silver {
+  background: linear-gradient(135deg, #f4f6f8 0%, #c2c8cf 38%, #ffffff 50%, #aeb4bc 62%, #e4e8ec 100%);
+}
+.badge-silver .badge-play {
+  border-color: transparent transparent transparent rgba(60, 64, 70, 0.78);
+}
+/* 골드 */
+.badge-gold {
+  background: linear-gradient(135deg, #fbe69a 0%, #d9a72a 38%, #fff6cf 50%, #c8901a 62%, #eec24a 100%);
+}
+.badge-gold .badge-play {
+  border-color: transparent transparent transparent rgba(120, 80, 10, 0.8);
+}
+/* 레인보우 (홀로그램) */
+.badge-rainbow {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.35), rgba(255,255,255,0) 50%),
+    conic-gradient(from 210deg,
+      #ff5f6d, #ffc371, #f9f586, #6ee7b7, #60a5fa, #a78bfa, #f472b6, #ff5f6d);
+}
+.badge-rainbow .badge-play {
+  border-color: transparent transparent transparent rgba(255, 255, 255, 0.92);
+}
+
+.badge-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.02em;
 }
