@@ -9,6 +9,7 @@ import Exams from './pages/Exams';
 import Memo from './pages/Memo';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import Moderation from './pages/Moderation';
 import InstallPrompt from './components/InstallPrompt';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/memo/:courseCode/:year/:term/:sectionNo" element={<ProtectedRoute><Memo /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+          <Route path="/admin/moderation" element={<ProtectedRoute><Moderation /></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -19,6 +19,11 @@ const json = (body: unknown, code = 200) =>
   new Response(JSON.stringify(body), { status: code, headers: { ...cors, 'Content-Type': 'application/json' } })
 
 const POST_TABLES = new Set(['review', 'exam_archive', 'class_memo'])
+const EDITABLE: Record<string, string[]> = {
+  review: ['prof_comment', 'course_comment'],
+  class_memo: ['content'],
+  exam_archive: ['title', 'description'],
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -104,6 +109,41 @@ Deno.serve(async (req) => {
         }
         await admin.from(table).delete().eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
+      }
+      case 'edit_post': {
+        const table = String(payload.table)
+        const allow = EDITABLE[table]
+        if (!allow) return json({ status: 'BAD_REQUEST' }, 400)
+        const fields = (payload.fields ?? {}) as Record<string, unknown>
+        const patch: Record<string, unknown> = {}
+        for (const k of allow) if (k in fields) patch[k] = fields[k]
+        if (!Object.keys(patch).length) return json({ status: 'BAD_REQUEST' }, 400)
+        await admin.from(table).update(patch).eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'list_recent': {
+        const limit = Math.min(Number(payload.limit) || 80, 200)
+        const [rev, memo, exam] = await Promise.all([
+          admin.from('review').select('id,course_code,professor_code,prof_comment,course_comment,created_at').order('created_at', { ascending: false }).limit(limit),
+          admin.from('class_memo').select('id,course_code,year,term,section_no,content,created_at').order('created_at', { ascending: false }).limit(limit),
+          admin.from('exam_archive').select('id,course_code,title,description,created_at').order('created_at', { ascending: false }).limit(limit),
+        ])
+        const items = [
+          ...(rev.data ?? []).map((r) => ({
+            type: 'review', id: r.id, course_code: r.course_code, created_at: r.created_at,
+            text: [r.prof_comment, r.course_comment].filter(Boolean).join(' / '),
+            meta: { professor_code: r.professor_code },
+          })),
+          ...(memo.data ?? []).map((m) => ({
+            type: 'class_memo', id: m.id, course_code: m.course_code, created_at: m.created_at,
+            text: m.content, meta: { year: m.year, term: m.term, section_no: m.section_no },
+          })),
+          ...(exam.data ?? []).map((e) => ({
+            type: 'exam_archive', id: e.id, course_code: e.course_code, created_at: e.created_at,
+            text: [e.title, e.description].filter(Boolean).join(' — '), meta: {},
+          })),
+        ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+        return json({ status: 'OK', items })
       }
       default:
         return json({ status: 'BAD_REQUEST', detail: 'unknown action' }, 400)

@@ -298,6 +298,81 @@ body {
   word-break: break-all;
 }
 
+/* 모더레이션 대시보드 */
+.mod-status {
+  padding: 0 1.5rem 0.5rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+.mod-flag-n { color: #dc2626; font-weight: 700; }
+.mod-list {
+  list-style: none;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.mod-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+}
+.mod-card.flagged {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+.mod-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  margin-bottom: 0.45rem;
+}
+.mod-type {
+  background: #1e40af;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.08rem 0.5rem;
+  font-weight: 700;
+}
+.mod-course { color: #475569; font-weight: 600; }
+.mod-badge {
+  background: #dc2626;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.08rem 0.5rem;
+}
+.mod-time { margin-left: auto; color: #94a3b8; }
+.mod-text {
+  font-size: 0.88rem;
+  color: #1e293b;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.mod-text mark {
+  background: #fde047;
+  color: #7c2d12;
+  font-weight: 700;
+  padding: 0 0.1rem;
+  border-radius: 3px;
+}
+.mod-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.mod-edit { display: flex; flex-direction: column; gap: 0.4rem; }
+.mod-edit textarea {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  resize: vertical;
+}
+.mod-edit-actions { display: flex; gap: 0.5rem; }
+
 .home-card-text {
   display: flex;
   flex-direction: column;

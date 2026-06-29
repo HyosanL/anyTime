@@ -76,6 +76,11 @@ export default function Admin() {
         <span style={{ width: '2.5rem' }} />
       </header>
 
+      <Link to="/admin/moderation" className="nav-tile nav-tile-admin" style={{ margin: '0 1.5rem 1rem' }}>
+        <span className="nav-tile-title">실시간 모더레이션 대시보드</span>
+        <span className="nav-tile-sub">모든 게시글 최신순 · 부정어 강조 · 즉시 수정/삭제</span>
+      </Link>
+
       {msg && <p className="admin-msg">{msg}</p>}
 
       <Section title="가입코드 발급">
