@@ -452,3 +452,194 @@ body {
 .btn-add { background: #1e40af; color: #fff; }
 .btn-remove { background: #e2e8f0; color: #475569; }
 .btn-add:disabled, .btn-remove:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.section-review-link {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: #1e40af;
+  text-decoration: none;
+}
+
+/* ===== 강의평 ===== */
+.stars {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.95rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.stars-off { color: #d1d5db; letter-spacing: 1px; }
+.stars-on {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  color: #f59e0b;
+  letter-spacing: 1px;
+}
+.stars em {
+  margin-left: 0.35rem;
+  font-style: normal;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.rev-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1.5rem 0;
+}
+.rev-sum-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+}
+.rev-sum-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+.rev-count { font-size: 0.78rem; color: #94a3b8; }
+.rev-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.8rem;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+.rev-fail { color: #dc2626; font-weight: 600; }
+
+.rev-actions { padding: 0.9rem 1.5rem 0.3rem; }
+
+.rev-list {
+  list-style: none;
+  padding: 0.5rem 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.rev-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+.rev-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rev-tags { display: flex; gap: 0.35rem; margin-top: 0.45rem; }
+.tag {
+  font-size: 0.7rem;
+  background: #eef2ff;
+  color: #4338ca;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.tag-warn { background: #fee2e2; color: #b91c1c; }
+.rev-comment {
+  font-size: 0.85rem;
+  color: #334155;
+  margin-top: 0.5rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+.rev-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.7rem;
+}
+.rev-like {
+  background: none;
+  border: 1px solid #fecaca;
+  color: #e11d48;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.rev-del-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.rev-del { display: flex; gap: 0.3rem; align-items: center; }
+.rev-del input {
+  width: 6.5rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.rev-del button {
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+/* 강의평 작성 폼 */
+.rev-form {
+  margin: 0.3rem 1.5rem 0.5rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.rev-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #374151;
+}
+.rev-form-field select,
+.rev-form-field input,
+.rev-form-field textarea {
+  padding: 0.55rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 400;
+  outline: none;
+}
+.rev-scores { display: flex; flex-direction: column; gap: 0.4rem; }
+.score-row { display: flex; align-items: center; justify-content: space-between; }
+.score-label { font-size: 0.82rem; font-weight: 600; color: #374151; }
+.score-btns { display: flex; gap: 0.25rem; }
+.score-btns button {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.score-btns button.on {
+  background: #1e40af;
+  color: #fff;
+  border-color: #1e40af;
+}
+.rev-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  font-size: 0.85rem;
+  color: #374151;
+}
+.rev-checks label { display: inline-flex; align-items: center; gap: 0.3rem; }
