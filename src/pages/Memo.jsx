@@ -109,6 +109,13 @@ export default function Memo() {
     loadMemos();
   }
 
+  async function report(id) {
+    if (!confirm('이 메모를 신고할까요?')) return;
+    const { data } = await supabase.rpc('report_memo', { p_id: id });
+    if (data === 'DELETED') { setMemos((prev) => prev.filter((m) => m.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
+    else alert('신고되었습니다.');
+  }
+
   async function confirmDelete() {
     setDelErr('');
     const { data, error } = await supabase.rpc('delete_memo', {
@@ -200,6 +207,7 @@ export default function Memo() {
                 <p className="memo-content">{m.content}</p>
                 <div className="memo-card-bottom">
                   <span className="memo-date">{new Date(m.created_at).toLocaleString('ko-KR')}</span>
+                  <button className="rev-del-btn" onClick={() => report(m.id)} style={{ color: '#dc2626' }}>🚨 신고</button>
                   {delTarget === m.id ? (
                     <span className="rev-del">
                       <input

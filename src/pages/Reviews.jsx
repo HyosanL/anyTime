@@ -84,6 +84,13 @@ export default function Reviews() {
     }
   }
 
+  async function report(id) {
+    if (!confirm('이 강의평을 신고할까요?')) return;
+    const { data } = await supabase.rpc('report_review', { p_id: id });
+    if (data === 'DELETED') { setReviews((prev) => prev.filter((r) => r.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
+    else alert('신고되었습니다.');
+  }
+
   const [delTarget, setDelTarget] = useState(null);
   const [delPw, setDelPw] = useState('');
   const [delErr, setDelErr] = useState('');
@@ -165,7 +172,10 @@ export default function Reviews() {
             {r.prof_comment && <p className="rev-comment">👤 {r.prof_comment}</p>}
             {r.course_comment && <p className="rev-comment">📘 {r.course_comment}</p>}
             <div className="rev-card-bottom">
-              <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
+              <span>
+                <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
+                <button className="rev-del-btn" onClick={() => report(r.id)} style={{ marginLeft: '0.5rem', color: '#dc2626' }}>🚨 신고</button>
+              </span>
               {delTarget === r.id ? (
                 <span className="rev-del">
                   <input
