@@ -177,39 +177,27 @@ body {
   text-align: center;
 }
 
-/* 사각 메탈 뱃지 (유튜브 실버버튼 스타일) */
-.badge-wrap {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.4rem;
-}
-
+/* 작은 사각 레벨 뱃지 — 질감은 유튜브 버튼 금속, 안에 레벨 숫자 */
 .badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16%;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  flex: none;
+  border-radius: 22%;
+  border: 1px solid rgba(0, 0, 0, 0.22);
   box-shadow:
-    inset 0 2px 3px rgba(255, 255, 255, 0.55),
-    inset 0 -3px 5px rgba(0, 0, 0, 0.28),
-    0 3px 6px rgba(0, 0, 0, 0.25);
+    inset 0 1px 2px rgba(255, 255, 255, 0.6),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3),
+    0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
-/* 가운데 재생 버튼(▶) — CSS 삼각형 */
-.badge-play {
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0.5em 0 0.5em 0.85em;
-  border-color: transparent transparent transparent rgba(30, 30, 30, 0.7);
-  margin-left: 0.12em;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35));
-  font-size: inherit;
+/* 가운데 레벨 숫자 (음각 느낌) */
+.badge-num {
+  font-weight: 800;
+  line-height: 1;
+  color: #2b2f36;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
-
-.badge { font-size: 1.4rem; } /* ▶ 크기 스케일 기준 */
 
 /* 그레이 (건메탈) */
 .badge-gray {
@@ -219,30 +207,159 @@ body {
 .badge-silver {
   background: linear-gradient(135deg, #f4f6f8 0%, #c2c8cf 38%, #ffffff 50%, #aeb4bc 62%, #e4e8ec 100%);
 }
-.badge-silver .badge-play {
-  border-color: transparent transparent transparent rgba(60, 64, 70, 0.78);
-}
 /* 골드 */
 .badge-gold {
   background: linear-gradient(135deg, #fbe69a 0%, #d9a72a 38%, #fff6cf 50%, #c8901a 62%, #eec24a 100%);
 }
-.badge-gold .badge-play {
-  border-color: transparent transparent transparent rgba(120, 80, 10, 0.8);
+.badge-gold .badge-num {
+  color: #5a3d08;
+  text-shadow: 0 1px 0 rgba(255, 240, 190, 0.6);
 }
 /* 레인보우 (홀로그램) */
 .badge-rainbow {
   background:
-    linear-gradient(135deg, rgba(255,255,255,0.35), rgba(255,255,255,0) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 50%),
     conic-gradient(from 210deg,
       #ff5f6d, #ffc371, #f9f586, #6ee7b7, #60a5fa, #a78bfa, #f472b6, #ff5f6d);
 }
-.badge-rainbow .badge-play {
-  border-color: transparent transparent transparent rgba(255, 255, 255, 0.92);
+.badge-rainbow .badge-num {
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
-.badge-label {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #475569;
-  letter-spacing: 0.02em;
+/* 홈 네비 타일 */
+.home-nav {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
 }
+
+.nav-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem 1.1rem;
+  background: #1e40af;
+  color: #fff;
+  border-radius: 12px;
+  text-decoration: none;
+}
+
+.nav-tile-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.nav-tile-sub {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+/* 공통 페이지 / 검색 화면 */
+.page {
+  padding-bottom: 2rem;
+}
+
+.page-header.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.page-header.row h2 {
+  font-size: 1.15rem;
+}
+
+.search-bar {
+  padding: 1rem 1.5rem 0.5rem;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.search-bar input:focus {
+  border-color: #1e40af;
+}
+
+.search-meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0 1.5rem 0.5rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.cache-tag {
+  background: #e2e8f0;
+  color: #475569;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.muted { color: #94a3b8; }
+.center { text-align: center; padding: 2rem 1.5rem; }
+
+.section-list {
+  list-style: none;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.section-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.section-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.section-code {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-left: 0.25rem;
+}
+
+.section-sub {
+  font-size: 0.82rem;
+  color: #475569;
+  margin-top: 0.15rem;
+}
+
+.section-times {
+  font-size: 0.82rem;
+  color: #1e40af;
+  margin-top: 0.15rem;
+}
+
+.btn-add, .btn-remove {
+  flex: none;
+  padding: 0.5rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-add { background: #1e40af; color: #fff; }
+.btn-remove { background: #e2e8f0; color: #475569; }
+.btn-add:disabled, .btn-remove:disabled { opacity: 0.5; cursor: not-allowed; }

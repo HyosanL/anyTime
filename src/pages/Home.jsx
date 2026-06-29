@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import Badge, { badgeOf } from '../components/Badge';
 
@@ -15,14 +16,21 @@ export default function Home() {
       </header>
 
       <section className="home-card">
-        <Badge tier={tier} size={64} showLabel />
+        <Badge tier={tier} level={count} size={26} />
         <div className="home-card-text">
           <p className="home-hello">
             <strong>{cadet?.username}</strong> 님, 환영합니다
           </p>
-          <p className="home-sub">누적 작성 {count}회</p>
+          <p className="home-sub">Lv.{count} · 누적 작성 {count}회</p>
         </div>
       </section>
+
+      <nav className="home-nav">
+        <Link to="/search" className="nav-tile">
+          <span className="nav-tile-title">강의 검색</span>
+          <span className="nav-tile-sub">과목·교수 검색 → 시간표 추가</span>
+        </Link>
+      </nav>
 
       <p className="home-todo">확정시간표 · 강의평 · 족보는 다음 단계에서 열립니다.</p>
     </div>

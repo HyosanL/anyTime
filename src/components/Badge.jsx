@@ -1,10 +1,11 @@
-// 유튜브 크리에이터 어워드(실버 버튼) 스타일의 사각 메탈 뱃지.
-// 등급: gray < 10 ≤ silver < 50 ≤ gold < 100 ≤ rainbow
-const TIERS = {
-  gray:    { label: '그레이' },
-  silver:  { label: '실버' },
-  gold:    { label: '골드' },
-  rainbow: { label: '레인보우' },
+// 작은 사각 레벨 뱃지 (디시 등 커뮤니티 스타일) — 질감만 유튜브 버튼처럼 금속.
+// 색 등급: gray < 10 ≤ silver < 50 ≤ gold < 100 ≤ rainbow
+// 안의 숫자 = 레벨(= 누적 작성수 post_count).
+const TIER_LABEL = {
+  gray: '그레이',
+  silver: '실버',
+  gold: '골드',
+  rainbow: '레인보우',
 };
 
 export function badgeOf(count) {
@@ -14,21 +15,18 @@ export function badgeOf(count) {
   return 'gray';
 }
 
-// size: 픽셀 한 변 길이
-export default function Badge({ tier = 'gray', size = 56, showLabel = false }) {
-  const t = TIERS[tier] ?? TIERS.gray;
+// tier: 색 등급, level: 안에 표시할 숫자, size: 한 변(px)
+export default function Badge({ tier = 'gray', level = 0, size = 34 }) {
+  const label = TIER_LABEL[tier] ?? TIER_LABEL.gray;
   return (
-    <span className="badge-wrap">
-      <span
-        className={`badge badge-${tier}`}
-        style={{ width: size, height: size }}
-        role="img"
-        aria-label={`${t.label} 뱃지`}
-        title={`${t.label} 뱃지`}
-      >
-        <span className="badge-play" />
-      </span>
-      {showLabel && <span className="badge-label">{t.label}</span>}
+    <span
+      className={`badge badge-${tier}`}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      role="img"
+      aria-label={`${label} 레벨 ${level}`}
+      title={`${label} · Lv.${level}`}
+    >
+      <span className="badge-num">{level}</span>
     </span>
   );
 }

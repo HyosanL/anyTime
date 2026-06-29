@@ -3,6 +3,7 @@ import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import Onboarding from './pages/Onboarding';
 import Login from './pages/Login';
 import Home from './pages/Home';
+import CourseSearch from './pages/CourseSearch';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function ProtectedRoute({ children }) {
@@ -26,6 +27,7 @@ export default function App() {
       <div className="app">
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />
