@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
+import { maskProfanity } from '../lib/moderation';
 
 const SCORES = [
   ['overall', '종합', true],
@@ -63,8 +64,8 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
       p_progress: scores.progress,
       p_difficulty: scores.difficulty,
       p_class_time: scores.class_time,
-      p_prof_comment: profComment.trim() || null,
-      p_course_comment: courseComment.trim() || null,
+      p_prof_comment: maskProfanity(profComment.trim()) || null,
+      p_course_comment: maskProfanity(courseComment.trim()) || null,
       p_fail: fail,
       p_teamplay: teamplay,
       p_presentation: presentation,

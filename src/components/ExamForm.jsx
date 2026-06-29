@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
 import { uploadExamFile } from '../lib/storage';
+import { maskProfanity } from '../lib/moderation';
 
 const TYPES = ['중간고사', '기말고사', '퀴즈', '과제', '기타'];
 
@@ -32,10 +33,10 @@ export default function ExamForm({ courseCode, onDone }) {
         p_course_code: courseCode,
         p_src_year: srcYear ? Number(srcYear) : null,
         p_src_term: srcTerm ? Number(srcTerm) : null,
-        p_title: title.trim(),
+        p_title: maskProfanity(title.trim()),
         p_exam_type: examType,
         p_file_url: key,
-        p_description: description.trim() || null,
+        p_description: maskProfanity(description.trim()) || null,
       });
       if (error) {
         setError(error.message || '등록에 실패했습니다.');

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, formatTimes } from '../lib/cache';
+import { maskProfanity } from '../lib/moderation';
 
 // 화면6: 수업 메모 (분반 종속·휘발성). 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
@@ -79,7 +80,7 @@ export default function Memo() {
       p_year: y,
       p_term: t,
       p_section_no: sn,
-      p_content: content.trim(),
+      p_content: maskProfanity(content.trim()),
     });
     setSubmitting(false);
     if (error) {
