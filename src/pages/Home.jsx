@@ -90,6 +90,10 @@ export default function Home() {
           <span className="nav-tile-title">강의 검색</span>
           <span className="nav-tile-sub">과목·교수 검색 → 시간표 추가</span>
         </Link>
+        <Link to="/boards" className="nav-tile" style={{ background: '#0f766e' }}>
+          <span className="nav-tile-title">익명게시판</span>
+          <span className="nav-tile-sub">게시판 검색·신설 · 글/댓글/반응 · 🔥HOT</span>
+        </Link>
         {isAdmin && (
           <Link to="/admin" className="nav-tile nav-tile-admin">
             <span className="nav-tile-title">관리자</span>

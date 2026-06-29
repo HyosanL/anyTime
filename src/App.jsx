@@ -12,6 +12,9 @@ import Memo from './pages/Memo';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
 import Moderation from './pages/Moderation';
+import Boards from './pages/Boards';
+import Board from './pages/Board';
+import Post from './pages/Post';
 import InstallPrompt from './components/InstallPrompt';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
@@ -99,6 +102,9 @@ export default function App() {
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           <Route path="/admin/moderation" element={<ProtectedRoute><Moderation /></ProtectedRoute>} />
+          <Route path="/boards" element={<ProtectedRoute><Boards /></ProtectedRoute>} />
+          <Route path="/board/:id" element={<ProtectedRoute><Board /></ProtectedRoute>} />
+          <Route path="/board/post/:id" element={<ProtectedRoute><Post /></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />
