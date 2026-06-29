@@ -54,3 +54,21 @@ export async function logout() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 }
+
+// 비밀번호 변경 (로그인 상태에서)
+export async function changePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
+// 회원 탈퇴: 비번 재확인 후 서버에서 계정 삭제(cadet/timetable/admin cascade).
+// 반환 status: 'OK' | 'BAD_PASSWORD' | 'UNAUTH' | 'ERROR'
+export async function deleteAccount(password) {
+  const { data, error } = await supabase.functions.invoke('delete-account', { body: { password } });
+  let status = data?.status;
+  if (error) {
+    try { status = (await error.context?.json?.())?.status; } catch { /* ignore */ }
+    if (!status) status = 'ERROR';
+  }
+  return status;
+}

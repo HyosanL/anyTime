@@ -32,8 +32,19 @@ export default function Admin() {
   const [isAdmin, setIsAdmin] = useState(null);
   const [msg, setMsg] = useState('');
 
+  const [admins, setAdmins] = useState([]);
+  const [adminUser, setAdminUser] = useState('');
+
+  async function loadAdmins() {
+    const r = await call('list_admins', {});
+    if (r.ok) setAdmins(r.data.admins ?? []);
+  }
+
   useEffect(() => {
-    supabase.rpc('is_admin').then(({ data }) => setIsAdmin(!!data));
+    supabase.rpc('is_admin').then(({ data }) => {
+      setIsAdmin(!!data);
+      if (data) loadAdmins();
+    });
   }, []);
 
   // 폼 상태
@@ -82,6 +93,25 @@ export default function Admin() {
       </Link>
 
       {msg && <p className="admin-msg">{msg}</p>}
+
+      <Section title="관리자 관리">
+        <div className="admin-row">
+          {admins.length === 0 ? <span className="muted">관리자 없음</span>
+            : admins.map((a) => <span key={a.id} className="tag">{a.username}</span>)}
+        </div>
+        <div className="admin-row" style={{ marginTop: '0.5rem' }}>
+          <input placeholder="아이디" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} />
+          <button className="btn-add" onClick={async () => {
+            const r = await run('grant_admin', { username: adminUser.trim() }, `${adminUser} 관리자 부여`);
+            if (r.ok) { setAdminUser(''); loadAdmins(); }
+          }}>부여</button>
+          <button className="btn-remove" onClick={async () => {
+            const r = await call('revoke_admin', { username: adminUser.trim() });
+            setMsg(r.ok ? `✅ ${adminUser} 관리자 취소` : r.status === 'LAST_ADMIN' ? '⚠️ 마지막 관리자는 취소할 수 없습니다' : `⚠️ 실패: ${r.status}`);
+            if (r.ok) { setAdminUser(''); loadAdmins(); }
+          }}>취소</button>
+        </div>
+      </Section>
 
       <Section title="가입코드 발급">
         <div className="admin-row">

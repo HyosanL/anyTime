@@ -145,6 +145,28 @@ Deno.serve(async (req) => {
         ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
         return json({ status: 'OK', items })
       }
+      case 'list_admins': {
+        const { data } = await admin.from('admin').select('id, cadet:cadet(username)')
+        const admins = (data ?? []).map((a) => ({ id: a.id, username: a.cadet?.username ?? '(알수없음)' }))
+        return json({ status: 'OK', admins })
+      }
+      case 'grant_admin': {
+        const username = String(payload.username ?? '').trim()
+        const { data: c } = await admin.from('cadet').select('id').eq('username', username).maybeSingle()
+        if (!c) return json({ status: 'NO_USER' }, 404)
+        await admin.from('admin').upsert({ id: c.id }, { onConflict: 'id', ignoreDuplicates: true })
+        return json({ status: 'OK' })
+      }
+      case 'revoke_admin': {
+        const username = String(payload.username ?? '').trim()
+        const { data: c } = await admin.from('cadet').select('id').eq('username', username).maybeSingle()
+        if (!c) return json({ status: 'NO_USER' }, 404)
+        // 마지막 관리자 제거 방지
+        const { count } = await admin.from('admin').select('id', { count: 'exact', head: true })
+        if ((count ?? 0) <= 1) return json({ status: 'LAST_ADMIN' }, 409)
+        await admin.from('admin').delete().eq('id', c.id)
+        return json({ status: 'OK' })
+      }
       default:
         return json({ status: 'BAD_REQUEST', detail: 'unknown action' }, 400)
     }
