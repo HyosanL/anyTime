@@ -212,6 +212,92 @@ body {
 .tier-label { font-weight: 600; font-size: 0.88rem; }
 .tier-min { margin-left: auto; font-size: 0.78rem; color: #94a3b8; }
 
+/* PWA 설치 배너 */
+.install-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  background: #1e293b;
+  color: #fff;
+  font-size: 0.82rem;
+}
+.install-actions { display: flex; gap: 0.4rem; flex: none; }
+.install-yes {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.install-no {
+  background: transparent;
+  color: #cbd5e1;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* 관리자 */
+.nav-tile-admin { background: #334155; }
+.admin-sec {
+  margin: 0 1.5rem 1.1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+.admin-sec h3 {
+  font-size: 0.9rem;
+  margin-bottom: 0.6rem;
+  color: #334155;
+}
+.admin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.admin-sec input,
+.admin-sec select {
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  min-width: 0;
+  flex: 1;
+}
+.admin-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  flex: none;
+}
+.admin-msg {
+  margin: 0 1.5rem 0.8rem;
+  font-size: 0.85rem;
+  color: #1e40af;
+}
+.admin-codes {
+  margin-top: 0.6rem;
+  padding: 0.6rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .home-card-text {
   display: flex;
   flex-direction: column;

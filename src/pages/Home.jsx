@@ -17,6 +17,11 @@ export default function Home() {
   const [periods, setPeriods] = useState([]);
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    supabase.rpc('is_admin').then(({ data }) => setIsAdmin(!!data));
+  }, [session?.user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -85,6 +90,12 @@ export default function Home() {
           <span className="nav-tile-title">강의 검색</span>
           <span className="nav-tile-sub">과목·교수 검색 → 시간표 추가</span>
         </Link>
+        {isAdmin && (
+          <Link to="/admin" className="nav-tile nav-tile-admin">
+            <span className="nav-tile-title">관리자</span>
+            <span className="nav-tile-sub">카탈로그·가입코드·게시글 관리</span>
+          </Link>
+        )}
       </nav>
     </div>
   );

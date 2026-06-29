@@ -8,6 +8,8 @@ import Reviews from './pages/Reviews';
 import Exams from './pages/Exams';
 import Memo from './pages/Memo';
 import Profile from './pages/Profile';
+import Admin from './pages/Admin';
+import InstallPrompt from './components/InstallPrompt';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function ProtectedRoute({ children }) {
@@ -29,6 +31,7 @@ export default function App() {
   return (
     <AuthProvider>
       <div className="app">
+        <InstallPrompt />
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
@@ -36,6 +39,7 @@ export default function App() {
           <Route path="/exams/:courseCode" element={<ProtectedRoute><Exams /></ProtectedRoute>} />
           <Route path="/memo/:courseCode/:year/:term/:sectionNo" element={<ProtectedRoute><Memo /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />
