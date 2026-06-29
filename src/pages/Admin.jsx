@@ -41,6 +41,22 @@ function parseCsv(text) {
   return Object.values(byName);
 }
 
+const CSV_HEADER = 'name,department,credits,professor_code,year,term,section_no,times';
+function downloadCsvTemplate() {
+  const sample = [
+    CSV_HEADER,
+    '컴퓨터구조,전산학과,3,P01,2026,1,1,월1;수1',
+    '선형대수,기초과학과,3,P02,2026,1,2,화2;목2',
+    '리더십,,2,P05,2026,1,1,금7-8',
+  ].join('\n');
+  const blob = new Blob(['﻿' + sample], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'anytime_과목분반_양식.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Admin() {
   const [isAdmin, setIsAdmin] = useState(null);
   const [cat, setCat] = useState(null);
@@ -57,8 +73,9 @@ export default function Admin() {
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
   const [blk, setBlk] = useState({ username: '', days: 7, reason: '' });
-  const [course, setCourse] = useState({ name: '', department: '', credits: 3 });
-  const [prof, setProf] = useState({ code: '', name: '' });
+  const [course, setCourse] = useState({ code: '', name: '', department: '', credits: 3 });
+  const [prof, setProf] = useState({ code: '', name: '', department: '', title: '' });
+  const [pq, setPq] = useState('');
   const [sem, setSem] = useState({ year: 2026, term: 1, is_current: true });
   const [per, setPer] = useState({ no: 1, start_time: '09:00', end_time: '09:50' });
   const [sec, setSec] = useState({ year: 2026, term: 1, section_no: 1, professor_code: '', capacity: 40 });
@@ -117,6 +134,7 @@ export default function Admin() {
                 <span><strong>{c.name}</strong> <span className="muted">{c.code}{c.department ? ` · ${c.department}` : ''}{c.credits ? ` · ${c.credits}학점` : ''}</span></span>
                 <span>
                   <button className="link-btn" onClick={() => setSelCourse(selCourse === c.code ? '' : c.code)}>{selCourse === c.code ? '닫기' : '분반'}</button>
+                  <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '', department: c.department || '', credits: c.credits || 3 })}>수정</button>
                   <button className="rev-del-btn" onClick={() => { if (confirm(`'${c.name}' 과목과 분반·강의시간이 모두 삭제됩니다.`)) run('delete_catalog', { table: 'course', key: { code: c.code } }, '과목 삭제'); }}>삭제</button>
                 </span>
               </div>
@@ -150,32 +168,78 @@ export default function Admin() {
           ))}
         </ul>
         <div className="admin-grid" style={{ marginTop: '0.6rem' }}>
-          <input placeholder="새 과목명" value={course.name} onChange={(e) => setCourse({ ...course, name: e.target.value })} />
+          <input placeholder={course.code ? '과목명' : '새 과목명'} value={course.name} onChange={(e) => setCourse({ ...course, name: e.target.value })} />
           <input placeholder="학과" value={course.department} onChange={(e) => setCourse({ ...course, department: e.target.value })} />
           <input type="number" placeholder="학점" value={course.credits} onChange={(e) => setCourse({ ...course, credits: +e.target.value })} />
         </div>
-        <button className="btn-add" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', course, '과목 추가(코드 자동)'); if (r.ok) setCourse({ name: '', department: '', credits: 3 }); }}>과목 추가 (코드 자동)</button>
+        <div className="admin-row" style={{ marginTop: '0.3rem' }}>
+          {course.code ? (
+            <>
+              <span className="muted" style={{ fontSize: '0.8rem' }}>수정 중: {course.code}</span>
+              <button className="btn-add" onClick={async () => { const r = await run('set_course', course, '과목 수정'); if (r.ok) setCourse({ code: '', name: '', department: '', credits: 3 }); }}>저장</button>
+              <button className="rev-del-btn" onClick={() => setCourse({ code: '', name: '', department: '', credits: 3 })}>취소</button>
+            </>
+          ) : (
+            <button className="btn-add" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', course, '과목 추가(코드 자동)'); if (r.ok) setCourse({ code: '', name: '', department: '', credits: 3 }); }}>과목 추가 (코드 자동)</button>
+          )}
+        </div>
       </Section>
 
       <Section title="CSV 일괄 업로드 (과목+분반)">
         <p className="account-note" style={{ margin: '0 0 0.4rem' }}>
-          헤더: <code>name,department,credits,professor_code,year,term,section_no,times</code> · times 예: <code>월1,수1</code> 또는 <code>금7-8</code>. 과목코드는 자동 부여.
+          <b>① 양식 다운로드 → ② 엑셀 등에서 수정 → ③ 내용 붙여넣기/업로드.</b><br />
+          한 행 = 한 분반. 같은 과목명은 한 과목으로 묶입니다. 과목코드는 자동 부여.<br />
+          times는 <b>세미콜론(;)</b>으로 구분: <code>월1;수1</code>, 연강은 <code>금7-8</code>.
         </p>
-        <textarea rows={4} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'name,department,credits,professor_code,year,term,section_no,times\n컴퓨터구조,전산학과,3,P01,2026,1,1,월1,수1'} style={{ width: '100%', fontSize: '0.8rem' }} />
+        <div className="admin-row" style={{ marginBottom: '0.4rem' }}>
+          <button className="btn-add" onClick={downloadCsvTemplate}>📄 양식 CSV 다운로드</button>
+          <label className="link-btn" style={{ cursor: 'pointer' }}>
+            파일 선택
+            <input type="file" accept=".csv" style={{ display: 'none' }} onChange={(e) => {
+              const f = e.target.files?.[0]; if (!f) return;
+              const r = new FileReader(); r.onload = () => setCsv(String(r.result || '').replace(/^﻿/, '')); r.readAsText(f, 'utf-8');
+            }} />
+          </label>
+        </div>
+        <textarea rows={4} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={CSV_HEADER + '\n컴퓨터구조,전산학과,3,P01,2026,1,1,월1;수1'} style={{ width: '100%', fontSize: '0.8rem' }} />
         <button className="btn-add" onClick={async () => {
           const list = parseCsv(csv);
-          if (!list.length) { setMsg('⚠️ CSV 파싱 결과 없음'); return; }
+          if (!list.length) { setMsg('⚠️ CSV 파싱 결과 없음 (양식 확인)'); return; }
           const r = await run('bulk_catalog', { courses: list }, `${list.length}개 과목 일괄 등록`);
           if (r.ok) setCsv('');
         }}>업로드</button>
       </Section>
 
-      <Section title="교수">
-        <div className="admin-row">{cat?.professor?.map((p) => <span key={p.code} className="tag">{p.name}({p.code})<button className="link-btn" onClick={() => run('delete_catalog', { table: 'professor', key: { code: p.code } }, '교수 삭제')}>×</button></span>)}</div>
-        <div className="admin-row" style={{ marginTop: '0.4rem' }}>
-          <input placeholder="코드(P06)" value={prof.code} onChange={(e) => setProf({ ...prof, code: e.target.value })} />
-          <input placeholder="이름" value={prof.name} onChange={(e) => setProf({ ...prof, name: e.target.value })} />
-          <button className="btn-add" onClick={() => run('set_professor', prof, '교수 저장')}>추가/수정</button>
+      <Section title="교수 (코드 자동)">
+        <div className="admin-row"><input placeholder="교수 검색(성명/학과/계급)" value={pq} onChange={(e) => setPq(e.target.value)} /></div>
+        <ul className="adm-courselist" style={{ maxHeight: 220 }}>
+          {(cat?.professor ?? []).filter((p) => { const s = pq.trim().toLowerCase(); return !s || [p.name, p.department, p.title, p.code].some((v) => (v || '').toLowerCase().includes(s)); }).map((p) => (
+            <li key={p.code} className="adm-course">
+              <div className="adm-course-top">
+                <span><strong>{p.name}</strong> <span className="muted">{[p.title, p.department, p.code].filter(Boolean).join(' · ')}</span></span>
+                <span>
+                  <button className="link-btn" onClick={() => setProf({ code: p.code, name: p.name || '', department: p.department || '', title: p.title || '' })}>수정</button>
+                  <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'professor', key: { code: p.code } }, '교수 삭제')}>삭제</button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="admin-grid" style={{ marginTop: '0.5rem' }}>
+          <input placeholder="성명" value={prof.name} onChange={(e) => setProf({ ...prof, name: e.target.value })} />
+          <input placeholder="학과" value={prof.department} onChange={(e) => setProf({ ...prof, department: e.target.value })} />
+          <input placeholder="계급" value={prof.title} onChange={(e) => setProf({ ...prof, title: e.target.value })} />
+        </div>
+        <div className="admin-row" style={{ marginTop: '0.3rem' }}>
+          {prof.code ? (
+            <>
+              <span className="muted" style={{ fontSize: '0.8rem' }}>수정 중: {prof.code}</span>
+              <button className="btn-add" onClick={async () => { const r = await run('set_professor', prof, '교수 수정'); if (r.ok) setProf({ code: '', name: '', department: '', title: '' }); }}>저장</button>
+              <button className="rev-del-btn" onClick={() => setProf({ code: '', name: '', department: '', title: '' })}>취소</button>
+            </>
+          ) : (
+            <button className="btn-add" onClick={async () => { if (!prof.name.trim()) return; const r = await run('add_professor', prof, '교수 추가(코드 자동)'); if (r.ok) setProf({ code: '', name: '', department: '', title: '' }); }}>교수 추가</button>
+          )}
         </div>
       </Section>
 
@@ -208,6 +272,7 @@ export default function Admin() {
         {[
           ['review_min_days', '강의평 작성 자격(일)'],
           ['geo_valid_days', '위치 재인증 유효기간(일)'],
+          ['account_delete_days', '만료 후 계정삭제 대기(일)'],
           ['radius_m', '지오펜싱 반경(m)'],
           ['campus_lat', '캠퍼스 위도'],
           ['campus_lng', '캠퍼스 경도'],

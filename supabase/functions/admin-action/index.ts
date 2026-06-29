@@ -56,11 +56,11 @@ Deno.serve(async (req) => {
     switch (action) {
       case 'get_app_setting': {
         const { data } = await admin.from('app_setting')
-          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days').eq('id', 1).maybeSingle()
+          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days').eq('id', 1).maybeSingle()
         return json({ status: 'OK', setting: data ?? {} })
       }
       case 'set_app_setting': {
-        const allow = ['geo_valid_days', 'review_min_days', 'radius_m', 'campus_lat', 'campus_lng']
+        const allow = ['geo_valid_days', 'review_min_days', 'radius_m', 'campus_lat', 'campus_lng', 'account_delete_days']
         const field = String(payload.field)
         if (!allow.includes(field)) return json({ status: 'BAD_REQUEST' }, 400)
         await admin.from('app_setting').update({ [field]: payload.value }).eq('id', 1).throwOnError()
@@ -77,8 +77,18 @@ Deno.serve(async (req) => {
         if (error) return json({ status: 'ERROR', detail: error.message }, 500)
         return json({ status: 'OK' })
       }
+      case 'add_professor': {
+        const { data: code } = await admin.rpc('gen_professor_code')
+        await admin.from('professor').insert({
+          code, name: payload.name, department: payload.department ?? null, title: payload.title ?? null,
+        }).throwOnError()
+        return json({ status: 'OK', code })
+      }
       case 'set_professor':
-        await admin.from('professor').upsert({ code: payload.code, name: payload.name }).throwOnError()
+        await admin.from('professor').upsert({
+          code: payload.code, name: payload.name,
+          department: payload.department ?? null, title: payload.title ?? null,
+        }).throwOnError()
         return json({ status: 'OK' })
       case 'set_course':
         await admin.from('course').upsert({
