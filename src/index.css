@@ -453,12 +453,27 @@ body {
 .btn-remove { background: #e2e8f0; color: #475569; }
 .btn-add:disabled, .btn-remove:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.section-links {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 0.3rem;
+}
 .section-review-link {
   display: inline-block;
-  margin-top: 0.3rem;
   font-size: 0.78rem;
   color: #1e40af;
   text-decoration: none;
+}
+
+.exam-row {
+  display: flex;
+  gap: 0.6rem;
+}
+.exam-row .rev-form-field { flex: 1; }
+.exam-meta {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 0.3rem;
 }
 
 /* ===== 강의평 ===== */

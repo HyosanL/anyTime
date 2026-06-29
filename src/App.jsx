@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Home from './pages/Home';
 import CourseSearch from './pages/CourseSearch';
 import Reviews from './pages/Reviews';
+import Exams from './pages/Exams';
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function ProtectedRoute({ children }) {
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
           <Route path="/reviews/:courseCode" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
+          <Route path="/exams/:courseCode" element={<ProtectedRoute><Exams /></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />

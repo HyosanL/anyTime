@@ -146,12 +146,17 @@ export default function CourseSearch() {
                     {s.credits != null && ` · ${s.credits}학점`}
                   </p>
                   <p className="section-times">{formatTimes(s.times)}</p>
-                  <Link
-                    className="section-review-link"
-                    to={`/reviews/${s.course_code}${s.professor_code ? `?prof=${s.professor_code}` : ''}`}
-                  >
-                    강의평 보기 →
-                  </Link>
+                  <span className="section-links">
+                    <Link
+                      className="section-review-link"
+                      to={`/reviews/${s.course_code}${s.professor_code ? `?prof=${s.professor_code}` : ''}`}
+                    >
+                      강의평 →
+                    </Link>
+                    <Link className="section-review-link" to={`/exams/${s.course_code}`}>
+                      족보 →
+                    </Link>
+                  </span>
                 </div>
                 <button
                   className={on ? 'btn-remove' : 'btn-add'}
