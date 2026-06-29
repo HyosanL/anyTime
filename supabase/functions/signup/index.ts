@@ -95,8 +95,6 @@ Deno.serve(async (req) => {
     return json('ERROR', 500, { detail: cadetErr.message })
   }
 
-  // 5) 가입코드 1회 소모 (계정 생성 성공 후에만). 코드는 해시로만 저장됨 → RPC 로 소모.
-  await admin.rpc('consume_signup_code', { p_code: code })
-
+  // (가입코드는 공용·기간유지이므로 소모하지 않음)
   return json('OK', 200, { username })
 })

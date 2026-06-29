@@ -3,11 +3,6 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 
 // 화면9: 관리자. is_admin() 게이트. 작업은 admin-action Edge Function(service-role).
-function randCode() {
-  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length: 8 }, () => A[Math.floor(Math.random() * A.length)]).join('');
-}
-
 async function call(action, payload) {
   const { data, error } = await supabase.functions.invoke('admin-action', {
     body: { action, payload },
@@ -48,9 +43,7 @@ export default function Admin() {
   }, []);
 
   // 폼 상태
-  const [codeCount, setCodeCount] = useState(5);
-  const [codeLabel, setCodeLabel] = useState('');
-  const [generated, setGenerated] = useState([]);
+  const [newCode, setNewCode] = useState('');
   const [sem, setSem] = useState({ year: 2026, term: 1, is_current: true });
   const [prof, setProf] = useState({ code: '', name: '' });
   const [course, setCourse] = useState({ code: '', name: '', department: '', credits: 3 });
@@ -113,19 +106,18 @@ export default function Admin() {
         </div>
       </Section>
 
-      <Section title="가입코드 발급">
+      <Section title="가입코드 설정">
+        <p className="account-note" style={{ margin: '0 0 0.5rem' }}>
+          모든 신규 가입에 쓰이는 공용 코드입니다. 바꾸면 즉시 교체되고, 이전 코드는 무효화됩니다.
+        </p>
         <div className="admin-row">
-          <input type="number" min={1} max={100} value={codeCount} onChange={(e) => setCodeCount(Number(e.target.value))} />
-          <input placeholder="라벨(예: 78기)" value={codeLabel} onChange={(e) => setCodeLabel(e.target.value)} />
+          <input placeholder="새 가입코드" value={newCode} onChange={(e) => setNewCode(e.target.value)} />
           <button className="btn-add" onClick={async () => {
-            const codes = Array.from({ length: codeCount }, randCode);
-            const r = await run('add_codes', { codes, label: codeLabel || null }, `${codes.length}개 발급`);
-            if (r.ok) setGenerated(codes);
-          }}>발급</button>
+            if (!newCode.trim()) return;
+            const r = await run('set_signup_code', { code: newCode.trim() }, `가입코드를 '${newCode.trim()}'(으)로 변경`);
+            if (r.ok) setNewCode('');
+          }}>변경</button>
         </div>
-        {generated.length > 0 && (
-          <pre className="admin-codes">{generated.join('\n')}</pre>
-        )}
       </Section>
 
       <Section title="현재 학기 설정">

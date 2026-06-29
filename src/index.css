@@ -100,6 +100,15 @@ body {
   text-align: center;
 }
 
+.status-msg {
+  color: #1e40af;
+  font-size: 0.85rem;
+  text-align: center;
+  background: #eff6ff;
+  padding: 0.5rem;
+  border-radius: 8px;
+}
+
 .page-header {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;

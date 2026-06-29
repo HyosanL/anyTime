@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { signup, login, getPosition } from '../lib/auth';
 
 const STATUS_MSG = {
-  INVALID_CODE: '유효하지 않거나 이미 사용된 가입코드입니다.',
+  INVALID_CODE: '가입코드가 올바르지 않습니다.',
   OUT_OF_AREA: '캠퍼스 범위 밖입니다. 위치 권한을 켜고 교내에서 다시 시도하세요.',
   USERNAME_TAKEN: '이미 사용 중인 아이디입니다.',
   WEAK_PASSWORD: '비밀번호는 6자 이상이어야 합니다.',
@@ -17,6 +17,7 @@ export default function Onboarding() {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e) {
@@ -25,12 +26,17 @@ export default function Onboarding() {
     setSubmitting(true);
     try {
       // 위치 권한 → 좌표 (지오펜싱 서버검증용)
+      setStatus('📍 위치 확인 중… (권한 요청에 응답해 주세요)');
       const { lat, lng, error: posError } = await getPosition();
       if (posError === 'DENIED') {
         setError('위치 권한이 필요합니다. 권한을 허용하고 다시 시도하세요.');
         return;
       }
+      if (posError === 'UNAVAILABLE') {
+        setStatus('⚠️ 위치를 가져오지 못해 코드로만 확인합니다…');
+      }
 
+      setStatus('🔐 가입 처리 중…');
       const res = await signup({ username, password, code, lat, lng });
       if (res.status !== 'OK') {
         setError(STATUS_MSG[res.status] || STATUS_MSG.ERROR);
@@ -38,12 +44,14 @@ export default function Onboarding() {
       }
 
       // 가입 성공 → 곧바로 로그인 → 홈
+      setStatus('✅ 가입 완료, 로그인 중…');
       await login(username, password);
       navigate('/', { replace: true });
     } catch (err) {
       setError(err.message || STATUS_MSG.ERROR);
     } finally {
       setSubmitting(false);
+      setStatus('');
     }
   }
 
@@ -92,10 +100,11 @@ export default function Onboarding() {
           />
         </label>
 
+        {status && <p className="status-msg">{status}</p>}
         {error && <p className="error-msg">{error}</p>}
 
         <button type="submit" disabled={submitting}>
-          {submitting ? '가입 중...' : '가입하기'}
+          {submitting ? '진행 중…' : '가입하기'}
         </button>
       </form>
 

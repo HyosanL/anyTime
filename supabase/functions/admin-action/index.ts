@@ -54,18 +54,12 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
-      case 'add_codes': {
-        const codes = (payload.codes as string[]) ?? []
-        const label = (payload.label as string) ?? null
-        const rows = []
-        for (const c of codes) {
-          const code = String(c).trim()
-          if (!code) continue
-          const { data: hash } = await admin.rpc('hash_signup_code', { p_code: code })
-          if (hash) rows.push({ code_hash: hash, label })
-        }
-        if (rows.length) await admin.from('signup_code').upsert(rows, { onConflict: 'code_hash', ignoreDuplicates: true })
-        return json({ status: 'OK', added: rows.length })
+      case 'set_signup_code': {
+        const code = String(payload.code ?? '').trim()
+        if (!code) return json({ status: 'BAD_REQUEST' }, 400)
+        const { error } = await admin.rpc('set_signup_code', { p_code: code })
+        if (error) return json({ status: 'ERROR', detail: error.message }, 500)
+        return json({ status: 'OK' })
       }
       case 'set_professor':
         await admin.from('professor').upsert({ code: payload.code, name: payload.name }).throwOnError()
