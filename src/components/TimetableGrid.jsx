@@ -36,16 +36,20 @@ export default function TimetableGrid({ mine, periods }) {
     }
   });
 
-  // 셀 채우기: "요일-교시" → { label, room, color, isStart }
+  // 셀 채우기: "요일-교시" → { label, room, color, isStart, span, skip }
+  // 연강(연속 교시)은 시작 칸에서 rowSpan 으로 한 칸으로 병합 → 격자선이 나누지 않음.
   const cells = {};
   mine.forEach((s) =>
     s.times.forEach((t) => {
+      const span = t.end_period - t.start_period + 1;
       for (let p = t.start_period; p <= t.end_period; p++) {
         cells[`${t.day_of_week}-${p}`] = {
           label: s.course_name,
           room: t.room,
           color: colorByCourse[s.course_code],
           isStart: p === t.start_period,
+          span: p === t.start_period ? span : 0,
+          skip: p !== t.start_period, // 연강 연속 칸 → 시작 칸 rowSpan 이 덮음
           memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
         };
       }
@@ -78,9 +82,14 @@ export default function TimetableGrid({ mine, periods }) {
               </th>
               {days.map((d) => {
                 const c = cells[`${d}-${p}`];
+                if (c?.skip) return null; // 위 칸 rowSpan 이 덮음
                 return (
-                  <td key={d} style={c ? { background: c.color } : undefined}>
-                    {c?.isStart && (
+                  <td
+                    key={d}
+                    rowSpan={c && c.span > 1 ? c.span : undefined}
+                    style={c ? { background: c.color } : undefined}
+                  >
+                    {c && (
                       <Link className="tt-cell" to={c.memoTo} title="수업 메모">
                         <span className="tt-course">{c.label}</span>
                         {c.room && <span className="tt-room">{c.room}</span>}

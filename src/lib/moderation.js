@@ -1,68 +1,80 @@
 // =====================================================================
-//  모더레이션: korcen(한국어 비속어 라이브러리) 위에 얹는 얇은 층.
-//  역할 분담 ─ 검출은 korcen, 나머지는 여기:
-//   • korcen.check()      : 비속어 검출(신조어·우회까지). 사전 관리는 korcen 몫.
-//   • maskProfanity()     : 작성 시 ** 마스킹 (korcen은 마스킹 기능이 없음)
-//   • NEGATIVE            : 비판성 부정어(최악 등) — 마스킹 X, 대시보드 강조만
-//   • flagText/highlight  : 관리자 대시보드 표시
-//  참고: https://github.com/KR-korcen/korcen.ts (Apache-2.0)
+//  모더레이션: 비속어 부분 마스킹 + 검출
+//  - maskProfanity: 욕설 "부분 문자열"만 *로 치환 ("시발교수" -> "**교수").
+//    한국어/초성/숫자삽입/키보드로마자(tlqkf 등) 변칙도 사전에 포함.
+//  - 검출(대시보드): 위 사전 + korcen(신조어 보강).
+//  ※ 단어는 운영하며 MASK_WORDS/NEGATIVE 에 계속 추가하세요.
 // =====================================================================
 import { check as korcenCheck } from 'korcen';
+function kcheck(t) { try { return !!t && korcenCheck(t); } catch { return false; } }
 
-function check(t) {
-  try { return !!t && korcenCheck(t); } catch { return false; }
-}
+// 마스킹 대상(부분 문자열). 길이만큼 *로 치환.
+const MASK_WORDS = [
+  // 시발 계열 + 변칙
+  '시발', '씨발', '시바', '씨바', '시팔', '씨팔', '쉬발', '슈발', '시불', '씨불',
+  '시1발', '씨1발', '시ㅂ', '씨ㅂ', 'ㅅ발', 'ㅅㅂ', 'ㅆㅂ', 'ㅅㅃ', 'tlqkf', 'tlqkn', 'siqkf', 'sibal', 'ㅅ1ㅂ',
+  // 병신 계열
+  '병신', '븅신', '빙신', 'ㅂㅅ', 'ㅄ', 'qudtls', 'byungsin',
+  // 지랄
+  '지랄', '지럴', 'ㅈㄹ', 'wlfkf',
+  // 존나/졸라
+  '존나', '졸라', '존내', '죤나', 'ㅈㄴ', 'whsk', 'jonna',
+  // 좆 계열
+  '좆', '좃', '좇', '좆같', '좆까', 'ㅈ같', 'ㅈ까',
+  // 새끼/개새끼
+  '개새끼', '개새', '개색', '새끼', '쌔끼', '쉐끼', 'ㅅㄲ', 'tofo',
+  // 기타 욕설
+  '미친놈', '미친년', '또라이', '등신', '멍청이', '꼴통', '빡대가리', 'ㅁㅊ',
+  '닥쳐', '꺼져', '엿먹', '뒤져', '디져', '뒤질', '족까',
+  '니미', '느금', '니애미', '엠창', '창녀', '걸레', '썅', '쌍놈',
+  '좆밥', '개소리', '지랄',
+  // 영문
+  'fuck', 'shit', 'bitch', 'asshole',
+];
 
-// 인라인 정밀 마스킹용 최소 셋(초성 등 붙여쓰기 형태). korcen은 위치를 안 주므로
-// 정확히 그 부분만 가리려면 짧은 정규식이 필요. 그 외 신조어는 토큰검사가 보완.
-const PROFANITY = ['ㅅㅂ', 'ㅆㅂ', 'ㅂㅅ', 'ㅄ', 'ㅈㄴ', 'ㅈㄹ', 'ㅁㅊ', 'ㅅㄲ', 'ㅗ'];
-// 강조만(마스킹 X) — 비판성 부정 표현
 export const NEGATIVE = [
   '최악', '쓰레기', '쓰렉', '극혐', '혐오', '토나', '재수없', '거지같',
   '노답', '답없', '갑질', '비하', '한심', '구리', '별로',
 ];
 
 const ESC = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const PROFANITY_RE = new RegExp(`(${PROFANITY.map(ESC).join('|')})`, 'gi');
+// 긴 단어부터 매칭(부분 겹침 시 더 긴 욕설 우선)
+const MASK_RE = new RegExp(
+  `(${[...MASK_WORDS].sort((a, b) => b.length - a.length).map(ESC).join('|')})`, 'gi');
 const NEGATIVE_RE = new RegExp(`(${NEGATIVE.map(ESC).join('|')})`, 'gi');
 const MASK_RUN = /\*{2,}/;
-const star = (s) => '*'.repeat(Math.max(2, s.length));
 
-// 글 작성 시 욕설 마스킹: 1) 알려진 욕설 정규식, 2) 공백 토큰별 korcen 검사
+// 작성 시 욕설 "부분"만 마스킹: "시발교수" -> "**교수", "tlqkf" -> "*****"
 export function maskProfanity(text) {
   if (!text) return text;
-  let out = text.replace(PROFANITY_RE, (m) => star(m));
-  out = out
-    .split(/(\s+)/)
-    .map((tok) => (tok.trim() && !MASK_RUN.test(tok) && check(tok) ? star(tok) : tok))
-    .join('');
-  return out;
+  return text.replace(MASK_RE, (m) => '*'.repeat(m.length));
 }
 
-// 비속어 포함 여부 (korcen)
 export function containsProfanity(text) {
-  return check(text);
+  return MASK_RE.test(text) || kcheck(text);
 }
 
-// 관리자 대시보드 플래그: 비속어(korcen) / 비판성 부정어 / 마스킹 흔적
+// 관리자 대시보드 플래그
 export function flagText(text) {
   if (!text) return [];
   const found = new Set();
   let m;
+  MASK_RE.lastIndex = 0;
+  while ((m = MASK_RE.exec(text))) found.add(m[0]);
   NEGATIVE_RE.lastIndex = 0;
   while ((m = NEGATIVE_RE.exec(text))) found.add(m[0]);
-  if (check(text)) found.add('비속어');
+  if (kcheck(text)) found.add('비속어');
   if (MASK_RUN.test(text)) found.add('검열됨');
   return [...found];
 }
 
-// 관리자 대시보드 강조 렌더용 조각 (부정어 + 마스킹 흔적)
+// 대시보드 강조 조각(부정어 + 욕설 + 마스킹 흔적)
 export function highlightParts(text) {
   if (!text) return [];
-  const re = new RegExp(`(${NEGATIVE.map(ESC).join('|')}|\\*{2,})`, 'gi');
+  const re = new RegExp(
+    `(${[...MASK_WORDS, ...NEGATIVE].sort((a, b) => b.length - a.length).map(ESC).join('|')}|\\*{2,})`, 'gi');
   const parts = [];
-  let last = 0;
-  let m;
+  let last = 0, m;
   while ((m = re.exec(text))) {
     if (m.index > last) parts.push({ text: text.slice(last, m.index), bad: false });
     parts.push({ text: m[0], bad: true });

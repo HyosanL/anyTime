@@ -29,16 +29,21 @@ export default function Admin() {
 
   const [admins, setAdmins] = useState([]);
   const [adminUser, setAdminUser] = useState('');
+  const [currentCode, setCurrentCode] = useState('');
 
   async function loadAdmins() {
     const r = await call('list_admins', {});
     if (r.ok) setAdmins(r.data.admins ?? []);
   }
+  async function loadCode() {
+    const r = await call('get_signup_code', {});
+    if (r.ok) setCurrentCode(r.data.code ?? '');
+  }
 
   useEffect(() => {
     supabase.rpc('is_admin').then(({ data }) => {
       setIsAdmin(!!data);
-      if (data) loadAdmins();
+      if (data) { loadAdmins(); loadCode(); }
     });
   }, []);
 
@@ -49,7 +54,6 @@ export default function Admin() {
   const [course, setCourse] = useState({ code: '', name: '', department: '', credits: 3 });
   const [sec, setSec] = useState({ course_code: '', year: 2026, term: 1, section_no: 1, professor_code: '', capacity: 40 });
   const [st, setSt] = useState({ course_code: '', year: 2026, term: 1, section_no: 1, day_of_week: 1, start_period: 1, end_period: 1, room: '' });
-  const [del, setDel] = useState({ table: 'review', id: '' });
 
   async function run(action, payload, okMsg) {
     setMsg('');
@@ -106,16 +110,17 @@ export default function Admin() {
         </div>
       </Section>
 
-      <Section title="가입코드 설정">
+      <Section title="가입코드">
         <p className="account-note" style={{ margin: '0 0 0.5rem' }}>
-          모든 신규 가입에 쓰이는 공용 코드입니다. 바꾸면 즉시 교체되고, 이전 코드는 무효화됩니다.
+          현재 코드: <strong style={{ fontSize: '1rem', color: '#1e40af' }}>{currentCode || '—'}</strong>
+          <br />모든 신규 가입에 쓰이는 공용 코드입니다. 바꾸면 즉시 교체되고 이전 코드는 무효화됩니다.
         </p>
         <div className="admin-row">
           <input placeholder="새 가입코드" value={newCode} onChange={(e) => setNewCode(e.target.value)} />
           <button className="btn-add" onClick={async () => {
             if (!newCode.trim()) return;
             const r = await run('set_signup_code', { code: newCode.trim() }, `가입코드를 '${newCode.trim()}'(으)로 변경`);
-            if (r.ok) setNewCode('');
+            if (r.ok) { setNewCode(''); loadCode(); }
           }}>변경</button>
         </div>
       </Section>
@@ -177,17 +182,6 @@ export default function Admin() {
         <button className="btn-add" onClick={() => run('set_section_time', st, '강의시간 저장됨')}>저장</button>
       </Section>
 
-      <Section title="게시글 강제 삭제">
-        <div className="admin-row">
-          <select value={del.table} onChange={(e) => setDel({ ...del, table: e.target.value })}>
-            <option value="review">강의평</option>
-            <option value="exam_archive">족보</option>
-            <option value="class_memo">수업메모</option>
-          </select>
-          <input placeholder="id" value={del.id} onChange={(e) => setDel({ ...del, id: e.target.value })} />
-          <button className="btn-remove" onClick={() => run('delete_post', { table: del.table, id: Number(del.id) }, '삭제됨')}>삭제</button>
-        </div>
-      </Section>
     </div>
   );
 }

@@ -54,6 +54,10 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
+      case 'get_signup_code': {
+        const { data } = await admin.from('app_setting').select('signup_code').eq('id', 1).maybeSingle()
+        return json({ status: 'OK', code: data?.signup_code ?? '' })
+      }
       case 'set_signup_code': {
         const code = String(payload.code ?? '').trim()
         if (!code) return json({ status: 'BAD_REQUEST' }, 400)
