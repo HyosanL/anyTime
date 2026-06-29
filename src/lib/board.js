@@ -41,12 +41,26 @@ export const listBoards = (q) =>
     .order('last_activity_at', { ascending: false }).limit(100).then((r) => r.data || []);
 export const createBoard = (name) => supabase.rpc('create_board', { p_name: name }).then((r) => r.data);
 export const getBoard = (id) => supabase.from('board').select('*').eq('id', id).maybeSingle().then((r) => r.data);
-export const listPosts = (boardId) =>
-  supabase.from('board_post').select('*').eq('board_id', boardId).order('created_at', { ascending: false }).then((r) => r.data || []);
-export const listHot = () =>
-  supabase.from('board_post').select('*').eq('hot', true).order('created_at', { ascending: false }).limit(100).then((r) => r.data || []);
-export const createPost = (boardId, content, password, imageKey) =>
-  supabase.rpc('create_post', { p_board_id: boardId, p_content: content, p_password: password, p_image_key: imageKey || null }).then((r) => r.data);
+export const PAGE_SIZE = 15;
+export const listPosts = (boardId, page = 0) =>
+  supabase.from('board_post').select('*').eq('board_id', boardId)
+    .order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
+    .then((r) => r.data || []);
+export const listHot = (page = 0) =>
+  supabase.from('board_post').select('*').eq('hot', true)
+    .order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
+    .then((r) => r.data || []);
+export const createPost = (boardId, title, content, password, imageKey) =>
+  supabase.rpc('create_post', { p_board_id: boardId, p_title: title, p_content: content, p_password: password, p_image_key: imageKey || null }).then((r) => r.data);
+
+// 즐겨찾기 / 활성화
+export const listFavoriteIds = () =>
+  supabase.from('board_favorite').select('board_id').then((r) => (r.data || []).map((x) => x.board_id));
+export const addFavorite = (boardId) => supabase.auth.getUser().then(({ data }) =>
+  supabase.from('board_favorite').insert({ cadet_id: data.user.id, board_id: boardId }));
+export const removeFavorite = (boardId) => supabase.auth.getUser().then(({ data }) =>
+  supabase.from('board_favorite').delete().match({ cadet_id: data.user.id, board_id: boardId }));
+export const boardEnabled = () => supabase.rpc('board_enabled').then((r) => r.data !== false);
 export const getPost = (id) => supabase.from('board_post').select('*').eq('id', id).maybeSingle().then((r) => r.data);
 export const listComments = (postId) =>
   supabase.from('board_comment').select('*').eq('post_id', postId).order('created_at').then((r) => r.data || []);

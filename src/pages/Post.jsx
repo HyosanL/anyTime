@@ -55,6 +55,7 @@ export default function Post() {
     <div className="page noscreenshot">
       <header className="page-header row"><button className="link-btn" onClick={() => navigate(-1)}>← 뒤로</button><h2>게시글</h2><span style={{ width: '2.5rem' }} /></header>
       <div className="post-detail">
+        {post.title && <h3 className="post-title-detail">{post.title}</h3>}
         <p className="post-content">{post.content}</p>
         {post.image_key && <BoardImage imageKey={post.image_key} className="post-image" />}
         <div className="post-react">

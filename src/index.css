@@ -380,6 +380,29 @@ body {
 .comment-actions { display: flex; gap: 0.6rem; margin-top: 0.3rem; }
 .reply { margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: #f8fafc; border-radius: 8px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 
+/* 글 작성란을 더 길게 (공통) */
+.memo-form textarea, .board-write textarea, .rev-form textarea, .mod-edit textarea {
+  min-height: 110px;
+}
+
+/* 게시판 글쓰기 폼 (창 벗어남 방지) */
+.board-write { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 1.5rem; max-width: 100%; }
+.board-write input, .board-write textarea {
+  width: 100%; max-width: 100%; box-sizing: border-box;
+  border: 1px solid #d1d5db; border-radius: 8px; padding: 0.6rem; font-size: 0.95rem;
+}
+.board-title-input { font-weight: 600; }
+.board-write-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.board-write-row input[type="file"] { flex: 1 1 100%; }
+.board-write-row input[type="password"] { flex: 1 1 8rem; }
+
+.post-title { font-weight: 700; font-size: 0.95rem; }
+.post-title-detail { font-size: 1.1rem; margin-bottom: 0.5rem; }
+.post-preview { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
+.pager { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1.5rem 1.5rem; }
+.board-row { display: flex; align-items: center; gap: 0.4rem; }
+.fav-btn { background: none; border: none; font-size: 1.3rem; color: #f59e0b; cursor: pointer; padding: 0 0.2rem; }
+
 /* 모더레이션 대시보드 */
 .mod-status {
   padding: 0 1.5rem 0.5rem;

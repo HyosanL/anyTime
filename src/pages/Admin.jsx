@@ -66,6 +66,7 @@ export default function Admin() {
   const [blocks, setBlocks] = useState([]);
   const [currentCode, setCurrentCode] = useState('');
   const [setting, setSetting] = useState({});
+  const [boardsList, setBoardsList] = useState([]);
 
   // 폼 상태
   const [q, setQ] = useState('');
@@ -88,6 +89,7 @@ export default function Admin() {
     call('list_blocks').then((r) => r.ok && setBlocks(r.data.blocks ?? []));
     call('get_signup_code').then((r) => r.ok && setCurrentCode(r.data.code ?? ''));
     call('get_app_setting').then((r) => r.ok && setSetting(r.data.setting ?? {}));
+    supabase.from('board').select('id, name').order('last_activity_at', { ascending: false }).then(({ data }) => setBoardsList(data || []));
   }
   useEffect(() => {
     supabase.rpc('is_admin').then(({ data }) => { setIsAdmin(!!data); if (data) loadAll(); });
@@ -283,6 +285,21 @@ export default function Admin() {
             <button className="btn-add" onClick={() => run('set_app_setting', { field: k, value: Number(setting[k]) }, `${label} 변경`)}>저장</button>
           </div>
         ))}
+      </Section>
+
+      <Section title="익명게시판 관리">
+        <div className="admin-row" style={{ marginBottom: '0.5rem' }}>
+          <span style={{ flex: 1, fontSize: '0.85rem' }}>게시판 활성화: <b>{setting.board_enabled === false ? '비활성' : '활성'}</b></span>
+          <button className="btn-add" onClick={() => run('set_board_enabled', { value: !(setting.board_enabled !== false) }, '게시판 활성화 변경')}>
+            {setting.board_enabled === false ? '활성화' : '비활성화'}
+          </button>
+          <button className="btn-danger" onClick={() => { if (confirm('모든 게시글을 삭제합니다.')) run('purge_all_boards', {}, '전체 글 삭제'); }}>전체 글 삭제</button>
+        </div>
+        <div className="admin-row">
+          {boardsList.length === 0 ? <span className="muted">게시판 없음</span> : boardsList.map((b) => (
+            <span key={b.id} className="tag">{b.name}<button className="link-btn" onClick={() => { if (confirm(`'${b.name}' 게시판과 글을 삭제합니다.`)) run('delete_board', { id: b.id }, '게시판 삭제'); }}>×</button></span>
+          ))}
+        </div>
       </Section>
 
       <Section title="아이디 / 기기 차단">

@@ -56,8 +56,20 @@ Deno.serve(async (req) => {
     switch (action) {
       case 'get_app_setting': {
         const { data } = await admin.from('app_setting')
-          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days').eq('id', 1).maybeSingle()
+          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days, board_enabled').eq('id', 1).maybeSingle()
         return json({ status: 'OK', setting: data ?? {} })
+      }
+      case 'set_board_enabled': {
+        await admin.from('app_setting').update({ board_enabled: !!payload.value }).eq('id', 1).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'delete_board': {
+        await admin.from('board').delete().eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'purge_all_boards': {
+        await admin.from('board_post').delete().gt('id', 0).throwOnError()
+        return json({ status: 'OK' })
       }
       case 'set_app_setting': {
         const allow = ['geo_valid_days', 'review_min_days', 'radius_m', 'campus_lat', 'campus_lng', 'account_delete_days']

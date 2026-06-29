@@ -75,7 +75,7 @@ export default function Home() {
 
       <section className="home-tt">
         <div className="home-tt-head">
-          <h2>확정시간표{current && ` · ${current.year}-${current.term}`}</h2>
+          <h2>{current ? `${current.year}-${current.term} ` : ''}시간표</h2>
           {offline && <span className="cache-tag">오프라인</span>}
         </div>
         {loading ? (
@@ -88,11 +88,9 @@ export default function Home() {
       <nav className="home-nav">
         <Link to="/search" className="nav-tile">
           <span className="nav-tile-title">강의 검색</span>
-          <span className="nav-tile-sub">과목·교수 검색 → 시간표 추가</span>
         </Link>
         <Link to="/boards" className="nav-tile" style={{ background: '#0f766e' }}>
           <span className="nav-tile-title">익명게시판</span>
-          <span className="nav-tile-sub">게시판 검색·신설 · 글/댓글/반응 · 🔥HOT</span>
         </Link>
         {isAdmin && (
           <Link to="/admin" className="nav-tile nav-tile-admin">
