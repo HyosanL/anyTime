@@ -1,64 +1,92 @@
 import { Link } from 'react-router-dom';
 import { dayLabel } from '../lib/cache';
 
-// 과목별 파스텔 색 (course_code 순서대로 배정)
+// 과목별 파스텔 색 (course/항목 키 순서대로 배정) — 데이터성 값(다크모드와 무관).
 const PALETTE = [
   '#dbeafe', '#dcfce7', '#fef9c3', '#fce7f3', '#ede9fe',
   '#ffedd5', '#cffafe', '#fee2e2', '#e0e7ff', '#d1fae5',
 ];
 
-// 주간 확정시간표 그리드. mine: 등록 분반(시간 포함), periods: 교시 목록.
-export default function TimetableGrid({ mine, periods }) {
-  // 표시할 요일 (월~금 + 실제 쓰이는 토/일)
-  const usedDays = new Set([1, 2, 3, 4, 5]);
-  mine.forEach((s) => s.times.forEach((t) => usedDays.add(t.day_of_week)));
-  const days = [...usedDays].sort((a, b) => a - b);
+// "09:00" / "09:00:00" -> 분
+function parseHM(t) {
+  if (!t) return null;
+  const [h, m] = String(t).split(':').map(Number);
+  if (Number.isNaN(h)) return null;
+  return h * 60 + (m || 0);
+}
+const pad2 = (n) => String(n).padStart(2, '0');
 
-  // 표시할 교시 범위
-  let minP = Infinity;
-  let maxP = -Infinity;
-  mine.forEach((s) =>
-    s.times.forEach((t) => {
-      minP = Math.min(minP, t.start_period);
-      maxP = Math.max(maxP, t.end_period);
+// 시간 기준(한 시간 단위 칸) 주간 시간표.
+// DB 강의(mine + periods)와 직접 추가한 강의(customClasses)를 하나의 격자에 합쳐 보여준다.
+export default function TimetableGrid({ mine = [], periods = [], customClasses = [], onDeleteCustom }) {
+  const periodByNo = Object.fromEntries((periods || []).map((p) => [p.no, p]));
+
+  // 색 배정(키별로 안정적)
+  const colorByKey = {};
+  let ci = 0;
+  const colorFor = (k) => (colorByKey[k] ??= PALETTE[ci++ % PALETTE.length]);
+
+  // 모든 강의를 통합 블록으로: { day, startMin, endMin, title, room, color, memoTo?|custom,id }
+  const blocks = [];
+  (mine || []).forEach((s) =>
+    (s.times || []).forEach((t) => {
+      const startMin = parseHM(periodByNo[t.start_period]?.start_time);
+      const endMin = parseHM(periodByNo[t.end_period]?.end_time);
+      if (startMin == null || endMin == null || endMin <= startMin) return;
+      blocks.push({
+        day: t.day_of_week,
+        startMin,
+        endMin,
+        title: s.course_name,
+        room: t.room,
+        color: colorFor('c:' + s.course_code),
+        memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
+      });
     })
   );
-  if (!isFinite(minP)) {
-    return <p className="muted center">확정시간표가 비어 있습니다. 강의를 검색해 추가하세요.</p>;
-  }
-
-  // 과목별 색
-  const colorByCourse = {};
-  let ci = 0;
-  mine.forEach((s) => {
-    if (!(s.course_code in colorByCourse)) {
-      colorByCourse[s.course_code] = PALETTE[ci++ % PALETTE.length];
-    }
+  (customClasses || []).forEach((c) => {
+    if (c.startMin == null || c.endMin == null || c.endMin <= c.startMin) return;
+    blocks.push({
+      day: c.day,
+      startMin: c.startMin,
+      endMin: c.endMin,
+      title: c.title,
+      room: c.room,
+      color: colorFor('x:' + c.id),
+      custom: true,
+      id: c.id,
+    });
   });
 
-  // 셀 채우기: "요일-교시" → { label, room, color, isStart, span, skip }
-  // 연강(연속 교시)은 시작 칸에서 rowSpan 으로 한 칸으로 병합 → 격자선이 나누지 않음.
-  const cells = {};
-  mine.forEach((s) =>
-    s.times.forEach((t) => {
-      const span = t.end_period - t.start_period + 1;
-      for (let p = t.start_period; p <= t.end_period; p++) {
-        cells[`${t.day_of_week}-${p}`] = {
-          label: s.course_name,
-          room: t.room,
-          color: colorByCourse[s.course_code],
-          isStart: p === t.start_period,
-          span: p === t.start_period ? span : 0,
-          skip: p !== t.start_period, // 연강 연속 칸 → 시작 칸 rowSpan 이 덮음
-          memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
-        };
-      }
-    })
-  );
+  if (blocks.length === 0) {
+    return <p className="muted center">시간표가 비어 있습니다. 강의를 검색해 추가하거나 “직접 추가”로 넣어보세요.</p>;
+  }
 
-  const periodByNo = Object.fromEntries(periods.map((p) => [p.no, p]));
-  const rows = [];
-  for (let p = minP; p <= maxP; p++) rows.push(p);
+  // 표시 요일(월~금 + 실제 쓰이는 토/일)
+  const usedDays = new Set([1, 2, 3, 4, 5]);
+  blocks.forEach((b) => usedDays.add(b.day));
+  const days = [...usedDays].sort((a, b) => a - b);
+
+  // 시(hour) 범위
+  let minH = Infinity;
+  let maxH = -Infinity;
+  blocks.forEach((b) => {
+    minH = Math.min(minH, Math.floor(b.startMin / 60));
+    maxH = Math.max(maxH, Math.ceil(b.endMin / 60));
+  });
+  const hours = [];
+  for (let h = minH; h < maxH; h++) hours.push(h);
+
+  // "요일-시" → 시작 칸에 rowSpan, 나머지 칸은 skip(시작 칸이 덮음)
+  const cells = {};
+  blocks.forEach((b) => {
+    const sH = Math.floor(b.startMin / 60);
+    const eH = Math.max(sH + 1, Math.ceil(b.endMin / 60));
+    const span = eH - sH;
+    for (let h = sH; h < eH; h++) {
+      cells[`${b.day}-${h}`] = { ...b, span: h === sH ? span : 0, skip: h !== sH };
+    }
+  });
 
   return (
     <div className="tt-wrap">
@@ -72,29 +100,35 @@ export default function TimetableGrid({ mine, periods }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((p) => (
-            <tr key={p}>
-              <th className="tt-period">
-                <span className="tt-pno">{p}</span>
-                {periodByNo[p] && (
-                  <span className="tt-ptime">{periodByNo[p].start_time?.slice(0, 5)}</span>
-                )}
+          {hours.map((h) => (
+            <tr key={h}>
+              <th className="tt-hour">
+                <span className="tt-h">{pad2(h)}</span>
+                <span className="tt-hm">:00</span>
               </th>
               {days.map((d) => {
-                const c = cells[`${d}-${p}`];
-                if (c?.skip) return null; // 위 칸 rowSpan 이 덮음
+                const c = cells[`${d}-${h}`];
+                if (c?.skip) return null;
                 return (
-                  <td
-                    key={d}
-                    rowSpan={c && c.span > 1 ? c.span : undefined}
-                    style={c ? { background: c.color } : undefined}
-                  >
-                    {c && (
-                      <Link className="tt-cell" to={c.memoTo} title="수업 메모">
-                        <span className="tt-course">{c.label}</span>
-                        {c.room && <span className="tt-room">{c.room}</span>}
-                      </Link>
-                    )}
+                  <td key={d} rowSpan={c && c.span > 1 ? c.span : undefined} style={c ? { background: c.color } : undefined}>
+                    {c &&
+                      (c.custom ? (
+                        <button
+                          type="button"
+                          className="tt-cell tt-cell-custom"
+                          title="직접 추가한 강의 — 탭하여 삭제"
+                          onClick={() => onDeleteCustom?.(c.id, c.title)}
+                        >
+                          <span className="tt-course">{c.title}</span>
+                          {c.room && <span className="tt-room">{c.room}</span>}
+                          <span className="tt-custom-tag">직접</span>
+                        </button>
+                      ) : (
+                        <Link className="tt-cell" to={c.memoTo} title="수업 메모">
+                          <span className="tt-course">{c.title}</span>
+                          {c.room && <span className="tt-room">{c.room}</span>}
+                        </Link>
+                      ))}
                   </td>
                 );
               })}

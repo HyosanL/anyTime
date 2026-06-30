@@ -3,6 +3,20 @@ import { useParams, Link } from 'react-router-dom';
 import { getBoard, listPosts, listHot, createPost, uploadBoardImage, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
 
+// 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
+function timeAgo(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diff = Math.floor((Date.now() - t) / 1000);
+  if (diff < 60) return '방금 전';
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}일 전`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}.${d.getDate()}`;
+}
+
 export default function Board() {
   const { id } = useParams();
   const isHot = id === 'hot';
@@ -74,33 +88,35 @@ export default function Board() {
 
       {enabled && (
         <>
-          <ul className="list">
+          <ul className="post-list">
             {posts.length === 0 && (
               <li className="empty">
                 <span className="empty-emoji">📝</span>
                 <span>아직 글이 없습니다.{!isHot ? ' 첫 글을 남겨보세요.' : ''}</span>
               </li>
             )}
-            {posts.map((p) => (
-              <li key={p.id}>
-                <Link to={`/board/post/${p.id}`} className="list-row board-post-row">
-                  <span className="row-body">
-                    <span className="row-title">
-                      {p.image_key && <span className="post-img-flag">🖼</span>}
-                      <span className="row-title-text">{p.title || '(제목 없음)'}</span>
-                      {p.hot && <span className="tag tag-warn">🔥 HOT</span>}
+            {posts.map((p) => {
+              const snippet = preview(p.content);
+              const ago = timeAgo(p.created_at);
+              return (
+                <li key={p.id}>
+                  <Link to={`/board/post/${p.id}`} className="post-item">
+                    <span className="post-line">
+                      <span className="post-item-title">{p.title || '(제목 없음)'}</span>
+                      {p.hot && <span className="post-flag post-flag-hot">🔥</span>}
+                      {p.image_key && <span className="post-flag">🖼</span>}
                     </span>
-                    <span className="row-snippet">{preview(p.content)}</span>
-                    <span className="row-meta">
-                      <span className="metric">👍 {p.like_count}</span>
-                      <span className="metric">👎 {p.dislike_count}</span>
+                    {snippet && <span className="post-item-preview">{snippet}</span>}
+                    <span className="post-item-meta">
+                      {ago && <span className="post-meta-time">{ago}</span>}
                       <span className="metric">💬 {p.comment_count}</span>
+                      <span className="metric">👍 {p.like_count}</span>
+                      {p.dislike_count > 0 && <span className="metric">👎 {p.dislike_count}</span>}
                     </span>
-                  </span>
-                  <span className="row-trail"><span className="row-chevron">›</span></span>
-                </Link>
-              </li>
-            ))}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
 
           <div className="pager">

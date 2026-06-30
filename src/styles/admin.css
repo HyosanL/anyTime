@@ -29,6 +29,19 @@
   color: var(--primary);
 }
 
+/* ====================== 허브(/admin) ====================== */
+/* 기능 선택 안내 문구 */
+.adm-hub-intro {
+  padding: 0 var(--pad);
+  margin: 0.6rem 0 0.1rem;
+}
+/* 기능 목록 — base .list / .list-row 사용, 아이콘 칸만 중성화 */
+.adm-hub-list .row-lead {
+  background: var(--primary-weak);
+  color: var(--primary);
+  font-size: 1.25rem;
+}
+
 /* 카드 내부 섹션 라벨(여백만 조정 — 색/타입은 base) */
 .adm-sub-label {
   padding: 0;
@@ -137,7 +150,6 @@
   gap: 0.55rem;
 }
 .adm-form-grid .field { min-width: 0; }
-.adm-field-wide { grid-column: 1 / -1; }
 
 .adm-btn-row {
   display: flex;

@@ -42,17 +42,50 @@
 }
 .board-create-text { font-size: 0.84rem; color: var(--text-2); line-height: 1.4; }
 
-/* HOT 게시판 강조 행 */
-.board-row-hot {
+/* HOT 바로가기 — 디렉터리 상단 강조 배너 */
+.board-hot-link {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin: 0.5rem var(--pad) 0.2rem;
+  padding: 0.85rem 1rem;
   background: var(--warn-weak);
-  border-color: var(--warn-border);
-}
-.board-row-hot:hover { background: var(--warn-weak); filter: brightness(0.985); }
-.board-lead-hot {
-  background: var(--warn-weak);
-  color: var(--warn);
   border: 1px solid var(--warn-border);
+  border-radius: var(--r-lg);
+  color: var(--text);
+  transition: filter 0.15s ease, transform 0.06s ease;
 }
+.board-hot-link:active { transform: scale(0.992); filter: brightness(0.98); }
+.board-hot-ic {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: var(--r-md);
+  background: var(--card); color: var(--warn); font-size: 1.2rem;
+}
+.board-hot-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.board-hot-title { font-size: 0.95rem; font-weight: 700; color: var(--warn); }
+.board-hot-sub { font-size: 0.8rem; color: var(--text-2); margin-top: 0.1rem; }
+
+/* 게시판 디렉터리 — 촘촘한 구분선 리스트 */
+.board-dir { list-style: none; margin: 0; padding: 0; }
+.board-dir-row {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.75rem var(--pad);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  transition: background 0.15s ease;
+}
+.board-dir-row:active { background: var(--card-active); }
+@media (hover: hover) { .board-dir-row:hover { background: var(--card-hover); } }
+.board-dir-lead {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: var(--r-md);
+  background: var(--primary-weak); color: var(--primary);
+  font-size: 0.9rem; font-weight: 700;
+}
+.board-dir-name {
+  flex: 1; min-width: 0;
+  font-size: 0.92rem; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.post-chevron { flex: none; color: var(--text-3); font-size: 1.15rem; line-height: 1; }
 
 /* 즐겨찾기 별 토글 */
 .fav-btn {
@@ -97,9 +130,41 @@
   opacity: 0; cursor: pointer;
 }
 
-/* 글 행: 제목 앞 이미지 표시 */
-.board-post-row { align-items: flex-start; }
-.post-img-flag { flex: none; }
+/* 글 목록 — 한국 커뮤니티/모바일 게시판 스타일(촘촘한 구분선 리스트) */
+.post-list { list-style: none; margin: 0; padding: 0; }
+.post-item {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  padding: 0.7rem var(--pad);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  transition: background 0.15s ease;
+}
+.post-item:active { background: var(--card-active); }
+@media (hover: hover) { .post-item:hover { background: var(--card-hover); } }
+
+/* 제목 줄: 굵게 1줄 말줄임 + HOT/이미지 플래그 */
+.post-line { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.post-item-title {
+  min-width: 0; flex: 0 1 auto;
+  font-size: 0.96rem; font-weight: 650; letter-spacing: -0.01em; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.post-flag { flex: none; font-size: 0.82rem; line-height: 1; }
+.post-flag-hot { color: var(--warn); }
+
+/* 본문 미리보기 1줄(흐림, 말줄임) */
+.post-item-preview {
+  font-size: 0.84rem; color: var(--text-3); line-height: 1.4;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 메타 라인: 시간 · 댓글 · 추천 (작고 흐리게) */
+.post-item-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem;
+  margin-top: 0.15rem;
+  font-size: 0.76rem; color: var(--text-3);
+}
+.post-meta-time { color: var(--text-3); }
 
 /* 페이지네이션 */
 .pager {
@@ -115,14 +180,21 @@
    ============================================================ */
 
 .post-detail {
-  margin: 0.6rem var(--pad);
-  padding: 1.1rem 1.15rem;
+  padding: 1.1rem var(--pad) 1rem;
+  border-bottom: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 0.7rem;
 }
 .post-title-detail {
   font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em;
   color: var(--text); line-height: 1.35;
 }
+/* 상세 메타 라인: HOT · 시간 · 댓글수 */
+.post-detail-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.55rem;
+  margin-top: -0.3rem;
+  font-size: 0.78rem; color: var(--text-3);
+}
+.post-detail-meta .post-flag-hot { font-weight: 700; }
 .post-content {
   font-size: 0.95rem; color: var(--text); line-height: 1.6;
   white-space: pre-wrap; word-break: break-word;
@@ -163,8 +235,8 @@
 
 /* ---------- 댓글 폼(게시판 전용) ---------- */
 .comment-form {
-  margin: 0.3rem var(--pad) 0.6rem;
-  padding: 0.9rem 1rem;
+  padding: 0.8rem var(--pad);
+  border-bottom: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 0.6rem;
 }
 .comment-reply-hint {
@@ -176,18 +248,15 @@
 }
 .comment-form-row input { flex: 1; }
 
-/* ---------- 댓글 리스트 ---------- */
+/* ---------- 댓글 리스트(촘촘한 구분선) ---------- */
 .comment-list {
   list-style: none;
-  display: flex; flex-direction: column; gap: 0.6rem;
-  padding: 0.2rem var(--pad) 0.5rem;
+  display: flex; flex-direction: column;
+  padding: 0;
 }
 .comment {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 0.8rem 0.95rem;
+  padding: 0.75rem var(--pad);
+  border-bottom: 1px solid var(--border);
 }
 .comment-body {
   font-size: 0.92rem; color: var(--text); line-height: 1.5;

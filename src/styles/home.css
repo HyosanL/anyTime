@@ -69,6 +69,32 @@
 .home-tt-body {
   padding: 0 0.65rem 0.85rem;
 }
+.home-tt-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* 직접 추가 폼 */
+.tt-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0.65rem 0.7rem;
+  padding: 0.8rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.tt-add-title { font-weight: 600; }
+.tt-add-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tt-add-row select { flex: 0 0 auto; width: auto; }
+.tt-add-row input[type="time"] { flex: 1; min-width: 0; }
+.tt-add-tilde { flex: none; color: var(--text-3); }
 
 /* ============================================================
    홈 단축 타일 (보조 네비)
@@ -135,6 +161,21 @@
   color: var(--primary);
 }
 .nav-tile-admin .nav-tile-title { color: var(--primary-strong); }
+
+/* 비활성화된 타일 (예: 게시판 OFF) — 그레이아웃 + 클릭 불가 */
+.nav-tile.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+  background: var(--card);
+  border-color: var(--border);
+}
+.nav-tile.is-disabled .nav-tile-ic {
+  background: var(--chip-bg);
+  color: var(--text-3);
+}
+.nav-tile.is-disabled .nav-tile-title { color: var(--text-2); }
 
 /* ============================================================
    프로필 카드
@@ -283,24 +324,28 @@
   color: var(--text-2);
   padding: 0.25rem 0;
 }
-.tt-corner { width: 34px; }
+.tt-corner { width: 40px; }
 
-/* 좌측 교시 열 */
-.tt-period {
-  width: 34px;
+/* 좌측 시각 열 (시 기준 · 한 시간 단위) */
+.tt-hour {
+  width: 40px;
   font-weight: 700;
+  vertical-align: top;
+  padding-top: 0.35rem;
 }
-.tt-pno {
+.tt-h {
   display: block;
-  font-size: 0.82rem;
-  color: var(--text-2);
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
 }
-.tt-ptime {
+.tt-hm {
   display: block;
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   font-weight: 600;
   color: var(--text-3);
-  margin-top: 0.1rem;
+  margin-top: 0.05rem;
 }
 
 /* 빈 칸 */
@@ -345,4 +390,22 @@
   font-weight: 600;
   color: var(--on-pastel);
   opacity: 0.78;
+}
+
+/* 직접 추가한 강의 칸 (탭하여 삭제) */
+.tt-cell-custom {
+  position: relative;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tt-custom-tag {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 0.5rem;
+  font-weight: 800;
+  color: var(--on-pastel);
+  opacity: 0.6;
 }

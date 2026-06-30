@@ -4,6 +4,20 @@ import { getPost, listComments, react, addComment, deletePost, deleteComment } f
 import { maskProfanity } from '../lib/moderation';
 import BoardImage from '../components/BoardImage';
 
+// 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
+function timeAgo(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diff = Math.floor((Date.now() - t) / 1000);
+  if (diff < 60) return '방금 전';
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}일 전`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}.${d.getDate()}`;
+}
+
 function CommentDelete({ id, onDone }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
@@ -50,6 +64,7 @@ export default function Post() {
   if (!post) return <div className="page-center">불러오는 중…</div>;
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (pid) => comments.filter((c) => c.parent_id === pid);
+  const ago = timeAgo(post.created_at);
 
   return (
     <div className="page noscreenshot">
@@ -58,8 +73,13 @@ export default function Post() {
         <h2>게시글</h2>
       </header>
 
-      <article className="card post-detail">
+      <article className="post-detail">
         {post.title && <h3 className="post-title-detail">{post.title}</h3>}
+        <div className="post-detail-meta">
+          {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
+          {ago && <span>{ago}</span>}
+          <span className="metric">💬 {comments.length}</span>
+        </div>
         <p className="post-content">{post.content}</p>
         {post.image_key && <BoardImage imageKey={post.image_key} className="post-image" />}
         <div className="post-react">
@@ -76,7 +96,7 @@ export default function Post() {
         )}
       </article>
 
-      <form className="card comment-form" onSubmit={submitComment}>
+      <form className="comment-form" onSubmit={submitComment}>
         {replyTo && (
           <span className="comment-reply-hint">↳ 답글 작성 중 <button type="button" className="link-btn" onClick={() => setReplyTo(null)}>취소</button></span>
         )}

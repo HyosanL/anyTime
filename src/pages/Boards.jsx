@@ -41,36 +41,32 @@ export default function Boards() {
         </div>
       )}
 
-      <ul className="list">
-        <li>
-          <Link to="/board/hot" className="list-row board-row-hot">
-            <span className="row-lead board-lead-hot">🔥</span>
-            <span className="row-body">
-              <span className="row-title"><span className="row-title-text">HOT 게시판</span><span className="tag tag-warn">인기</span></span>
-              <span className="row-sub">지금 가장 화제인 글 모아보기</span>
-            </span>
-            <span className="row-trail"><span className="row-chevron">›</span></span>
-          </Link>
-        </li>
+      {/* HOT 바로가기 — 디렉터리 상단 강조 */}
+      <Link to="/board/hot" className="board-hot-link">
+        <span className="board-hot-ic">🔥</span>
+        <span className="board-hot-body">
+          <span className="board-hot-title">HOT 게시판</span>
+          <span className="board-hot-sub">지금 가장 화제인 글 모아보기</span>
+        </span>
+        <span className="post-chevron">›</span>
+      </Link>
 
+      <h3 className="section-label">게시판 목록</h3>
+      <ul className="board-dir">
         {sorted.map((b) => {
           const isFav = favSet.has(b.id);
           const initial = (b.name || '#').trim().charAt(0) || '#';
           return (
             <li key={b.id}>
-              <Link to={`/board/${b.id}`} className="list-row">
-                <span className="row-lead">{initial}</span>
-                <span className="row-body">
-                  <span className="row-title"><span className="row-title-text">{b.name}</span></span>
-                </span>
-                <span className="row-trail">
-                  <button
-                    className={`fav-btn${isFav ? ' on' : ''}`}
-                    onClick={(e) => { e.preventDefault(); toggleFav(b.id, isFav); }}
-                    title="즐겨찾기"
-                  >{isFav ? '★' : '☆'}</button>
-                  <span className="row-chevron">›</span>
-                </span>
+              <Link to={`/board/${b.id}`} className="board-dir-row">
+                <span className="board-dir-lead">{initial}</span>
+                <span className="board-dir-name">{b.name}</span>
+                <button
+                  className={`fav-btn${isFav ? ' on' : ''}`}
+                  onClick={(e) => { e.preventDefault(); toggleFav(b.id, isFav); }}
+                  title="즐겨찾기"
+                >{isFav ? '★' : '☆'}</button>
+                <span className="post-chevron">›</span>
               </Link>
             </li>
           );
