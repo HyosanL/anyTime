@@ -16,6 +16,10 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 binding = "EXAM_FILES"
 bucket_name = "anytime-exams"
 
+# Workers AI 바인딩 (강의 PDF 텍스트 → 구조화 파싱: functions/api/parse-syllabus)
+[ai]
+binding = "AI"
+
 # ※ 프론트 빌드용 VITE_ 변수(VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY)는
 #   Git 연동 배포 시 Pages 대시보드 > Settings > Environment variables 에 등록.
 #   wrangler CLI 로 로컬 빌드 후 배포하면 로컬 .env 가 사용됨.

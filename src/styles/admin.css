@@ -356,3 +356,40 @@ code {
   padding-top: 0.55rem;
   border-top: 1px solid var(--border);
 }
+
+/* ====================== AI 강의 일괄등록(검토 UI) ====================== */
+.syl { display: flex; flex-direction: column; gap: 0.6rem; }
+.syl-file { margin-top: 0.1rem; }
+.syl-progress { color: var(--primary); font-weight: 600; }
+.syl-plan { display: flex; flex-direction: column; gap: 0.55rem; }
+.syl-stats { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.syl-period { padding: 0.3rem 0; }
+.syl-list {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  max-height: 360px; overflow-y: auto; padding-right: 0.15rem;
+}
+.syl-prof {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.syl-prof.is-warn { border-color: var(--warn-border); background: var(--warn-weak); }
+.syl-prof-head { display: flex; align-items: center; gap: 0.4rem; }
+.syl-prof-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.syl-course {
+  padding: 0.55rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.syl-course-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; cursor: pointer;
+}
+.syl-sections {
+  margin-top: 0.4rem;
+  display: flex; flex-direction: column; gap: 0.2rem;
+  border-left: 2px solid var(--border);
+}
+.syl-sec { font-size: 0.8rem; color: var(--text-2); padding-left: 0.6rem; }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
+import AiSyllabusUpload from '../components/AiSyllabusUpload';
 
 // 화면9: 관리자. is_admin 게이트. 작업은 admin-action Edge Function(service-role).
 // 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx).
@@ -33,7 +34,7 @@ const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: 
 // 허브 항목 정의 (key는 라우팅 section 과 일치). moderation 은 별도 페이지로 링크.
 const SECTIONS = [
   { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색·추가, 분반·강의시간 관리' },
-  { key: 'csv', icon: '📥', title: 'CSV 일괄 업로드', sub: '양식으로 과목·분반을 한 번에 등록' },
+  { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
   { key: 'semesters', icon: '🗓️', title: '학기 · 교시', sub: '현재 학기와 교시 시각 설정' },
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
@@ -43,46 +44,6 @@ const SECTIONS = [
   { key: 'admins', icon: '🛡️', title: '관리자', sub: '관리자 권한 부여·취소' },
 ];
 const TITLE_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title]));
-
-// CSV 파싱: name,department,credits,professor_code,year,term,section_no,times  (times: "월1,수1" / "금7-8")
-function parseCsv(text) {
-  const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const header = lines[0].split(',').map((s) => s.trim());
-  const ix = (k) => header.indexOf(k);
-  const DAY = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 };
-  const parseTimes = (s) => (s || '').split(/[;]/).flatMap((g) => g.split(',')).map((t) => t.trim()).filter(Boolean)
-    .map((t) => { const day = DAY[t[0]]; const [a, b] = t.slice(1).split('-').map(Number); return { day, start: a, end: b || a }; })
-    .filter((t) => t.day && t.start);
-  const byName = {};
-  for (const line of lines.slice(1)) {
-    const c = line.split(',').map((s) => s.trim());
-    const name = c[ix('name')];
-    if (!name) continue;
-    const co = (byName[name] ??= { name, department: c[ix('department')] || null, credits: Number(c[ix('credits')]) || null, sections: [] });
-    co.sections.push({
-      section_no: Number(c[ix('section_no')]) || 1, year: Number(c[ix('year')]) || 2026, term: Number(c[ix('term')]) || 1,
-      professor_code: c[ix('professor_code')] || null, times: parseTimes(c[ix('times')]),
-    });
-  }
-  return Object.values(byName);
-}
-
-const CSV_HEADER = 'name,department,credits,professor_code,year,term,section_no,times';
-function downloadCsvTemplate() {
-  const sample = [
-    CSV_HEADER,
-    '컴퓨터구조,전산학과,3,P01,2026,1,1,월1;수1',
-    '선형대수,기초과학과,3,P02,2026,1,2,화2;목2',
-    '리더십,,2,P05,2026,1,1,금7-8',
-  ].join('\n');
-  const blob = new Blob(['﻿' + sample], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'anytime_과목분반_양식.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
 
 export default function Admin() {
   const { section } = useParams();
@@ -100,14 +61,13 @@ export default function Admin() {
   const [selCourse, setSelCourse] = useState('');
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
-  const [course, setCourse] = useState({ code: '', name: '', department: '', credits: 3 });
+  const [course, setCourse] = useState({ code: '', name: '', credits: 3 });
   const [prof, setProf] = useState({ code: '', name: '', department: '', title: '' });
   const [pq, setPq] = useState('');
   const [sem, setSem] = useState({ year: 2026, term: 1, is_current: true });
   const [per, setPer] = useState({ no: 1, start_time: '09:00', end_time: '09:50' });
   const [sec, setSec] = useState({ year: 2026, term: 1, section_no: 1, professor_code: '', capacity: 40 });
   const [stForm, setStForm] = useState({ day_of_week: 1, start_period: 1, end_period: 1, room: '' });
-  const [csv, setCsv] = useState('');
 
   async function loadAll() {
     setCat(await getCatalog({ force: true }).catch(() => null));
@@ -230,7 +190,7 @@ export default function Admin() {
                     </div>
                     <div className="adm-item-acts">
                       <button className="btn-ghost btn-sm" onClick={() => setSelCourse(selCourse === c.code ? '' : c.code)}>{selCourse === c.code ? '닫기' : '분반'}</button>
-                      <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '', department: c.department || '', credits: c.credits || 3 })}>수정</button>
+                      <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '', credits: c.credits || 3 })}>수정</button>
                       <button className="rev-del-btn" onClick={() => { if (confirm(`'${c.name}' 과목과 분반·강의시간이 모두 삭제됩니다.`)) run('delete_catalog', { table: 'course', key: { code: c.code } }, '과목 삭제'); }}>삭제</button>
                     </div>
                   </div>
@@ -280,50 +240,26 @@ export default function Admin() {
             <div className="section-label adm-sub-label">{course.code ? `과목 수정 (${course.code})` : '새 과목 추가'}</div>
             <div className="adm-form-grid">
               <label className="field"><span className="field-label">과목명</span><input placeholder={course.code ? '과목명' : '새 과목명'} value={course.name} onChange={(e) => setCourse({ ...course, name: e.target.value })} /></label>
-              <label className="field"><span className="field-label">학과</span><input placeholder="예: 전산학과" value={course.department} onChange={(e) => setCourse({ ...course, department: e.target.value })} /></label>
               <label className="field"><span className="field-label">학점</span><input type="number" value={course.credits} onChange={(e) => setCourse({ ...course, credits: +e.target.value })} /></label>
             </div>
             {course.code ? (
               <div className="adm-btn-row">
-                <button className="btn-add" onClick={async () => { const r = await run('set_course', course, '과목 수정'); if (r.ok) setCourse({ code: '', name: '', department: '', credits: 3 }); }}>저장</button>
-                <button className="rev-del-btn" onClick={() => setCourse({ code: '', name: '', department: '', credits: 3 })}>취소</button>
+                <button className="btn-add" onClick={async () => { const r = await run('set_course', { code: course.code, name: course.name, credits: course.credits }, '과목 수정'); if (r.ok) setCourse({ code: '', name: '', credits: 3 }); }}>저장</button>
+                <button className="rev-del-btn" onClick={() => setCourse({ code: '', name: '', credits: 3 })}>취소</button>
               </div>
             ) : (
-              <button className="btn-add btn-block" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', course, '과목 추가(코드 자동)'); if (r.ok) setCourse({ code: '', name: '', department: '', credits: 3 }); }}>과목 추가 (코드 자동)</button>
+              <button className="btn-add btn-block" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', { name: course.name, credits: course.credits }, '과목 추가(코드 자동)'); if (r.ok) setCourse({ code: '', name: '', credits: 3 }); }}>과목 추가 (코드 자동)</button>
             )}
           </Card>
         )}
 
-        {section === 'csv' && (
-          <Card icon="📥" title="CSV 일괄 업로드" desc="과목과 분반을 한 번에 등록합니다. 한 행 = 한 분반, 같은 과목명은 하나로 묶이며 과목코드는 자동 부여됩니다.">
-            <ol className="adm-steps">
-              <li><b>① 양식 다운로드</b> — 아래 버튼으로 CSV 양식을 받습니다.</li>
-              <li><b>② 엑셀에서 수정</b> — 과목·분반 정보를 채웁니다.</li>
-              <li><b>③ 붙여넣기 / 업로드</b> — 파일을 선택하거나 내용을 붙여넣고 업로드합니다.</li>
-            </ol>
-            <p className="note">times는 <b>세미콜론(;)</b>으로 구분합니다. 예: <code>월1;수1</code>, 연강은 <code>금7-8</code>.</p>
-
-            <div className="adm-btn-row">
-              <button className="btn-add" onClick={downloadCsvTemplate}>📄 양식 CSV 다운로드</button>
-              <label className="btn-ghost btn-sm adm-file-label">
-                파일 선택
-                <input type="file" accept=".csv" className="adm-file-input" onChange={(e) => {
-                  const f = e.target.files?.[0]; if (!f) return;
-                  const r = new FileReader(); r.onload = () => setCsv(String(r.result || '').replace(/^﻿/, '')); r.readAsText(f, 'utf-8');
-                }} />
-              </label>
-            </div>
-
-            <label className="field">
-              <span className="field-label">CSV 내용</span>
-              <textarea rows={5} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={CSV_HEADER + '\n컴퓨터구조,전산학과,3,P01,2026,1,1,월1;수1'} className="adm-csv-area" />
-            </label>
-            <button className="btn-add btn-block" onClick={async () => {
-              const list = parseCsv(csv);
-              if (!list.length) { setMsg('⚠️ CSV 파싱 결과 없음 (양식 확인)'); return; }
-              const r = await run('bulk_catalog', { courses: list }, `${list.length}개 과목 일괄 등록`);
-              if (r.ok) setCsv('');
-            }}>업로드</button>
+        {section === 'ai' && (
+          <Card icon="🤖" title="AI 강의 일괄등록" desc="학기 강의 PDF(수강편람)를 올리면 AI가 과목·분반·교수·시간을 추출해 기존 DB와 대조하고, 검토 후 적용합니다. 교수코드를 몰라도 이름으로 자동 매칭됩니다.">
+            <AiSyllabusUpload
+              defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
+              defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
+              onApplied={loadAll}
+            />
           </Card>
         )}
 

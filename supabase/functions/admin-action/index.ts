@@ -242,6 +242,69 @@ Deno.serve(async (req) => {
         await admin.from(table).delete().match(payload.key as Record<string, unknown>).throwOnError()
         return json({ status: 'OK' })
       }
+      // AI 강의 일괄등록 1단계: 교수 생성/수정 + 교시. 교수 이름→코드 맵 반환.
+      case 'apply_syllabus_meta': {
+        for (const pr of ((payload.periods as any[]) ?? [])) {
+          if (pr?.no != null && pr.start && pr.end) {
+            await admin.from('period').upsert({ no: pr.no, start_time: pr.start, end_time: pr.end }).throwOnError()
+          }
+        }
+        const profCodes: Record<string, string> = {}
+        for (const pf of ((payload.professors as any[]) ?? [])) {
+          const name = String(pf.name ?? '').trim()
+          if (!name) continue
+          let code = pf.code
+          if (!code || pf.create) {
+            const { data: c } = await admin.rpc('gen_professor_code')
+            code = c
+            await admin.from('professor').insert({
+              code, name, department: pf.department ?? null, title: pf.title ?? null,
+            }).throwOnError()
+          } else if (pf.update) {
+            await admin.from('professor').update({
+              department: pf.department ?? null, title: pf.title ?? null,
+            }).eq('code', code).throwOnError()
+          }
+          profCodes[name] = code
+        }
+        return json({ status: 'OK', profCodes })
+      }
+      // AI 강의 일괄등록 2단계: 과목(병합/신규) + 분반 + 강의시간(교체). 배치로 호출됨.
+      case 'apply_syllabus_courses': {
+        const year = payload.year
+        const term = payload.term
+        let nC = 0
+        let nS = 0
+        for (const co of ((payload.courses as any[]) ?? [])) {
+          let code = co.code
+          if (!code || co.create) {
+            const { data: c } = await admin.rpc('gen_course_code')
+            code = c
+            await admin.from('course').insert({ code, name: co.name, credits: co.credits ?? null }).throwOnError()
+            nC++
+          } else if (co.credits != null) {
+            await admin.from('course').update({ credits: co.credits }).eq('code', code).throwOnError()
+          }
+          for (const se of ((co.sections as any[]) ?? [])) {
+            await admin.from('section').upsert({
+              course_code: code, year, term, section_no: se.sectionNo, professor_code: se.professorCode ?? null,
+            }).throwOnError()
+            await admin.from('section_time').delete()
+              .match({ course_code: code, year, term, section_no: se.sectionNo }).throwOnError()
+            for (const t of ((se.times as any[]) ?? [])) {
+              if (t?.day && t?.start) {
+                await admin.from('section_time').insert({
+                  course_code: code, year, term, section_no: se.sectionNo,
+                  day_of_week: t.day, start_period: t.start, end_period: t.end ?? t.start,
+                  room: t.room ?? se.room ?? null,
+                }).throwOnError()
+              }
+            }
+            nS++
+          }
+        }
+        return json({ status: 'OK', courses: nC, sections: nS })
+      }
       case 'block_user': {
         const username = String(payload.username ?? '').trim()
         const days = Number(payload.days) || 7
