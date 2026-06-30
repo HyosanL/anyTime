@@ -7,7 +7,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import TimetableGrid from '../components/TimetableGrid';
 import { getCatalog, buildMyTimetable, saveTimetableCache, readTimetableCache } from '../lib/cache';
 import { boardEnabled } from '../lib/board';
-import { listCustomClasses, addCustomClass, removeCustomClass, hmToMin } from '../lib/customClass';
+import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
 
@@ -19,8 +19,9 @@ function CustomClassForm({ onAdd }) {
   const [end, setEnd] = useState('10:00');
   const [room, setRoom] = useState('');
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     setErr('');
     if (!title.trim()) return setErr('강의명을 입력하세요.');
@@ -28,7 +29,10 @@ function CustomClassForm({ onAdd }) {
     const em = hmToMin(end);
     if (sm == null || em == null) return setErr('시작·끝 시각을 입력하세요.');
     if (em <= sm) return setErr('끝 시각이 시작보다 늦어야 합니다.');
-    onAdd({ title: title.trim(), day: Number(day), startMin: sm, endMin: em, room: room.trim() });
+    setBusy(true);
+    const res = await onAdd({ title: title.trim(), day: Number(day), startMin: sm, endMin: em, room: room.trim() });
+    setBusy(false);
+    if (res && res.error) return setErr(res.error);
     setTitle('');
     setRoom('');
   }
@@ -46,12 +50,12 @@ function CustomClassForm({ onAdd }) {
       </div>
       <input value={room} onChange={(e) => setRoom(e.target.value)} placeholder="강의실 (선택)" />
       {err && <p className="error-msg">{err}</p>}
-      <button className="btn-add btn-block btn-sm" type="submit">시간표에 추가</button>
+      <button className="btn-add btn-block btn-sm" type="submit" disabled={busy}>{busy ? '추가 중…' : '시간표에 추가'}</button>
     </form>
   );
 }
 
-// 홈(화면3): 본인 뱃지 + 확정시간표(시간 기준) + 직접 추가 + 네비.
+// 홈(화면3): 본인 뱃지 + 확정시간표(시각 기준, 캐시 우선 즉시 표시) + 직접 추가 + 네비.
 export default function Home() {
   const { cadet, session, logout } = useAuthContext();
   const uid = session?.user?.id;
@@ -74,63 +78,81 @@ export default function Home() {
   }, [session?.user?.id]);
 
   useEffect(() => {
+    boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
+  }, []);
+
+  // 캐시 우선(즉시) → 백그라운드 갱신(stale-while-revalidate). 네트워크가 화면을 막지 않는다.
+  useEffect(() => {
     let active = true;
-    if (!uid) { setCustomClasses([]); return; }
-    listCustomClasses(uid).then((arr) => { if (active) setCustomClasses(arr); }).catch(() => {});
+    (async () => {
+      // ── 즉시: 기기 캐시로 그리기 ──
+      const [catalog, cachedRows] = await Promise.all([
+        getCatalog().catch(() => null),   // cache-first → 대개 즉시
+        readTimetableCache(),             // IndexedDB
+      ]);
+      if (!active) return;
+      let cur = null;
+      if (catalog) {
+        const built = buildMyTimetable(catalog, cachedRows || []);
+        cur = built.current;
+        setCurrent(built.current);
+        setMine(built.mine);
+        setPeriods(built.periods);
+        if (uid && cur) setCustomClasses(readCustomCache(uid, cur.year, cur.term));
+      }
+      setLoading(false);
+
+      // ── 백그라운드: 서버 최신 시간표 ──
+      const { data, error } = await supabase.from('timetable').select('*');
+      if (!active) return;
+      if (error || !data) {
+        setOffline(true);
+      } else {
+        setOffline(false);
+        saveTimetableCache(data);
+        const cat2 = catalog || (await getCatalog().catch(() => null));
+        if (cat2 && active) {
+          const built2 = buildMyTimetable(cat2, data);
+          setCurrent(built2.current);
+          setMine(built2.mine);
+          setPeriods(built2.periods);
+          cur = built2.current;
+        }
+      }
+
+      // ── 백그라운드: 직접추가(DB) ──
+      if (uid && cur && active) {
+        try {
+          const fresh = await listCustomClasses(uid, cur.year, cur.term);
+          if (active) setCustomClasses(fresh);
+        } catch { /* 오프라인 → 캐시 유지 */ }
+      }
+    })();
     return () => { active = false; };
   }, [uid]);
 
   async function reloadCustom() {
-    if (!uid) return;
-    try { setCustomClasses(await listCustomClasses(uid)); } catch { /* ignore */ }
+    if (!uid || !current) return;
+    try { setCustomClasses(await listCustomClasses(uid, current.year, current.term)); } catch { /* ignore */ }
   }
-
-  useEffect(() => {
-    boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      const catalog = await getCatalog().catch(() => null);
-
-      // 확정시간표: 서버(RLS 본인) 우선, 실패 시 캐시(오프라인)
-      let rows;
-      const { data, error } = await supabase.from('timetable').select('*');
-      if (error || !data) {
-        rows = await readTimetableCache();
-        if (active) setOffline(true);
-      } else {
-        rows = data;
-        saveTimetableCache(rows);
-      }
-
-      if (!active || !catalog) {
-        if (active) setLoading(false);
-        return;
-      }
-      const built = buildMyTimetable(catalog, rows);
-      if (!active) return;
-      setCurrent(built.current);
-      setMine(built.mine);
-      setPeriods(built.periods);
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [session?.user?.id]);
 
   async function handleAddCustom(entry) {
-    if (!uid) return;
+    if (!uid) return { error: '로그인이 필요합니다.' };
+    if (!current) return { error: '현재 학기가 설정되지 않아 추가할 수 없습니다.' };
     try {
-      await addCustomClass(uid, entry);
+      await addCustomClass(uid, { ...entry, year: current.year, term: current.term });
       await reloadCustom();
-    } catch {
-      alert('시간표 추가에 실패했습니다. 잠시 후 다시 시도하세요.');
+      return { ok: true };
+    } catch (e) {
+      const s = `${e?.message || ''} ${e?.code || ''}`;
+      return {
+        error: /overlap|23P01|exclusion/i.test(s)
+          ? '그 시간에 이미 다른 강의가 있습니다 (겹침).'
+          : '추가에 실패했습니다. 잠시 후 다시 시도하세요.',
+      };
     }
   }
+
   async function handleDeleteCustom(id, title) {
     if (!uid) return;
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
