@@ -74,8 +74,16 @@ export default function Home() {
   }, [session?.user?.id]);
 
   useEffect(() => {
-    setCustomClasses(listCustomClasses(uid));
+    let active = true;
+    if (!uid) { setCustomClasses([]); return; }
+    listCustomClasses(uid).then((arr) => { if (active) setCustomClasses(arr); }).catch(() => {});
+    return () => { active = false; };
   }, [uid]);
+
+  async function reloadCustom() {
+    if (!uid) return;
+    try { setCustomClasses(await listCustomClasses(uid)); } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
@@ -114,16 +122,24 @@ export default function Home() {
     };
   }, [session?.user?.id]);
 
-  function handleAddCustom(entry) {
+  async function handleAddCustom(entry) {
     if (!uid) return;
-    addCustomClass(uid, entry);
-    setCustomClasses(listCustomClasses(uid));
+    try {
+      await addCustomClass(uid, entry);
+      await reloadCustom();
+    } catch {
+      alert('시간표 추가에 실패했습니다. 잠시 후 다시 시도하세요.');
+    }
   }
-  function handleDeleteCustom(id, title) {
+  async function handleDeleteCustom(id, title) {
     if (!uid) return;
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
-    removeCustomClass(uid, id);
-    setCustomClasses(listCustomClasses(uid));
+    try {
+      await removeCustomClass(uid, id);
+      await reloadCustom();
+    } catch {
+      alert('삭제에 실패했습니다. 잠시 후 다시 시도하세요.');
+    }
   }
 
   return (
