@@ -1,23 +1,26 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
-import Onboarding from './pages/Onboarding';
-import Login from './pages/Login';
 import Home from './pages/Home';
-import CourseSearch from './pages/CourseSearch';
-import ProfessorSearch from './pages/ProfessorSearch';
-import ProfessorDetail from './pages/ProfessorDetail';
-import Reviews from './pages/Reviews';
-import Exams from './pages/Exams';
-import Memo from './pages/Memo';
-import Profile from './pages/Profile';
-import Admin from './pages/Admin';
-import Moderation from './pages/Moderation';
-import Boards from './pages/Boards';
-import Board from './pages/Board';
-import Post from './pages/Post';
+import Login from './pages/Login';
 import InstallPrompt from './components/InstallPrompt';
+
+// 홈/로그인만 초기 번들에 두고, 나머지는 지연 로드한다.
+// (특히 강의평·게시판 계열은 korcen, 관리자는 pdfjs 를 끌고 오므로 초기 번들에서 반드시 분리)
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const CourseSearch = lazy(() => import('./pages/CourseSearch'));
+const ProfessorSearch = lazy(() => import('./pages/ProfessorSearch'));
+const ProfessorDetail = lazy(() => import('./pages/ProfessorDetail'));
+const Reviews = lazy(() => import('./pages/Reviews'));
+const Exams = lazy(() => import('./pages/Exams'));
+const Memo = lazy(() => import('./pages/Memo'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Admin = lazy(() => import('./pages/Admin'));
+const Moderation = lazy(() => import('./pages/Moderation'));
+const Boards = lazy(() => import('./pages/Boards'));
+const Board = lazy(() => import('./pages/Board'));
+const Post = lazy(() => import('./pages/Post'));
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function BlockedScreen({ until }) {
@@ -95,6 +98,7 @@ export default function App() {
       <div className="app">
         <InstallPrompt />
         <GeoBanner />
+        <Suspense fallback={<div className="page-center">로딩 중...</div>}>
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
@@ -114,6 +118,7 @@ export default function App() {
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </div>
     </AuthProvider>
   );
