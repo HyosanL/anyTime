@@ -77,6 +77,13 @@ export default function TimetableGrid({ mine = [], periods = [], customClasses =
   const hours = [];
   for (let h = minH; h < maxH; h++) hours.push(h);
 
+  // 좌측 축의 부 눈금: 교시 번호를 "시작 시(hour)" 에 매핑 (예: 1교시 08:10 → 08 행).
+  const periodNoByHour = {};
+  (periods || []).forEach((p) => {
+    const sm = parseHM(p.start_time);
+    if (sm != null) periodNoByHour[Math.floor(sm / 60)] = p.no;
+  });
+
   // "요일-시" → 시작 칸에 rowSpan, 나머지 칸은 skip(시작 칸이 덮음)
   const cells = {};
   blocks.forEach((b) => {
@@ -103,8 +110,8 @@ export default function TimetableGrid({ mine = [], periods = [], customClasses =
           {hours.map((h) => (
             <tr key={h}>
               <th className="tt-hour">
+                {periodNoByHour[h] != null && <span className="tt-period">{periodNoByHour[h]}</span>}
                 <span className="tt-h">{pad2(h)}</span>
-                <span className="tt-hm">:00</span>
               </th>
               {days.map((d) => {
                 const c = cells[`${d}-${h}`];

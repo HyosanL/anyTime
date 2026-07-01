@@ -330,28 +330,29 @@
   color: var(--text-2);
   padding: 0.25rem 0;
 }
-.tt-corner { width: 40px; }
+.tt-corner { width: 46px; }
 
-/* 좌측 시각 열 (시 기준 · 한 시간 단위) */
+/* 좌측 시각 열 — 메인 눈금(시, 08·09…) + 부 눈금(교시 번호, 작게 왼쪽) */
 .tt-hour {
-  width: 40px;
-  font-weight: 700;
+  width: 46px;
   vertical-align: top;
   padding-top: 0.35rem;
+  white-space: nowrap;
 }
+/* 부 눈금: 교시 번호 (작게, 흐리게, 시각 왼쪽) */
+.tt-period {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--text-3);
+  vertical-align: text-top;
+  margin-right: 0.15rem;
+}
+/* 메인 눈금: 시(hour) — 분 없이 08, 09 … */
 .tt-h {
-  display: block;
   font-size: 0.98rem;
   font-weight: 800;
   color: var(--text);
   line-height: 1;
-}
-.tt-hm {
-  display: block;
-  font-size: 0.56rem;
-  font-weight: 600;
-  color: var(--text-3);
-  margin-top: 0.05rem;
 }
 
 /* 빈 칸 */
