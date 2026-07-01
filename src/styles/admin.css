@@ -360,6 +360,19 @@ code {
 /* ====================== AI 강의 일괄등록(검토 UI) ====================== */
 .syl { display: flex; flex-direction: column; gap: 0.6rem; }
 .syl-file { margin-top: 0.1rem; }
+.syl-csv-tools { align-items: center; justify-content: space-between; gap: 0.5rem; }
+.syl-csv-tools .syl-file { flex: 1; margin-top: 0; }
+.syl-paste textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem; line-height: 1.4;
+  padding: 0.5rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  resize: vertical;
+}
 .syl-progress { color: var(--primary); font-weight: 600; }
 .syl-plan { display: flex; flex-direction: column; gap: 0.55rem; }
 .syl-stats { display: flex; flex-wrap: wrap; gap: 0.35rem; }

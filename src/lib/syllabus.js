@@ -161,6 +161,122 @@ export async function parseSyllabus(file, { onProgress } = {}) {
   return { rows: [...byKey.values()], periods, pageCount: pages.length, coursePages: coursePages.length };
 }
 
+// ---------- CSV 소스: 표 CSV → rows (parseSyllabus 와 같은 rows 형태) ----------
+// 헤더 인식(유연): 과목명/학점/분반/담당교수/학과/강의시간/강의실. 그 외 열(대상·비고 등)은 무시.
+// 분반을 비우면 과목별 파일 등장 순서대로 1,2,3… 자동 부여(명시된 번호와 겹치지 않게).
+// 강의시간은 "수1 수2 금1"(요일+교시), 연속은 "수1-2"/"수1~2" 허용. 팀티칭 교수는 첫 1명만 사용.
+const CSV_ALIASES = {
+  course: ['과목명', '과목', 'course', 'name'],
+  credits: ['학점', 'credits', 'credit'],
+  sectionNo: ['분반', 'section', '섹션'],
+  professor: ['담당교수', '교수', 'professor', 'prof'],
+  department: ['학과', '소속', 'department', 'dept'],
+  times: ['강의시간', '시간', 'times', 'time'],
+  room: ['강의실', '장소', 'room'],
+};
+
+// RFC4180 유사: 따옴표/이스케이프("") 처리해 [행][열] 문자열 표를 만든다.
+function parseCsvTable(text) {
+  const s = String(text || '').replace(/^﻿/, '');
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQ = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inQ) {
+      if (c === '"') { if (s[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c !== '\r') field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function mapCsvHeader(header) {
+  const idx = { course: -1, credits: -1, sectionNo: -1, professor: -1, department: -1, times: -1, room: -1 };
+  header.forEach((h, i) => {
+    const key = String(h || '').replace(/\s+/g, '').toLowerCase();
+    if (!key) return;
+    for (const [field, aliases] of Object.entries(CSV_ALIASES)) {
+      if (idx[field] === -1 && aliases.some((a) => key.includes(a))) idx[field] = i;
+    }
+  });
+  return idx;
+}
+
+// "수1 수2 금1" / "수1-2" → [{day,period}]
+export function parseTimeString(str) {
+  const out = [];
+  for (const tok of String(str || '').split(/[\s,]+/)) {
+    const m = tok.match(/^([월화수목금토일])(\d+)(?:[-~](\d+))?$/);
+    if (!m) continue;
+    const day = DAY_KO[m[1]];
+    const a = Number(m[2]);
+    const b = m[3] ? Number(m[3]) : a;
+    for (let p = Math.min(a, b); p <= Math.max(a, b); p++) out.push({ day, period: p });
+  }
+  return out;
+}
+
+export function parseCsvRows(text) {
+  const table = parseCsvTable(text).filter((r) => r.some((c) => String(c).trim()));
+  if (!table.length) return { rows: [], periods: [] };
+  let hi = table.findIndex((r) => r.some((c) => /과목|course/i.test(c)));
+  if (hi < 0) hi = 0;
+  const idx = mapCsvHeader(table[hi]);
+  const hasHeader = idx.course >= 0;
+  if (!hasHeader) { idx.course = 0; idx.credits = 1; idx.sectionNo = 2; idx.professor = 3; idx.department = 4; idx.times = 5; idx.room = 6; }
+  const get = (r, k) => (idx[k] >= 0 ? String(r[idx[k]] ?? '').trim() : '');
+
+  const prelim = [];
+  for (const r of table.slice(hasHeader ? hi + 1 : 0)) {
+    if (/^\s*#/.test(r[0] ?? '')) continue; // 주석행
+    const course = cleanName(get(r, 'course'));
+    if (!course) continue;
+    prelim.push({
+      course,
+      credits: get(r, 'credits') ? Number(get(r, 'credits')) || null : null,
+      sectionRaw: get(r, 'sectionNo'),
+      professor: get(r, 'professor'),
+      department: get(r, 'department') || null,
+      times: parseTimeString(get(r, 'times')),
+      room: get(r, 'room') || null,
+    });
+  }
+
+  // 분반 자동 부여: 명시된 번호를 먼저 예약한 뒤, 빈 칸에 과목별로 빈 최소 번호 채움.
+  const used = new Map();
+  const setOf = (c) => used.get(c) ?? used.set(c, new Set()).get(c);
+  for (const p of prelim) { const n = Number(p.sectionRaw); if (p.sectionRaw && n > 0) setOf(p.course).add(n); }
+  const nextFree = (c) => { const s = setOf(c); let n = 1; while (s.has(n)) n += 1; s.add(n); return n; };
+
+  const rows = prelim
+    .map((p) => normRow({
+      course: p.course,
+      credits: p.credits,
+      sectionNo: (p.sectionRaw && Number(p.sectionRaw) > 0) ? Number(p.sectionRaw) : nextFree(p.course),
+      professor: p.professor,
+      department: p.department,
+      times: p.times,
+      room: p.room,
+    }))
+    .filter(Boolean);
+  return { rows, periods: [] };
+}
+
+export const CSV_TEMPLATE = [
+  '과목명,학점,분반,담당교수,학과,강의시간,강의실,대상',
+  '# 분반을 비우면 과목별로 1,2,3… 자동 부여됩니다. 시간은 "요일+교시"(예: 수1 수2 금1), 연속교시는 수1-2 도 가능. 팀티칭은 대표교수 1명만.',
+  '기초물리학및실험,2,,김득수,,수1 수2 금1,403,3반',
+  '기초물리학및실험,2,,김득수,,수5 수6 금3,403,4반',
+  '대학수학,3,,이용균,,화6 목3 목4,401,1반',
+  '대학수학,3,,이용균,,화5 목1 목2,402,2반',
+].join('\n');
+
 // ---------- 대조(reconcile): 기존 catalog와 비교 ----------
 // catalog: { course[], professor[], section[], section_time[] }
 export function reconcile(rows, periods, catalog, year, term) {

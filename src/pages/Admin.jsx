@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
-import AiSyllabusUpload from '../components/AiSyllabusUpload';
+import SyllabusUpload from '../components/SyllabusUpload';
 
 // 화면9: 관리자. is_admin 게이트. 작업은 admin-action Edge Function(service-role).
 // 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx).
@@ -35,6 +35,7 @@ const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: 
 const SECTIONS = [
   { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색·추가, 분반·강의시간 관리' },
   { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
+  { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
   { key: 'semesters', icon: '🗓️', title: '학기 · 교시', sub: '현재 학기와 교시 시각 설정' },
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
@@ -255,7 +256,19 @@ export default function Admin() {
 
         {section === 'ai' && (
           <Card icon="🤖" title="AI 강의 일괄등록" desc="학기 강의 PDF(수강편람)를 올리면 AI가 과목·분반·교수·시간을 추출해 기존 DB와 대조하고, 검토 후 적용합니다. 교수코드를 몰라도 이름으로 자동 매칭됩니다.">
-            <AiSyllabusUpload
+            <SyllabusUpload
+              mode="ai"
+              defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
+              defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
+              onApplied={loadAll}
+            />
+          </Card>
+        )}
+
+        {section === 'csv' && (
+          <Card icon="📄" title="CSV 강의 일괄등록" desc="과목·분반 표를 CSV로 올리거나 붙여넣으면 기존 DB와 대조 후 적용합니다. 결정적(고정)이라 AI보다 정확합니다. 양식을 내려받아 채우거나, 수강편람에서 추출한 CSV를 그대로 올리세요.">
+            <SyllabusUpload
+              mode="csv"
               defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
               defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
               onApplied={loadAll}
