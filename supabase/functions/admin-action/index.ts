@@ -18,11 +18,13 @@ const cors = {
 const json = (body: unknown, code = 200) =>
   new Response(JSON.stringify(body), { status: code, headers: { ...cors, 'Content-Type': 'application/json' } })
 
-const POST_TABLES = new Set(['review', 'exam_archive', 'class_memo'])
+const POST_TABLES = new Set(['review', 'exam_archive', 'class_memo', 'board_post', 'board_comment'])
 const EDITABLE: Record<string, string[]> = {
   review: ['prof_comment', 'course_comment'],
   class_memo: ['content'],
   exam_archive: ['title', 'description'],
+  board_post: ['title', 'content'],
+  board_comment: ['content'],
 }
 
 // "수3 수4 금1" / "수1-2" → 연속교시 블록 [{day,start,end}] (수정 제안 적용용)
@@ -176,6 +178,8 @@ Deno.serve(async (req) => {
           const { data: row } = await admin.from('exam_archive').select('file_url').eq('id', payload.id).maybeSingle()
           if (row?.file_url) await admin.storage.from('exam-files').remove([row.file_url])
         }
+        // board_post 삭제 시 댓글·이벤트는 FK CASCADE 로 함께 삭제.
+        // R2 이미지는 이 Edge 에서 접근 불가 → 고아 객체는 R2 스윕이 정리(사진 90일 바운드).
         await admin.from(table).delete().eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
@@ -200,11 +204,26 @@ Deno.serve(async (req) => {
           const q = admin.from(t).select(cols).order('created_at', { ascending: false }).limit(limit)
           return cutoff ? q.gt('created_at', cutoff) : q
         }
-        const [rev, memo, exam] = await Promise.all([
+        const [rev, memo, exam, bpost, bcmt] = await Promise.all([
           recent('review', 'id,course_code,professor_code,prof_comment,course_comment,created_at'),
           recent('class_memo', 'id,course_code,year,term,section_no,content,created_at'),
           recent('exam_archive', 'id,course_code,title,description,created_at'),
+          recent('board_post', 'id,board_id,title,content,created_at'),
+          recent('board_comment', 'id,post_id,content,created_at'),
         ])
+        // 게시판 글/댓글 라벨용: 게시판명(+댓글은 원글제목)을 붙여 관리자가 맥락을 알 수 있게.
+        const boardIds = new Set((bpost.data ?? []).map((p) => p.board_id))
+        const postIds = new Set((bcmt.data ?? []).map((c) => c.post_id))
+        const postMap = new Map()
+        if (postIds.size) {
+          const { data: ps } = await admin.from('board_post').select('id,board_id,title').in('id', [...postIds])
+          for (const p of (ps ?? [])) { postMap.set(p.id, p); boardIds.add(p.board_id) }
+        }
+        const boardMap = new Map()
+        if (boardIds.size) {
+          const { data: bs } = await admin.from('board').select('id,name').in('id', [...boardIds])
+          for (const b of (bs ?? [])) boardMap.set(b.id, b.name)
+        }
         const items = [
           ...(rev.data ?? []).map((r) => ({
             type: 'review', id: r.id, course_code: r.course_code, created_at: r.created_at,
@@ -219,6 +238,19 @@ Deno.serve(async (req) => {
             type: 'exam_archive', id: e.id, course_code: e.course_code, created_at: e.created_at,
             text: [e.title, e.description].filter(Boolean).join(' — '), meta: {},
           })),
+          ...(bpost.data ?? []).map((p) => ({
+            type: 'board_post', id: p.id, course_code: boardMap.get(p.board_id) ?? '게시판', created_at: p.created_at,
+            text: [p.title, p.content].filter(Boolean).join(' — '), meta: {},
+          })),
+          ...(bcmt.data ?? []).map((c) => {
+            const parent = postMap.get(c.post_id)
+            const bname = (parent && boardMap.get(parent.board_id)) || '게시판'
+            return {
+              type: 'board_comment', id: c.id,
+              course_code: parent?.title ? `${bname}·${parent.title}` : bname,
+              created_at: c.created_at, text: c.content, meta: { post_id: c.post_id },
+            }
+          }),
         ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
         return json({ status: 'OK', items, reviewed_at: cutoff })
       }

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 
-const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보' };
+const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
 const POLL_MS = 15000;
 
@@ -93,7 +93,7 @@ export default function Moderation() {
   }
 
   async function saveEdit() {
-    const fields = edit.type === 'class_memo'
+    const fields = (edit.type === 'class_memo' || edit.type === 'board_post' || edit.type === 'board_comment')
       ? { content: edit.text }
       : edit.type === 'exam_archive'
         ? { description: edit.text }
