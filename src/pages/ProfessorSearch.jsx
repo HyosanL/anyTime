@@ -120,34 +120,38 @@ export default function ProfessorSearch() {
 
       {loading ? (
         <p className="muted center">불러오는 중…</p>
-      ) : (
+      ) : q ? (
         <>
+          {/* 검색 중: 검색 결과가 맨 위 */}
+          <h3 className="section-label">검색 결과</h3>
+          {results.length === 0 ? (
+            <div className="empty">
+              <span className="empty-emoji">🔍</span>
+              검색 결과가 없습니다.
+            </div>
+          ) : (
+            <ul className="section-list">{results.map(renderCard)}</ul>
+          )}
           {mine.length > 0 && (
             <>
               <h3 className="section-label">내 담당 교수</h3>
               <ul className="section-list">{mine.map(renderCard)}</ul>
             </>
           )}
-
-          {q ? (
+        </>
+      ) : (
+        <>
+          {/* 검색 전: 내 담당 교수가 맨 위 */}
+          {mine.length > 0 ? (
             <>
-              <h3 className="section-label">검색 결과</h3>
-              {results.length === 0 ? (
-                <div className="empty">
-                  <span className="empty-emoji">🔍</span>
-                  검색 결과가 없습니다.
-                </div>
-              ) : (
-                <ul className="section-list">{results.map(renderCard)}</ul>
-              )}
+              <h3 className="section-label">내 담당 교수</h3>
+              <ul className="section-list">{mine.map(renderCard)}</ul>
             </>
           ) : (
-            mine.length === 0 && (
-              <div className="empty">
-                <span className="empty-emoji">🔍</span>
-                교수명·학과로 검색해 보세요.
-              </div>
-            )
+            <div className="empty">
+              <span className="empty-emoji">🔍</span>
+              교수명·학과로 검색해 보세요.
+            </div>
           )}
         </>
       )}

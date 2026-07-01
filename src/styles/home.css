@@ -323,13 +323,13 @@
   color: var(--text-2);
   padding: 0.25rem 0;
 }
-.tt-corner { width: 46px; }
+.tt-corner { width: 30px; }
 
 /* 좌측 시각 열 — 시각 눈금(시 08·09…)을 격자 상단선·격자 좌측 벽면(=이 열의 오른쪽)에 붙임 + 교시 번호(부 눈금)
    ⚠ `.tt th`(0,1,1)가 vertical-align/text-align/padding 기본값을 덮으므로 `.tt th.tt-hour`(0,2,1)로 특정도를 올린다 */
 .tt th.tt-hour {
   position: relative;
-  width: 46px;
+  width: 30px;                 /* 폭 축소: 우측정렬된 숫자 왼쪽 빈 공간 제거 */
   vertical-align: top;         /* 격자 상단선에 닿게(세로 위로) */
   text-align: right;           /* 격자 좌측 벽면에 붙게 — 우측정렬 */
   padding: 0;                  /* 상·우 여백 없이 오른쪽 위 모서리에 붙임 */
@@ -338,7 +338,7 @@
 }
 /* 메인 눈금: 시(hour) — 분 없이 08, 09 …, 격자 상단선에 닿아 어느 눈금인지 명확 */
 .tt-h {
-  font-size: 0.95rem;
+  font-size: 0.82rem;
   font-weight: 800;
   color: var(--text);
   line-height: 1;
