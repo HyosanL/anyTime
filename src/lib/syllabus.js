@@ -314,12 +314,12 @@ export function reconcile(rows, periods, catalog, year, term) {
   const profNames = [...new Set(rows.map((r) => r.professor).filter(Boolean))];
   const professors = profNames.map((name) => {
     const matches = profsByName.get(name) ?? [];
-    const candidates = matches.map((m) => ({ code: m.code, department: m.department, title: m.title }));
+    const candidates = matches.map((m) => ({ code: m.code, department: m.department }));
     if (matches.length === 0) {
-      return { name, code: null, action: 'create', department: profDept.get(name) ?? null, title: null, candidates };
+      return { name, code: null, action: 'create', department: profDept.get(name) ?? null, candidates };
     }
     if (matches.length === 1) {
-      return { name, code: matches[0].code, action: 'match', department: matches[0].department ?? null, title: matches[0].title ?? null, candidates };
+      return { name, code: matches[0].code, action: 'match', department: matches[0].department ?? null, candidates };
     }
     // 동명이인: 과목 이력으로 보정
     const myCodes = profCourseCodes.get(name) ?? new Set();
@@ -327,7 +327,7 @@ export function reconcile(rows, periods, catalog, year, term) {
     const pick = byHistory ?? matches[0];
     return {
       name, code: pick.code, action: byHistory ? 'match' : 'ambiguous',
-      department: pick.department ?? null, title: pick.title ?? null, candidates,
+      department: pick.department ?? null, candidates,
     };
   });
 
@@ -379,7 +379,7 @@ export async function applyPlan(plan, { onProgress } = {}) {
     term: plan.term,
     periods: plan.includePeriods ? plan.periods : [],
     professors: plan.professors.map((p) => ({
-      name: p.name, code: p.code, department: p.department || null, title: p.title || null,
+      name: p.name, code: p.code, department: p.department || null,
       create: p.code == null, update: !!p.update && p.code != null,
     })),
   });

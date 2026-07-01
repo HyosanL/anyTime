@@ -92,14 +92,14 @@ Deno.serve(async (req) => {
       case 'add_professor': {
         const { data: code } = await admin.rpc('gen_professor_code')
         await admin.from('professor').insert({
-          code, name: payload.name, department: payload.department ?? null, title: payload.title ?? null,
+          code, name: payload.name, department: payload.department ?? null,
         }).throwOnError()
         return json({ status: 'OK', code })
       }
       case 'set_professor':
         await admin.from('professor').upsert({
           code: payload.code, name: payload.name,
-          department: payload.department ?? null, title: payload.title ?? null,
+          department: payload.department ?? null,
         }).throwOnError()
         return json({ status: 'OK' })
       case 'set_course':
@@ -258,11 +258,11 @@ Deno.serve(async (req) => {
             const { data: c } = await admin.rpc('gen_professor_code')
             code = c
             await admin.from('professor').insert({
-              code, name, department: pf.department ?? null, title: pf.title ?? null,
+              code, name, department: pf.department ?? null,
             }).throwOnError()
           } else if (pf.update) {
             await admin.from('professor').update({
-              department: pf.department ?? null, title: pf.title ?? null,
+              department: pf.department ?? null,
             }).eq('code', code).throwOnError()
           }
           profCodes[name] = code

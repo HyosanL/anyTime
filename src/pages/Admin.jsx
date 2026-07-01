@@ -63,7 +63,7 @@ export default function Admin() {
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
   const [course, setCourse] = useState({ code: '', name: '', credits: 3 });
-  const [prof, setProf] = useState({ code: '', name: '', department: '', title: '' });
+  const [prof, setProf] = useState({ code: '', name: '', department: '' });
   const [pq, setPq] = useState('');
   const [sem, setSem] = useState({ year: 2026, term: 1, is_current: true });
   const [per, setPer] = useState({ no: 1, start_time: '09:00', end_time: '09:50' });
@@ -279,18 +279,18 @@ export default function Admin() {
         {section === 'professors' && (
           <Card icon="👤" title="교수 관리" desc="교수를 검색해 수정/삭제하고, 아래에서 새 교수를 추가합니다. 교수코드는 자동 부여됩니다.">
             <div className="search-bar adm-inline-search">
-              <input type="search" placeholder="교수 검색 (성명/학과/계급)" value={pq} onChange={(e) => setPq(e.target.value)} />
+              <input type="search" placeholder="교수 검색 (성명/학과)" value={pq} onChange={(e) => setPq(e.target.value)} />
             </div>
             <ul className="list adm-list adm-list-scroll">
-              {(cat?.professor ?? []).filter((p) => { const s = pq.trim().toLowerCase(); return !s || [p.name, p.department, p.title, p.code].some((v) => (v || '').toLowerCase().includes(s)); }).map((p) => (
+              {(cat?.professor ?? []).filter((p) => { const s = pq.trim().toLowerCase(); return !s || [p.name, p.department, p.code].some((v) => (v || '').toLowerCase().includes(s)); }).map((p) => (
                 <li key={p.code} className="adm-item">
                   <div className="adm-item-row">
                     <div className="adm-item-body">
                       <div className="adm-item-title">{p.name}</div>
-                      <div className="adm-item-sub">{[p.title, p.department, p.code].filter(Boolean).join(' · ')}</div>
+                      <div className="adm-item-sub">{[p.department, p.code].filter(Boolean).join(' · ')}</div>
                     </div>
                     <div className="adm-item-acts">
-                      <button className="link-btn" onClick={() => setProf({ code: p.code, name: p.name || '', department: p.department || '', title: p.title || '' })}>수정</button>
+                      <button className="link-btn" onClick={() => setProf({ code: p.code, name: p.name || '', department: p.department || '' })}>수정</button>
                       <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'professor', key: { code: p.code } }, '교수 삭제')}>삭제</button>
                     </div>
                   </div>
@@ -303,15 +303,14 @@ export default function Admin() {
             <div className="adm-form-grid">
               <label className="field"><span className="field-label">성명</span><input placeholder="성명" value={prof.name} onChange={(e) => setProf({ ...prof, name: e.target.value })} /></label>
               <label className="field"><span className="field-label">학과</span><input placeholder="학과" value={prof.department} onChange={(e) => setProf({ ...prof, department: e.target.value })} /></label>
-              <label className="field"><span className="field-label">계급</span><input placeholder="예: 대령" value={prof.title} onChange={(e) => setProf({ ...prof, title: e.target.value })} /></label>
             </div>
             {prof.code ? (
               <div className="adm-btn-row">
-                <button className="btn-add" onClick={async () => { const r = await run('set_professor', prof, '교수 수정'); if (r.ok) setProf({ code: '', name: '', department: '', title: '' }); }}>저장</button>
-                <button className="rev-del-btn" onClick={() => setProf({ code: '', name: '', department: '', title: '' })}>취소</button>
+                <button className="btn-add" onClick={async () => { const r = await run('set_professor', prof, '교수 수정'); if (r.ok) setProf({ code: '', name: '', department: '' }); }}>저장</button>
+                <button className="rev-del-btn" onClick={() => setProf({ code: '', name: '', department: '' })}>취소</button>
               </div>
             ) : (
-              <button className="btn-add btn-block" onClick={async () => { if (!prof.name.trim()) return; const r = await run('add_professor', prof, '교수 추가(코드 자동)'); if (r.ok) setProf({ code: '', name: '', department: '', title: '' }); }}>교수 추가</button>
+              <button className="btn-add btn-block" onClick={async () => { if (!prof.name.trim()) return; const r = await run('add_professor', prof, '교수 추가(코드 자동)'); if (r.ok) setProf({ code: '', name: '', department: '' }); }}>교수 추가</button>
             )}
           </Card>
         )}

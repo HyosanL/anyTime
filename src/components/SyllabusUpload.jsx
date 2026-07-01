@@ -95,7 +95,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       else {
         pr.code = val; pr.action = 'match';
         const cand = pr.candidates.find((c) => c.code === val);
-        if (cand) { pr.department = cand.department ?? pr.department; pr.title = cand.title ?? pr.title; }
+        if (cand) { pr.department = cand.department ?? pr.department; }
         pr.update = false;
       }
       arr[i] = pr; p.professors = arr;
@@ -200,13 +200,12 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   <select value={p.code ?? '__new__'} onChange={(e) => setProfChoice(i, e.target.value)}>
                     <option value="__new__">+ 새 교수로 등록</option>
                     {p.candidates.map((c) => (
-                      <option key={c.code} value={c.code}>{[c.title, c.department, c.code].filter(Boolean).join(' · ') || c.code}</option>
+                      <option key={c.code} value={c.code}>{[c.department, c.code].filter(Boolean).join(' · ') || c.code}</option>
                     ))}
                   </select>
                 )}
                 <div className="syl-prof-meta">
                   <input placeholder="학과(추정)" value={p.department || ''} onChange={(e) => setProfField(i, 'department', e.target.value)} />
-                  <input placeholder="계급(모르면 비움)" value={p.title || ''} onChange={(e) => setProfField(i, 'title', e.target.value)} />
                 </div>
               </div>
             ))}

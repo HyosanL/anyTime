@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Cloudflare
 .wrangler/
+
+# 학과 홈페이지 크롤링 원본(37MB 스크랩) — parse-faculty.mjs 입력용 로컬 전용.
+# 산출물(db/seed_professors.sql)만 커밋한다.
+crawl/
