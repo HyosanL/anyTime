@@ -81,6 +81,12 @@ export default function CorrectionModal({ subject, options, onClose }) {
     setVal(`${p.name} (${p.code})`);
     setPq('');
   }
+  // 검색에 없는(미등록) 교수: 신규 제안. 관리자가 적용하면 새 교수로 등록됨.
+  function pickNewProf(name) {
+    setPicked({ code: null, name, isNew: true });
+    setVal(`${name} (신규)`);
+    setPq('');
+  }
 
   async function submit() {
     if (!val.trim() && !note.trim()) return setErr('올바른 값이나 설명 중 하나는 입력하세요.');
@@ -153,7 +159,7 @@ export default function CorrectionModal({ subject, options, onClose }) {
                 <span className="field-label">올바른 담당교수</span>
                 {picked ? (
                   <div className="cor-prof-picked">
-                    <span><b>{picked.name}</b> · {picked.department || '학과 미정'}</span>
+                    <span><b>{picked.name}</b> · {picked.isNew ? '신규 등록 예정' : (picked.department || '학과 미정')}</span>
                     <button type="button" className="cor-row-del" onClick={() => { setPicked(null); setVal(''); }}>변경</button>
                   </div>
                 ) : (
@@ -161,20 +167,22 @@ export default function CorrectionModal({ subject, options, onClose }) {
                     <input value={pq} onChange={(e) => setPq(e.target.value)} placeholder="교수명 · 학과로 검색" />
                     {pq.trim() && (
                       <ul className="cor-prof-list">
-                        {profResults.length === 0 ? (
-                          <li className="cor-prof-empty">검색 결과가 없습니다.</li>
-                        ) : (
-                          profResults.map((p) => (
-                            <li key={p.code}>
-                              <button type="button" onClick={() => pickProf(p)}>
-                                <b>{p.name}</b> <span className="muted">{p.department || '학과 미정'}</span>
-                              </button>
-                            </li>
-                          ))
-                        )}
+                        {profResults.map((p) => (
+                          <li key={p.code}>
+                            <button type="button" onClick={() => pickProf(p)}>
+                              <b>{p.name}</b> <span className="muted">{p.department || '학과 미정'}</span>
+                            </button>
+                          </li>
+                        ))}
+                        {/* 미등록 교수: 검색한 이름으로 신규 제안(관리자 승인 시 생성) */}
+                        <li>
+                          <button type="button" className="cor-prof-new" onClick={() => pickNewProf(pq.trim())}>
+                            ＋ ‘<b>{pq.trim()}</b>’ 이름으로 <b>신규 교수</b> 제안
+                          </button>
+                        </li>
                       </ul>
                     )}
-                    <p className="cor-hint">동명이인은 학과로 구분해 선택하세요.</p>
+                    <p className="cor-hint">동명이인은 학과로 구분해 선택하세요. 목록에 없으면 아래 ‘신규 교수 제안’.</p>
                   </>
                 )}
               </div>

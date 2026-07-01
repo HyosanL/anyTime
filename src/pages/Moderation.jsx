@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
+import { clearCatalog } from '../lib/cache';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
@@ -130,6 +131,8 @@ export default function Moderation() {
       if (!r.ok) { alert('적용 실패: ' + (r.status ?? '오류') + (r.status === 'BAD_TIME' ? ' (시간 형식 오류)' : '')); return; }
     }
     setCorrs((prev) => prev.filter((c) => !g.ids.includes(c.id)));
+    // 반영값이 카탈로그(교수·과목·시간)에 바로 보이도록 로컬 캐시 무효화(관리자 화면 즉시 확인용).
+    clearCatalog().catch(() => {});
   }
   async function rejectGroup(g) {
     if (!confirm('이 수정 제안을 반려할까요?')) return;

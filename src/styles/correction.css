@@ -61,6 +61,8 @@
 }
 .cor-prof-list button:hover { background: var(--primary-weak, var(--surface)); }
 .cor-prof-empty { padding: 0.5rem 0.6rem; color: var(--text-3); font-size: 0.83rem; }
+.cor-prof-new { color: var(--primary) !important; }
+.cor-prof-list li:has(.cor-prof-new) { border-top: 1px dashed var(--border); }
 .cor-prof-picked {
   display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
   padding: 0.5rem 0.6rem; border: 1px solid var(--primary); border-radius: var(--r-sm, 0.4rem);
