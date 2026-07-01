@@ -34,6 +34,10 @@ export default function Boards() {
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(q)} placeholder="게시판 검색 후 Enter" />
       </div>
 
+      {!q.trim() && (
+        <p className="board-create-hint">💡 찾는 게시판이 없나요? 검색하면 원하는 이름으로 바로 새 게시판을 만들 수 있어요.</p>
+      )}
+
       {q.trim() && !exact && (
         <div className="board-create">
           <span className="board-create-text">'{q.trim()}' 게시판이 없나요?<br />새로 만들어 첫 글을 남겨보세요.</span>

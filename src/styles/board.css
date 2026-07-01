@@ -41,6 +41,10 @@
   border-radius: var(--r-lg);
 }
 .board-create-text { font-size: 0.84rem; color: var(--text-2); line-height: 1.4; }
+.board-create-hint {
+  margin: 0.35rem var(--pad) 0.2rem;
+  font-size: 0.82rem; color: var(--text-2); line-height: 1.45;
+}
 
 /* HOT 바로가기 — 디렉터리 상단 강조 배너 */
 .board-hot-link {

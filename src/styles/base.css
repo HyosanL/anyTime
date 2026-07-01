@@ -350,6 +350,27 @@ a.list-row, .list-row a { color: inherit; }
 .install-yes { background: var(--primary); color: var(--on-primary); border: none; border-radius: var(--r-sm); padding: 0.35rem 0.8rem; font-weight: 700; cursor: pointer; }
 .install-no { background: transparent; color: var(--text-3); border: none; cursor: pointer; font-size: 0.95rem; }
 
+/* iOS 홈 화면 추가 안내 시트(사파리는 beforeinstallprompt 미지원 → 수동 안내) */
+.ios-guide-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(15, 23, 42, 0.45); padding: 1rem;
+}
+.ios-guide {
+  width: 100%; max-width: 420px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 1.25rem; box-shadow: var(--shadow-lg);
+}
+.ios-guide h3 { margin: 0 0 0.9rem; font-size: 1.05rem; }
+.ios-steps {
+  margin: 0 0 0.9rem; padding-left: 1.3rem;
+  display: flex; flex-direction: column; gap: 0.65rem;
+  font-size: 0.9rem; line-height: 1.55; color: var(--text-2);
+}
+.ios-steps b { color: var(--text); font-weight: 700; }
+.ios-guide-close { width: 100%; margin-top: 0.5rem; padding: 0.6rem; }
+
 /* ---------- 스켈레톤 ---------- */
 .skeleton {
   background: linear-gradient(90deg, var(--card-hover) 25%, var(--card-active) 37%, var(--card-hover) 63%);

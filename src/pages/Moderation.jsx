@@ -107,7 +107,7 @@ export default function Moderation() {
     return (
       <div className="page">
         <header className="page-header">
-          <Link to="/admin" className="link-btn">← 관리자</Link>
+          <Link to="/" className="link-btn">← 홈</Link>
           <h2>검열</h2>
         </header>
         <div className="empty">
