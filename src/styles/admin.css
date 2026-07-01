@@ -169,6 +169,71 @@
   padding: 0.35rem 0;
 }
 
+/* ====================== 교시 표 ====================== */
+.adm-period-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.adm-pt-head,
+.adm-pt-row {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+.adm-pt-head {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 0 0.1rem 0.1rem;
+}
+.adm-pt-no {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-2);
+  text-align: center;
+}
+.adm-pt-row input[type="time"],
+.adm-pt-no-input {
+  width: 100%;
+  min-width: 0;
+}
+.adm-pt-acts {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.adm-pt-new {
+  border-top: 1px dashed var(--border);
+  padding-top: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+/* ====================== 분반 편집 ====================== */
+.adm-sec-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.adm-sec-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem 0.7rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--primary-weak-border);
+  border-radius: var(--r-sm);
+}
+.adm-sec-new {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+}
+
 /* ====================== CSV 업로드 ====================== */
 .adm-steps {
   margin: 0;

@@ -108,7 +108,7 @@ export default function Moderation() {
       <div className="page">
         <header className="page-header">
           <Link to="/admin" className="link-btn">← 관리자</Link>
-          <h2>모더레이션</h2>
+          <h2>검열</h2>
         </header>
         <div className="empty">
           <span className="empty-emoji">🔒</span>
@@ -124,7 +124,7 @@ export default function Moderation() {
     <div className="page">
       <header className="page-header">
         <Link to="/admin" className="link-btn">← 관리자</Link>
-        <h2>모더레이션</h2>
+        <h2>검열</h2>
         <button className="link-btn" onClick={load}>새로고침</button>
         {items.length > 0 && <button className="link-btn" onClick={clearAll}>모두 확인 처리</button>}
       </header>

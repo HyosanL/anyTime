@@ -148,18 +148,123 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
 
 const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 
-// 허브 항목 정의 (key는 라우팅 section 과 일치). moderation 은 별도 페이지로 링크.
+// 교시 표의 한 행: 시작·종료 시각을 즉석에서 수정하고 저장.
+function PeriodRow({ p, run }) {
+  const s0 = String(p.start_time).slice(0, 5);
+  const e0 = String(p.end_time).slice(0, 5);
+  const [start, setStart] = useState(s0);
+  const [end, setEnd] = useState(e0);
+  const dirty = start !== s0 || end !== e0;
+  return (
+    <div className="adm-pt-row">
+      <span className="adm-pt-no">{p.no}</span>
+      <input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+      <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+      <div className="adm-pt-acts">
+        <button className="btn-add btn-sm" disabled={!dirty || !start || !end}
+          onClick={() => run('set_period', { no: p.no, start_time: start, end_time: end }, `${p.no}교시 저장`)}>저장</button>
+        <button className="rev-del-btn" title="삭제"
+          onClick={() => run('delete_catalog', { table: 'period', key: { no: p.no } }, '교시 삭제')}>×</button>
+      </div>
+    </div>
+  );
+}
+
+// 교시 표 맨 아래: 새 교시 추가 행.
+function NewPeriodRow({ run, nextNo }) {
+  const [f, setF] = useState({ no: nextNo, start_time: '09:00', end_time: '09:50' });
+  return (
+    <div className="adm-pt-row adm-pt-new">
+      <input className="adm-pt-no-input" type="number" value={f.no} onChange={(e) => setF({ ...f, no: +e.target.value })} />
+      <input type="time" value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} />
+      <input type="time" value={f.end_time} onChange={(e) => setF({ ...f, end_time: e.target.value })} />
+      <div className="adm-pt-acts">
+        <button className="btn-add btn-sm"
+          onClick={() => run('set_period', f, `${f.no}교시 추가`)}>추가</button>
+      </div>
+    </div>
+  );
+}
+
+// 한 분반의 교수·정원·강의시간을 한 곳에서 인라인 편집.
+function SectionEditor({ s, cat, run }) {
+  const [profCode, setProfCode] = useState(s.professor_code || '');
+  const [capacity, setCapacity] = useState(s.capacity ?? '');
+  const [nt, setNt] = useState({ day_of_week: 1, start_period: 1, end_period: 1, room: '' });
+  const base = { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no };
+  const times = (cat.section_time ?? [])
+    .filter((t) => t.course_code === s.course_code && t.year === s.year && t.term === s.term && t.section_no === s.section_no)
+    .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period);
+  return (
+    <div className="adm-sec-editor">
+      <div className="adm-form-grid">
+        <label className="field"><span className="field-label">교수</span>
+          <select value={profCode} onChange={(e) => setProfCode(e.target.value)}>
+            <option value="">교수 미정</option>{(cat.professor ?? []).map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+          </select>
+        </label>
+        <label className="field"><span className="field-label">정원</span><input type="number" value={capacity} onChange={(e) => setCapacity(e.target.value)} /></label>
+      </div>
+      <button className="btn-add btn-block btn-sm"
+        onClick={() => run('set_section', { ...base, professor_code: profCode || null, capacity: capacity === '' ? null : +capacity }, '분반 저장')}>분반 저장</button>
+
+      <div className="section-label adm-sub-label">강의시간</div>
+      {times.length === 0 && <p className="note">등록된 강의시간이 없습니다. 아래에서 추가하세요.</p>}
+      {times.map((t) => (
+        <div key={t.day_of_week + '-' + t.start_period} className="adm-chip-row">
+          <span className="adm-chip-text">{DAY_KO[t.day_of_week]} {t.start_period}{t.end_period !== t.start_period ? `-${t.end_period}` : ''}교시{t.room ? ` · ${t.room}` : ''}</span>
+          <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'section_time', key: { ...base, day_of_week: t.day_of_week, start_period: t.start_period } }, '강의시간 삭제')}>삭제</button>
+        </div>
+      ))}
+      <div className="adm-form-grid">
+        <label className="field"><span className="field-label">요일</span>
+          <select value={nt.day_of_week} onChange={(e) => setNt({ ...nt, day_of_week: +e.target.value })}>{[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{DAY_KO[d]}</option>)}</select>
+        </label>
+        <label className="field"><span className="field-label">강의실</span><input placeholder="예: 본관 201" value={nt.room} onChange={(e) => setNt({ ...nt, room: e.target.value })} /></label>
+        <label className="field"><span className="field-label">시작교시</span><input type="number" value={nt.start_period} onChange={(e) => setNt({ ...nt, start_period: +e.target.value })} /></label>
+        <label className="field"><span className="field-label">끝교시</span><input type="number" value={nt.end_period} onChange={(e) => setNt({ ...nt, end_period: +e.target.value })} /></label>
+      </div>
+      <button className="btn-add btn-block btn-sm" onClick={() => run('set_section_time', { ...base, ...nt }, '강의시간 추가')}>강의시간 추가</button>
+    </div>
+  );
+}
+
+// 선택한 과목에 새 분반 추가.
+function NewSectionForm({ courseCode, cat, run, defYear, defTerm }) {
+  const [f, setF] = useState({ year: defYear, term: defTerm, section_no: 1, professor_code: '', capacity: '' });
+  return (
+    <div className="adm-sec-new">
+      <div className="section-label adm-sub-label">새 분반 추가</div>
+      <div className="adm-form-grid">
+        <label className="field"><span className="field-label">연도</span><input type="number" value={f.year} onChange={(e) => setF({ ...f, year: +e.target.value })} /></label>
+        <label className="field"><span className="field-label">학기</span>
+          <select value={f.term} onChange={(e) => setF({ ...f, term: +e.target.value })}><option value={1}>1</option><option value={2}>2</option></select>
+        </label>
+        <label className="field"><span className="field-label">분반</span><input type="number" value={f.section_no} onChange={(e) => setF({ ...f, section_no: +e.target.value })} /></label>
+        <label className="field"><span className="field-label">교수</span>
+          <select value={f.professor_code} onChange={(e) => setF({ ...f, professor_code: e.target.value })}>
+            <option value="">교수 미정</option>{(cat.professor ?? []).map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <button className="btn-add btn-block"
+        onClick={() => run('set_section', { course_code: courseCode, year: f.year, term: f.term, section_no: f.section_no, professor_code: f.professor_code || null, capacity: f.capacity === '' ? null : +f.capacity }, '분반 추가')}>분반 추가</button>
+    </div>
+  );
+}
+
+// 허브 항목 정의 (key는 라우팅 section 과 일치). 검열(moderation)은 별도 페이지로 링크하며 최상단.
 const SECTIONS = [
-  { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색·추가, 분반·강의시간 관리' },
+  { key: 'moderation', icon: '🧹', title: '검열', sub: '신고·자동필터 강의평·수정제안 검토', to: '/admin/moderation' },
+  { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 분반 하나씩 관리' },
   { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
   { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
   { key: 'professors-sync', icon: '🔄', title: '교수 명단 동기화', sub: '공식 홈페이지에서 교수 명단 자동 갱신' },
   { key: 'semesters', icon: '🗓️', title: '학기 · 교시', sub: '현재 학기와 교시 시각 설정' },
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
-  { key: 'settings', icon: '⚙️', title: '지오펜싱 · 기간', sub: '캠퍼스 위치·반경·각종 기간' },
+  { key: 'settings', icon: '⚙️', title: '계정 위치 인증 및 인증 기간', sub: '캠퍼스 위치·반경, 위치 재인증·자격 기간' },
   { key: 'board', icon: '💬', title: '게시판 관리', sub: '활성화·게시판별/전체 글 삭제' },
-  { key: 'moderation', icon: '🧹', title: '모더레이션', sub: '신고·자동필터 강의평 검토', to: '/admin/moderation' },
   { key: 'admins', icon: '🛡️', title: '관리자', sub: '관리자 권한 부여·취소' },
 ];
 const TITLE_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title]));
@@ -178,15 +283,13 @@ export default function Admin() {
   // 폼 상태
   const [q, setQ] = useState('');
   const [selCourse, setSelCourse] = useState('');
+  const [selSection, setSelSection] = useState('');   // 편집 중인 분반 키 (year-term-no)
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
   const [course, setCourse] = useState({ code: '', name: '' });
   const [prof, setProf] = useState({ code: '', name: '', department: '' });
   const [pq, setPq] = useState('');
-  const [sem, setSem] = useState({ year: 2026, term: 1, is_current: true });
-  const [per, setPer] = useState({ no: 1, start_time: '09:00', end_time: '09:50' });
-  const [sec, setSec] = useState({ year: 2026, term: 1, section_no: 1, professor_code: '', capacity: 40 });
-  const [stForm, setStForm] = useState({ day_of_week: 1, start_period: 1, end_period: 1, room: '' });
+  const [sem, setSem] = useState({ year: 2026, term: 1 });
 
   async function loadAll() {
     setCat(await getCatalog({ force: true }).catch(() => null));
@@ -215,6 +318,7 @@ export default function Admin() {
     const s = q.trim().toLowerCase();
     return courses.filter((c) => !s || c.name.toLowerCase().includes(s) || c.code.toLowerCase().includes(s));
   }, [courses, q]);
+  const curSem = cat?.semester?.find((s) => s.is_current) || cat?.semester?.[0] || { year: 2026, term: 1 };
   const secOf = (code) => (cat?.section ?? []).filter((x) => x.course_code === code);
   const timesOf = (s) => (cat?.section_time ?? [])
     .filter((t) => t.course_code === s.course_code && t.year === s.year && t.term === s.term && t.section_no === s.section_no)
@@ -294,66 +398,58 @@ export default function Admin() {
 
       <div className="cards admin-cards">
         {section === 'courses' && (
-          <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 분반·강의시간을 관리하고, 아래에서 과목을 추가/수정합니다. 과목코드는 자동 부여됩니다.">
+          <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 선택하면 분반을 하나씩 관리합니다. 아래에서 과목을 추가/수정하며, 과목코드는 자동 부여됩니다.">
             <div className="search-bar adm-inline-search">
-              <input type="search" placeholder="과목 검색 (이름 또는 코드)" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input type="search" placeholder="과목 검색 (이름 또는 코드)" value={q}
+                onChange={(e) => { setQ(e.target.value); setSelCourse(''); setSelSection(''); }} />
             </div>
 
-            <ul className="list adm-list">
-              {filtered.map((c) => (
-                <li key={c.code} className={`adm-item ${selCourse === c.code ? 'open' : ''}`}>
-                  <div className="adm-item-row">
-                    <div className="adm-item-body">
-                      <div className="adm-item-title">{c.name}</div>
-                      <div className="adm-item-sub">{[c.code, c.department].filter(Boolean).join(' · ')}</div>
-                    </div>
-                    <div className="adm-item-acts">
-                      <button className="btn-ghost btn-sm" onClick={() => setSelCourse(selCourse === c.code ? '' : c.code)}>{selCourse === c.code ? '닫기' : '분반'}</button>
-                      <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '' })}>수정</button>
-                      <button className="rev-del-btn" onClick={() => { if (confirm(`'${c.name}' 과목과 분반·강의시간이 모두 삭제됩니다.`)) run('delete_catalog', { table: 'course', key: { code: c.code } }, '과목 삭제'); }}>삭제</button>
-                    </div>
-                  </div>
-
-                  {selCourse === c.code && (
-                    <div className="adm-expand">
-                      <div className="section-label adm-sub-label">이 과목의 분반</div>
-                      {secOf(c.code).length === 0 && <p className="note">등록된 분반이 없습니다. 아래에서 추가하세요.</p>}
-                      {secOf(c.code).map((s) => (
-                        <div key={s.section_no + '-' + s.year + s.term} className="adm-chip-row">
-                          <span className="adm-chip-text">{s.year}-{s.term} · {s.section_no}분반 · {(cat.professor.find((p) => p.code === s.professor_code) || {}).name || '교수미정'} · {timesOf(s) || '시간미정'}</span>
-                          <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'section', key: { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no } }, '분반 삭제')}>삭제</button>
-                        </div>
-                      ))}
-
-                      <div className="section-label adm-sub-label">분반 추가 / 수정</div>
-                      <div className="adm-form-grid">
-                        <label className="field"><span className="field-label">연도</span><input type="number" value={sec.year} onChange={(e) => setSec({ ...sec, year: +e.target.value })} /></label>
-                        <label className="field"><span className="field-label">학기</span><input type="number" value={sec.term} onChange={(e) => setSec({ ...sec, term: +e.target.value })} /></label>
-                        <label className="field"><span className="field-label">분반</span><input type="number" value={sec.section_no} onChange={(e) => setSec({ ...sec, section_no: +e.target.value })} /></label>
-                        <label className="field"><span className="field-label">교수</span>
-                          <select value={sec.professor_code} onChange={(e) => setSec({ ...sec, professor_code: e.target.value })}>
-                            <option value="">교수 선택</option>{cat.professor.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
-                          </select>
-                        </label>
+            {q.trim() === '' ? (
+              <p className="note adm-empty-row">과목명 또는 코드로 검색하세요.</p>
+            ) : (
+              <ul className="list adm-list">
+                {filtered.map((c) => (
+                  <li key={c.code} className={`adm-item ${selCourse === c.code ? 'open' : ''}`}>
+                    <div className="adm-item-row">
+                      <div className="adm-item-body">
+                        <div className="adm-item-title">{c.name}</div>
+                        <div className="adm-item-sub">{[c.code, c.department].filter(Boolean).join(' · ')}</div>
                       </div>
-                      <button className="btn-add btn-block" onClick={() => run('set_section', { course_code: c.code, ...sec }, '분반 추가/수정')}>분반 추가</button>
-
-                      <div className="section-label adm-sub-label">강의시간 추가 (위 분반에)</div>
-                      <div className="adm-form-grid">
-                        <label className="field"><span className="field-label">요일</span>
-                          <select value={stForm.day_of_week} onChange={(e) => setStForm({ ...stForm, day_of_week: +e.target.value })}>{[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{DAY_KO[d]}</option>)}</select>
-                        </label>
-                        <label className="field"><span className="field-label">시작교시</span><input type="number" value={stForm.start_period} onChange={(e) => setStForm({ ...stForm, start_period: +e.target.value })} /></label>
-                        <label className="field"><span className="field-label">끝교시</span><input type="number" value={stForm.end_period} onChange={(e) => setStForm({ ...stForm, end_period: +e.target.value })} /></label>
-                        <label className="field"><span className="field-label">강의실</span><input placeholder="예: 본관 201" value={stForm.room} onChange={(e) => setStForm({ ...stForm, room: e.target.value })} /></label>
+                      <div className="adm-item-acts">
+                        <button className="btn-ghost btn-sm" onClick={() => { setSelCourse(selCourse === c.code ? '' : c.code); setSelSection(''); }}>{selCourse === c.code ? '닫기' : '분반'}</button>
+                        <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '' })}>수정</button>
+                        <button className="rev-del-btn" onClick={() => { if (confirm(`'${c.name}' 과목과 분반·강의시간이 모두 삭제됩니다.`)) run('delete_catalog', { table: 'course', key: { code: c.code } }, '과목 삭제'); }}>삭제</button>
                       </div>
-                      <button className="btn-add btn-block" onClick={() => run('set_section_time', { course_code: c.code, year: sec.year, term: sec.term, section_no: sec.section_no, ...stForm }, '강의시간 추가')}>강의시간 추가</button>
                     </div>
-                  )}
-                </li>
-              ))}
-              {filtered.length === 0 && <li className="note adm-empty-row">검색 결과가 없습니다.</li>}
-            </ul>
+
+                    {selCourse === c.code && (
+                      <div className="adm-expand">
+                        <div className="section-label adm-sub-label">이 과목의 분반</div>
+                        {secOf(c.code).length === 0 && <p className="note">등록된 분반이 없습니다. 아래에서 추가하세요.</p>}
+                        {secOf(c.code).map((s) => {
+                          const skey = `${s.year}-${s.term}-${s.section_no}`;
+                          const open = selSection === skey;
+                          const pname = (cat.professor.find((p) => p.code === s.professor_code) || {}).name || '교수미정';
+                          return (
+                            <div key={skey} className={`adm-sec-block ${open ? 'open' : ''}`}>
+                              <div className="adm-chip-row">
+                                <span className="adm-chip-text">{s.year}-{s.term} · {s.section_no}분반 · {pname} · {timesOf(s) || '시간미정'}</span>
+                                <button className="btn-ghost btn-sm" onClick={() => setSelSection(open ? '' : skey)}>{open ? '닫기' : '편집'}</button>
+                                <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'section', key: { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no } }, '분반 삭제')}>삭제</button>
+                              </div>
+                              {open && <SectionEditor s={s} cat={cat} run={run} />}
+                            </div>
+                          );
+                        })}
+
+                        <NewSectionForm courseCode={c.code} cat={cat} run={run} defYear={curSem.year} defTerm={curSem.term} />
+                      </div>
+                    )}
+                  </li>
+                ))}
+                {filtered.length === 0 && <li className="note adm-empty-row">검색 결과가 없습니다.</li>}
+              </ul>
+            )}
 
             <div className="divider adm-divider" />
             <div className="section-label adm-sub-label">{course.code ? `과목 수정 (${course.code})` : '새 과목 추가'}</div>
@@ -398,22 +494,31 @@ export default function Admin() {
             <div className="search-bar adm-inline-search">
               <input type="search" placeholder="교수 검색 (성명/학과)" value={pq} onChange={(e) => setPq(e.target.value)} />
             </div>
-            <ul className="list adm-list adm-list-scroll">
-              {(cat?.professor ?? []).filter((p) => { const s = pq.trim().toLowerCase(); return !s || [p.name, p.department, p.code].some((v) => (v || '').toLowerCase().includes(s)); }).map((p) => (
-                <li key={p.code} className="adm-item">
-                  <div className="adm-item-row">
-                    <div className="adm-item-body">
-                      <div className="adm-item-title">{p.name}</div>
-                      <div className="adm-item-sub">{[p.department, p.code].filter(Boolean).join(' · ')}</div>
-                    </div>
-                    <div className="adm-item-acts">
-                      <button className="link-btn" onClick={() => setProf({ code: p.code, name: p.name || '', department: p.department || '' })}>수정</button>
-                      <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'professor', key: { code: p.code } }, '교수 삭제')}>삭제</button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {pq.trim() === '' ? (
+              <p className="note adm-empty-row">성명 또는 학과로 검색하세요.</p>
+            ) : (() => {
+              const s = pq.trim().toLowerCase();
+              const list = (cat?.professor ?? []).filter((p) => [p.name, p.department, p.code].some((v) => (v || '').toLowerCase().includes(s)));
+              return (
+                <ul className="list adm-list adm-list-scroll">
+                  {list.length === 0 && <li className="note adm-empty-row">검색 결과가 없습니다.</li>}
+                  {list.map((p) => (
+                    <li key={p.code} className="adm-item">
+                      <div className="adm-item-row">
+                        <div className="adm-item-body">
+                          <div className="adm-item-title">{p.name}</div>
+                          <div className="adm-item-sub">{[p.department, p.code].filter(Boolean).join(' · ')}</div>
+                        </div>
+                        <div className="adm-item-acts">
+                          <button className="link-btn" onClick={() => setProf({ code: p.code, name: p.name || '', department: p.department || '' })}>수정</button>
+                          <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'professor', key: { code: p.code } }, '교수 삭제')}>삭제</button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
 
             <div className="divider adm-divider" />
             <div className="section-label adm-sub-label">{prof.code ? `교수 수정 (${prof.code})` : '새 교수 추가'}</div>
@@ -438,10 +543,10 @@ export default function Admin() {
 
         {section === 'semesters' && (
           <>
-            <Card icon="🗓️" title="학기" desc="현재 학기를 설정합니다. 칩을 ×로 삭제하거나 아래에서 추가/수정하세요.">
+            <Card icon="🗓️" title="현재 학기 설정" desc="현재 학기를 지정합니다. 등록되지 않은 학기를 지정하면 새 학기로 만들어 현재로 설정합니다. 칩을 ×로 삭제할 수 있습니다.">
               <div className="adm-tags">
                 {cat?.semester?.length ? cat.semester.map((s) => (
-                  <span key={s.year + '' + s.term} className="tag">{s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
+                  <span key={s.year + '' + s.term} className={`tag ${s.is_current ? 'tag-primary' : ''}`}>{s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
                     <button className="x" onClick={() => run('delete_catalog', { table: 'semester', key: { year: s.year, term: s.term } }, '학기 삭제')}>×</button>
                   </span>
                 )) : <span className="note">등록된 학기가 없습니다.</span>}
@@ -451,27 +556,20 @@ export default function Admin() {
                 <label className="field"><span className="field-label">학기</span>
                   <select value={sem.term} onChange={(e) => setSem({ ...sem, term: +e.target.value })}><option value={1}>1</option><option value={2}>2</option></select>
                 </label>
-                <label className="field adm-check-field"><span className="field-label">현재 학기</span>
-                  <label className="adm-check"><input type="checkbox" checked={sem.is_current} onChange={(e) => setSem({ ...sem, is_current: e.target.checked })} /> 현재로 지정</label>
-                </label>
               </div>
-              <button className="btn-add btn-block" onClick={() => run('set_semester', sem, '학기 저장')}>학기 추가 / 수정</button>
+              <button className="btn-add btn-block" onClick={() => run('set_semester', { ...sem, is_current: true }, '현재 학기 설정')}>현재 학기로 설정</button>
             </Card>
 
-            <Card icon="⏰" title="교시" desc="각 교시의 시작·종료 시각을 정의합니다. 칩을 ×로 삭제하거나 아래에서 추가/수정하세요.">
-              <div className="adm-tags">
-                {cat?.period?.length ? cat.period.map((p) => (
-                  <span key={p.no} className="tag">{p.no}교시 {String(p.start_time).slice(0, 5)}
-                    <button className="x" onClick={() => run('delete_catalog', { table: 'period', key: { no: p.no } }, '교시 삭제')}>×</button>
-                  </span>
-                )) : <span className="note">등록된 교시가 없습니다.</span>}
+            <Card icon="⏰" title="교시" desc="각 교시의 시작·종료 시각을 표에서 바로 수정합니다. 맨 아래 줄에서 새 교시를 추가하세요.">
+              <div className="adm-period-table">
+                <div className="adm-pt-head"><span>교시</span><span>시작</span><span>끝</span><span /></div>
+                {(cat?.period ? [...cat.period].sort((a, b) => a.no - b.no) : []).map((p) => (
+                  <PeriodRow key={p.no} p={p} run={run} />
+                ))}
+                <NewPeriodRow key={`new-${cat?.period?.length ?? 0}`} run={run}
+                  nextNo={(cat?.period?.reduce((m, p) => Math.max(m, p.no), 0) ?? 0) + 1} />
               </div>
-              <div className="adm-form-grid">
-                <label className="field"><span className="field-label">교시</span><input type="number" value={per.no} onChange={(e) => setPer({ ...per, no: +e.target.value })} /></label>
-                <label className="field"><span className="field-label">시작</span><input placeholder="09:00" value={per.start_time} onChange={(e) => setPer({ ...per, start_time: e.target.value })} /></label>
-                <label className="field"><span className="field-label">끝</span><input placeholder="09:50" value={per.end_time} onChange={(e) => setPer({ ...per, end_time: e.target.value })} /></label>
-              </div>
-              <button className="btn-add btn-block" onClick={() => run('set_period', per, '교시 저장')}>교시 추가 / 수정</button>
+              {!cat?.period?.length && <p className="note">등록된 교시가 없습니다. 아래 줄에서 추가하세요.</p>}
             </Card>
           </>
         )}
@@ -488,7 +586,7 @@ export default function Admin() {
         )}
 
         {section === 'settings' && (
-          <Card icon="⚙️" title="설정 · 지오펜싱 / 기간" desc="강의평 자격·위치 인증·계정 삭제 대기 기간과 캠퍼스 위치·반경을 설정합니다. 항목별로 따로 저장합니다.">
+          <Card icon="⚙️" title="계정 위치 인증 및 인증 기간" desc="강의평 자격·위치 인증·계정 삭제 대기 기간과 캠퍼스 위치·반경을 설정합니다. 항목별로 따로 저장합니다.">
             {[
               ['review_min_days', '강의평 작성 자격', '일'],
               ['geo_valid_days', '위치 재인증 유효기간', '일'],

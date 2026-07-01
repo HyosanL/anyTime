@@ -171,6 +171,7 @@ export default function Home() {
           <Badge tier={tier} level={count} size={22} />
         </Link>
         <div className="home-header-actions">
+          {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link">🧹 검열</Link>}
           <button className="link-btn" onClick={logout}>로그아웃</button>
         </div>
       </header>
