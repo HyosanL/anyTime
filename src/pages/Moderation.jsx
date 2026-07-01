@@ -123,7 +123,7 @@ export default function Moderation() {
   return (
     <div className="page">
       <header className="page-header">
-        <Link to="/admin" className="link-btn">← 관리자</Link>
+        <Link to="/" className="link-btn">← 홈</Link>
         <h2>검열</h2>
         <button className="link-btn" onClick={load}>새로고침</button>
         {items.length > 0 && <button className="link-btn" onClick={clearAll}>모두 확인 처리</button>}
