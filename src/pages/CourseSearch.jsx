@@ -25,7 +25,6 @@ export default function CourseSearch() {
   const [sections, setSections] = useState([]);
   const [registered, setRegistered] = useState(new Set()); // 시간표에 담긴 분반키
   const [query, setQuery] = useState('');
-  const [fromCache, setFromCache] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +39,6 @@ export default function CourseSearch() {
       const { current, sections } = buildSections(catalog);
       setCurrent(current);
       setSections(sections);
-      setFromCache(!!catalog.fromCache);
     } catch (e) {
       setError('카탈로그를 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
     } finally {
@@ -61,16 +59,22 @@ export default function CourseSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return sections;
+  const q = query.trim().toLowerCase();
+  // 내가 확정시간표에 담은 강의 — 검색 전에도 상단에 노출
+  const mine = useMemo(
+    () => sections.filter((s) => registered.has(s.key)),
+    [sections, registered]
+  );
+  // 검색 결과 — 검색어가 있을 때만 노출(처음부터 전체 목록을 뿌리지 않음)
+  const results = useMemo(() => {
+    if (!q) return [];
     return sections.filter(
       (s) =>
         s.course_name.toLowerCase().includes(q) ||
         s.course_code.toLowerCase().includes(q) ||
         (s.professor_name ?? '').toLowerCase().includes(q)
     );
-  }, [sections, query]);
+  }, [sections, q]);
 
   async function add(s) {
     if (!uid) return;
@@ -114,6 +118,53 @@ export default function CourseSearch() {
     setBusyKey(null);
   }
 
+  // 분반 카드 — '내 강의'와 '검색 결과' 목록에서 공통 사용
+  const renderCard = (s) => {
+    const on = registered.has(s.key);
+    return (
+      <li key={s.key} className={`section-card${on ? ' is-on' : ''}`}>
+        <div className="section-info">
+          <p className="section-title">
+            <span className="section-name">{s.course_name}</span>
+            <span className="section-code">{s.course_code}-{s.section_no}</span>
+          </p>
+          <p className="section-sub">
+            {s.professor_name ?? '교수 미정'}
+          </p>
+          <p className="section-times">
+            <span className="section-time-ic" aria-hidden="true">🕒</span>
+            {formatTimes(s.times)}
+          </p>
+          <span className="section-links">
+            <Link
+              className="section-review-link"
+              to={`/reviews/${s.course_code}${s.professor_code ? `?prof=${s.professor_code}` : ''}`}
+            >
+              강의평 →
+            </Link>
+            <Link className="section-review-link" to={`/exams/${s.course_code}`}>
+              족보 →
+            </Link>
+            <button
+              type="button"
+              className="cor-flag-btn"
+              onClick={() => setCorr({ subject: `${s.course_name} ${s.section_no}분반`, options: sectionCorrectionOptions(s) })}
+            >
+              🚩 수정 제안
+            </button>
+          </span>
+        </div>
+        <button
+          className={`section-toggle ${on ? 'btn-remove' : 'btn-add'} btn-sm`}
+          onClick={() => (on ? remove(s) : add(s))}
+          disabled={busyKey === s.key}
+        >
+          {busyKey === s.key ? '…' : on ? '제거' : '＋ 추가'}
+        </button>
+      </li>
+    );
+  };
+
   return (
     <div className="page">
       <header className="page-header row">
@@ -135,66 +186,42 @@ export default function CourseSearch() {
 
       <div className="search-meta">
         {current && <span>{current.year}-{current.term}학기</span>}
-        {fromCache && <span className="cache-tag">캐시{navigator.onLine ? '' : ' · 오프라인'}</span>}
       </div>
 
       {error && <p className="error-msg">{error}</p>}
 
       {loading ? (
         <p className="muted center">불러오는 중…</p>
-      ) : filtered.length === 0 ? (
-        <div className="empty">
-          <span className="empty-emoji">🔍</span>
-          검색 결과가 없습니다.
-        </div>
       ) : (
-        <ul className="section-list">
-          {filtered.map((s) => {
-            const on = registered.has(s.key);
-            return (
-              <li key={s.key} className={`section-card${on ? ' is-on' : ''}`}>
-                <div className="section-info">
-                  <p className="section-title">
-                    <span className="section-name">{s.course_name}</span>
-                    <span className="section-code">{s.course_code}-{s.section_no}</span>
-                  </p>
-                  <p className="section-sub">
-                    {s.professor_name ?? '교수 미정'}
-                  </p>
-                  <p className="section-times">
-                    <span className="section-time-ic" aria-hidden="true">🕒</span>
-                    {formatTimes(s.times)}
-                  </p>
-                  <span className="section-links">
-                    <Link
-                      className="section-review-link"
-                      to={`/reviews/${s.course_code}${s.professor_code ? `?prof=${s.professor_code}` : ''}`}
-                    >
-                      강의평 →
-                    </Link>
-                    <Link className="section-review-link" to={`/exams/${s.course_code}`}>
-                      족보 →
-                    </Link>
-                    <button
-                      type="button"
-                      className="cor-flag-btn"
-                      onClick={() => setCorr({ subject: `${s.course_name} ${s.section_no}분반`, options: sectionCorrectionOptions(s) })}
-                    >
-                      🚩 수정 제안
-                    </button>
-                  </span>
+        <>
+          {mine.length > 0 && (
+            <>
+              <h3 className="section-label">내 강의</h3>
+              <ul className="section-list">{mine.map(renderCard)}</ul>
+            </>
+          )}
+
+          {q ? (
+            <>
+              <h3 className="section-label">검색 결과</h3>
+              {results.length === 0 ? (
+                <div className="empty">
+                  <span className="empty-emoji">🔍</span>
+                  검색 결과가 없습니다.
                 </div>
-                <button
-                  className={`section-toggle ${on ? 'btn-remove' : 'btn-add'} btn-sm`}
-                  onClick={() => (on ? remove(s) : add(s))}
-                  disabled={busyKey === s.key}
-                >
-                  {busyKey === s.key ? '…' : on ? '제거' : '＋ 추가'}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+              ) : (
+                <ul className="section-list">{results.map(renderCard)}</ul>
+              )}
+            </>
+          ) : (
+            mine.length === 0 && (
+              <div className="empty">
+                <span className="empty-emoji">🔍</span>
+                과목명·과목코드·교수명으로 검색해 강의를 추가하세요.
+              </div>
+            )
+          )}
+        </>
       )}
 
       {corr && (

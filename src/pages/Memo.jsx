@@ -168,6 +168,7 @@ export default function Memo() {
             </button>
           );
         })()}
+        <Link to={`/exams/${courseCode}`} className="btn-ghost btn-block">📄 족보 보기</Link>
       </section>
 
       {loading ? (

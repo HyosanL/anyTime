@@ -109,7 +109,7 @@ button { font-family: inherit; }
 .empty .empty-emoji { font-size: 2rem; opacity: 0.8; }
 
 /* ---------- 버튼 ---------- */
-.btn, .btn-add, .btn-remove, .btn-danger, .btn-ghost {
+.btn, .btn-add, .btn-remove, .btn-danger, .btn-danger-soft, .btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
   flex: none;
   padding: 0.6rem 1rem;
@@ -120,8 +120,8 @@ button { font-family: inherit; }
   transition: transform 0.06s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.btn:active, .btn-add:active, .btn-remove:active, .btn-danger:active, .btn-ghost:active { transform: scale(0.97); }
-.btn:disabled, .btn-add:disabled, .btn-remove:disabled, .btn-danger:disabled, .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:active, .btn-add:active, .btn-remove:active, .btn-danger:active, .btn-danger-soft:active, .btn-ghost:active { transform: scale(0.97); }
+.btn:disabled, .btn-add:disabled, .btn-remove:disabled, .btn-danger:disabled, .btn-danger-soft:disabled, .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-primary, .btn-add { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow-sm); }
 .btn-primary:hover, .btn-add:hover { background: var(--primary-strong); }
@@ -162,6 +162,7 @@ button { font-family: inherit; }
 /* ---------- 입력 ---------- */
 input, select, textarea { font-family: inherit; }
 .input, .field input, .field select, .field textarea,
+input:not([type]),
 input[type="text"], input[type="password"], input[type="number"], input[type="search"], input[type="email"] {
   width: 100%;
   padding: 0.65rem 0.8rem;

@@ -326,7 +326,7 @@
 }
 .memo-note { margin-top: 0.3rem; }
 
-.memo-review { padding: 0.6rem var(--pad) 0.3rem; }
+.memo-review { padding: 0.6rem var(--pad) 0.3rem; display: flex; flex-direction: column; gap: 0.5rem; }
 
 .memo-form {
   display: flex;
