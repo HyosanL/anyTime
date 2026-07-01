@@ -27,33 +27,7 @@ const EDITABLE: Record<string, string[]> = {
   board_comment: ['content'],
 }
 
-// "수3 수4 금1" / "수1-2" → 연속교시 블록 [{day,start,end}] (수정 제안 적용용)
-const DAY_KO: Record<string, number> = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 }
-function parseTimeBlocks(str: string) {
-  const slots: { day: number; period: number }[] = []
-  for (const tok of String(str || '').split(/[\s,]+/)) {
-    const m = tok.match(/^([월화수목금토일])(\d+)(?:[-~](\d+))?$/)
-    if (!m) continue
-    const day = DAY_KO[m[1]]
-    const a = Number(m[2])
-    const b = m[3] ? Number(m[3]) : a
-    for (let p = Math.min(a, b); p <= Math.max(a, b); p++) slots.push({ day, period: p })
-  }
-  const byDay: Record<number, Set<number>> = {}
-  for (const s of slots) (byDay[s.day] ??= new Set()).add(s.period)
-  const blocks: { day: number; start: number; end: number }[] = []
-  for (const d of Object.keys(byDay)) {
-    const ps = [...byDay[+d]].sort((a, b) => a - b)
-    let start = ps[0]
-    let prev = ps[0]
-    for (let i = 1; i < ps.length; i++) {
-      if (ps[i] === prev + 1) prev = ps[i]
-      else { blocks.push({ day: +d, start, end: prev }); start = ps[i]; prev = ps[i] }
-    }
-    blocks.push({ day: +d, start, end: prev })
-  }
-  return blocks
-}
+// (요일·교시 파싱/적용 로직은 DB 함수 apply_correction_row 로 이관됨 — db/schema.sql)
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -416,41 +390,71 @@ Deno.serve(async (req) => {
         return json({ status: 'OK' })
       }
       case 'apply_correction': {
-        const { data: c } = await admin.from('correction').select('*').eq('id', payload.id).maybeSingle()
-        if (!c) return json({ status: 'NOT_FOUND' }, 404)
-        if (c.status !== 'pending') return json({ status: 'ALREADY_DONE' }, 409)
-        const key = (c.target_key ?? {}) as Record<string, any>
-        const val = (c.suggested ?? null) as string | null
-        const secMatch = { course_code: key.course_code, year: key.year, term: key.term, section_no: key.section_no }
-        if (c.target === 'professor') {
-          if (c.field === 'name') await admin.from('professor').update({ name: val }).eq('code', key.code).throwOnError()
-          else if (c.field === 'department') await admin.from('professor').update({ department: val || null }).eq('code', key.code).throwOnError()
-          else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
-        } else if (c.target === 'course') {
-          if (c.field === 'name') await admin.from('course').update({ name: val }).eq('code', key.code).throwOnError()
-          else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
-        } else if (c.target === 'section') {
-          if (c.field !== 'professor') return json({ status: 'UNSUPPORTED_FIELD' }, 400)
-          let profCode: string | null = null
-          if (val) { const { data: p } = await admin.from('professor').select('code').eq('name', val).limit(1); profCode = p?.[0]?.code ?? null }
-          await admin.from('section').update({ professor_code: profCode }).match(secMatch).throwOnError()
-        } else if (c.target === 'section_time') {
-          if (c.field === 'room') {
-            await admin.from('section_time').update({ room: val || null }).match(secMatch).throwOnError()
-          } else if (c.field === 'time') {
-            const blocks = parseTimeBlocks(val ?? '')
-            if (!blocks.length) return json({ status: 'BAD_TIME' }, 400)
-            const { data: ex } = await admin.from('section_time').select('room').match(secMatch).limit(1)
-            const room = ex?.[0]?.room ?? null
-            await admin.from('section_time').delete().match(secMatch).throwOnError()
-            for (const b of blocks) {
-              await admin.from('section_time').insert({
-                ...secMatch, day_of_week: b.day, start_period: b.start, end_period: b.end, room,
-              }).throwOnError()
-            }
-          } else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
-        } else return json({ status: 'UNSUPPORTED_TARGET' }, 400)
-        await admin.from('correction').update({ status: 'applied' }).eq('id', c.id).throwOnError()
+        // 실제 반영 로직은 DB 함수(apply_correction_row)에 단일화 — 자동반영과 동일 경로.
+        const { data: st, error } = await admin.rpc('apply_correction_row', { p_id: payload.id })
+        if (error) return json({ status: 'ERROR', detail: error.message }, 500)
+        const code = st === 'OK' ? 200 : st === 'NOT_FOUND' ? 404 : st === 'ALREADY_DONE' ? 409 : 400
+        return json({ status: st ?? 'ERROR' }, code)
+      }
+      // 자동반영 알림: 사용자 동일 제안 3건↑로 시스템이 반영한 건 중 관리자 미확인.
+      case 'list_auto_notices': {
+        const { data } = await admin.from('correction')
+          .select('id, target, target_key, label, field, suggested, note, created_at')
+          .eq('auto_applied', true).eq('acknowledged', false)
+          .order('created_at', { ascending: false }).limit(200)
+        return json({ status: 'OK', items: data ?? [] })
+      }
+      case 'ack_correction': {
+        await admin.from('correction').update({ acknowledged: true }).eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      // ── 신고 확인 ──
+      // 신고 누적 중(아직 자동삭제 임계치 미도달)인 살아있는 글 목록.
+      // 신고 가능한 대상: review / class_memo / board_post (board_comment 는 신고 미지원).
+      case 'list_reported': {
+        const [rev, memo, bpost] = await Promise.all([
+          admin.from('review').select('id,course_code,prof_comment,course_comment,report_count,created_at')
+            .gt('report_count', 0).order('report_count', { ascending: false }).limit(200),
+          admin.from('class_memo').select('id,course_code,year,term,section_no,content,report_count,created_at')
+            .gt('report_count', 0).order('report_count', { ascending: false }).limit(200),
+          admin.from('board_post').select('id,board_id,title,content,report_count,created_at')
+            .gt('report_count', 0).order('report_count', { ascending: false }).limit(200),
+        ])
+        // 게시판명 라벨(맥락)
+        const boardIds = new Set((bpost.data ?? []).map((p) => p.board_id))
+        const boardMap = new Map()
+        if (boardIds.size) {
+          const { data: bs } = await admin.from('board').select('id,name').in('id', [...boardIds])
+          for (const b of (bs ?? [])) boardMap.set(b.id, b.name)
+        }
+        const items = [
+          ...(rev.data ?? []).map((r) => ({
+            type: 'review', id: r.id, course_code: r.course_code, created_at: r.created_at,
+            report_count: r.report_count, text: [r.prof_comment, r.course_comment].filter(Boolean).join(' / '), meta: {},
+          })),
+          ...(memo.data ?? []).map((m) => ({
+            type: 'class_memo', id: m.id, course_code: m.course_code, created_at: m.created_at,
+            report_count: m.report_count, text: m.content, meta: { year: m.year, term: m.term, section_no: m.section_no },
+          })),
+          ...(bpost.data ?? []).map((p) => ({
+            type: 'board_post', id: p.id, course_code: boardMap.get(p.board_id) ?? '게시판', created_at: p.created_at,
+            report_count: p.report_count, text: [p.title, p.content].filter(Boolean).join(' — '), meta: {},
+          })),
+        ].sort((a, b) => (b.report_count - a.report_count) || (a.created_at < b.created_at ? 1 : -1))
+        return json({ status: 'OK', items })
+      }
+      // 신고 무시(정상 처리): 신고 이벤트 삭제 + report_count 초기화. 글은 유지.
+      case 'dismiss_report': {
+        const table = String(payload.table)
+        const id = payload.id
+        if (table === 'review') {
+          await admin.from('review_report').delete().eq('review_id', id)
+        } else if (table === 'class_memo') {
+          await admin.from('memo_report').delete().eq('memo_id', id)
+        } else if (table === 'board_post') {
+          await admin.from('board_event').delete().eq('post_id', id).eq('kind', 'report')
+        } else return json({ status: 'BAD_REQUEST' }, 400)
+        await admin.from(table).update({ report_count: 0 }).eq('id', id).throwOnError()
         return json({ status: 'OK' })
       }
       default:

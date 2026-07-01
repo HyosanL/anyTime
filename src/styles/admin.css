@@ -350,6 +350,62 @@ code {
   font-weight: 700;
 }
 
+/* 3탭 세그먼트 */
+.mod-tabs {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0 var(--pad);
+  margin: 0.2rem 0 0.3rem;
+}
+.mod-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.4rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 0.6rem);
+  cursor: pointer;
+}
+.mod-tab.is-active {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-weak, var(--surface));
+}
+.mod-tab-badge {
+  min-width: 1.3rem;
+  padding: 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3rem;
+  text-align: center;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--primary);
+}
+.mod-tab-badge.warn { background: var(--warn); }
+
+/* 탭 내부 상단 바(건수 + 액션) */
+.mod-tab-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem var(--pad) 0;
+}
+.mod-count { font-size: 0.82rem; color: var(--text-3); }
+
+/* 자동반영 알림 카드 */
+.mod-card.mod-auto {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
 .mod-list {
   list-style: none;
   display: flex;

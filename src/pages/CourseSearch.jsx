@@ -6,12 +6,13 @@ import { getCatalog, buildSections, formatTimes, sectionKey } from '../lib/cache
 import CorrectionModal from '../components/CorrectionModal';
 
 // 분반 하나에 대한 '수정 제안' 항목들(시간/강의실/교수/과목명).
-function sectionCorrectionOptions(s) {
+// meta: { periods:number[], professors:[{code,name,department}] } — 양식 빌더에 전달.
+function sectionCorrectionOptions(s, meta) {
   const secKey = { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no };
   return [
-    { label: '요일·교시(시간)', target: 'section_time', targetKey: secKey, field: 'time', placeholder: '예: 수3 수4 금1', current: formatTimes(s.times) },
+    { label: '요일·교시(시간)', target: 'section_time', targetKey: secKey, field: 'time', kind: 'time', periods: meta.periods, current: formatTimes(s.times) },
     { label: '강의실', target: 'section_time', targetKey: secKey, field: 'room', placeholder: '예: 302' },
-    { label: '담당교수', target: 'section', targetKey: secKey, field: 'professor', placeholder: '교수 이름', current: s.professor_name || '' },
+    { label: '담당교수', target: 'section', targetKey: secKey, field: 'professor', kind: 'professor', professors: meta.professors, current: s.professor_name || '' },
     { label: '과목명', target: 'course', targetKey: { code: s.course_code }, field: 'name', current: s.course_name },
   ];
 }
@@ -30,6 +31,8 @@ export default function CourseSearch() {
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
   const [corr, setCorr] = useState(null); // { subject, options }
+  // 수정 제안 양식 빌더용: 교시 목록 + 교수 목록
+  const [meta, setMeta] = useState({ periods: [], professors: [] });
 
   async function loadCatalog(force = false) {
     force ? setRefreshing(true) : setLoading(true);
@@ -39,6 +42,10 @@ export default function CourseSearch() {
       const { current, sections } = buildSections(catalog);
       setCurrent(current);
       setSections(sections);
+      setMeta({
+        periods: [...(catalog.period ?? [])].map((p) => p.no).sort((a, b) => a - b),
+        professors: catalog.professor ?? [],
+      });
     } catch (e) {
       setError('카탈로그를 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
     } finally {
@@ -148,7 +155,7 @@ export default function CourseSearch() {
             <button
               type="button"
               className="cor-flag-btn"
-              onClick={() => setCorr({ subject: `${s.course_name} ${s.section_no}분반`, options: sectionCorrectionOptions(s) })}
+              onClick={() => setCorr({ subject: `${s.course_name} ${s.section_no}분반`, options: sectionCorrectionOptions(s, meta) })}
             >
               🚩 수정 제안
             </button>
