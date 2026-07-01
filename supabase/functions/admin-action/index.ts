@@ -25,6 +25,34 @@ const EDITABLE: Record<string, string[]> = {
   exam_archive: ['title', 'description'],
 }
 
+// "수3 수4 금1" / "수1-2" → 연속교시 블록 [{day,start,end}] (수정 제안 적용용)
+const DAY_KO: Record<string, number> = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 }
+function parseTimeBlocks(str: string) {
+  const slots: { day: number; period: number }[] = []
+  for (const tok of String(str || '').split(/[\s,]+/)) {
+    const m = tok.match(/^([월화수목금토일])(\d+)(?:[-~](\d+))?$/)
+    if (!m) continue
+    const day = DAY_KO[m[1]]
+    const a = Number(m[2])
+    const b = m[3] ? Number(m[3]) : a
+    for (let p = Math.min(a, b); p <= Math.max(a, b); p++) slots.push({ day, period: p })
+  }
+  const byDay: Record<number, Set<number>> = {}
+  for (const s of slots) (byDay[s.day] ??= new Set()).add(s.period)
+  const blocks: { day: number; start: number; end: number }[] = []
+  for (const d of Object.keys(byDay)) {
+    const ps = [...byDay[+d]].sort((a, b) => a - b)
+    let start = ps[0]
+    let prev = ps[0]
+    for (let i = 1; i < ps.length; i++) {
+      if (ps[i] === prev + 1) prev = ps[i]
+      else { blocks.push({ day: +d, start, end: prev }); start = ps[i]; prev = ps[i] }
+    }
+    blocks.push({ day: +d, start, end: prev })
+  }
+  return blocks
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ status: 'BAD_REQUEST' }, 405)
@@ -326,6 +354,57 @@ Deno.serve(async (req) => {
           .gt('blocked_until', new Date().toISOString())
           .order('blocked_until', { ascending: false })
         return json({ status: 'OK', blocks: data ?? [] })
+      }
+      // ── 정보 수정 제안 ──
+      case 'list_corrections': {
+        const st = payload.status ? String(payload.status) : 'pending'
+        const { data } = await admin.from('correction')
+          .select('id, target, target_key, label, field, suggested, note, status, created_at')
+          .eq('status', st).order('created_at', { ascending: false }).limit(200)
+        return json({ status: 'OK', items: data ?? [] })
+      }
+      case 'reject_correction': {
+        await admin.from('correction').update({ status: 'rejected' }).eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'apply_correction': {
+        const { data: c } = await admin.from('correction').select('*').eq('id', payload.id).maybeSingle()
+        if (!c) return json({ status: 'NOT_FOUND' }, 404)
+        if (c.status !== 'pending') return json({ status: 'ALREADY_DONE' }, 409)
+        const key = (c.target_key ?? {}) as Record<string, any>
+        const val = (c.suggested ?? null) as string | null
+        const secMatch = { course_code: key.course_code, year: key.year, term: key.term, section_no: key.section_no }
+        if (c.target === 'professor') {
+          if (c.field === 'name') await admin.from('professor').update({ name: val }).eq('code', key.code).throwOnError()
+          else if (c.field === 'department') await admin.from('professor').update({ department: val || null }).eq('code', key.code).throwOnError()
+          else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
+        } else if (c.target === 'course') {
+          if (c.field === 'name') await admin.from('course').update({ name: val }).eq('code', key.code).throwOnError()
+          else if (c.field === 'credits') await admin.from('course').update({ credits: val ? Number(val) : null }).eq('code', key.code).throwOnError()
+          else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
+        } else if (c.target === 'section') {
+          if (c.field !== 'professor') return json({ status: 'UNSUPPORTED_FIELD' }, 400)
+          let profCode: string | null = null
+          if (val) { const { data: p } = await admin.from('professor').select('code').eq('name', val).limit(1); profCode = p?.[0]?.code ?? null }
+          await admin.from('section').update({ professor_code: profCode }).match(secMatch).throwOnError()
+        } else if (c.target === 'section_time') {
+          if (c.field === 'room') {
+            await admin.from('section_time').update({ room: val || null }).match(secMatch).throwOnError()
+          } else if (c.field === 'time') {
+            const blocks = parseTimeBlocks(val ?? '')
+            if (!blocks.length) return json({ status: 'BAD_TIME' }, 400)
+            const { data: ex } = await admin.from('section_time').select('room').match(secMatch).limit(1)
+            const room = ex?.[0]?.room ?? null
+            await admin.from('section_time').delete().match(secMatch).throwOnError()
+            for (const b of blocks) {
+              await admin.from('section_time').insert({
+                ...secMatch, day_of_week: b.day, start_period: b.start, end_period: b.end, room,
+              }).throwOnError()
+            }
+          } else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
+        } else return json({ status: 'UNSUPPORTED_TARGET' }, 400)
+        await admin.from('correction').update({ status: 'applied' }).eq('id', c.id).throwOnError()
+        return json({ status: 'OK' })
       }
       default:
         return json({ status: 'BAD_REQUEST', detail: 'unknown action' }, 400)

@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보' };
+const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과', credits: '학점' };
 const POLL_MS = 15000;
 
 async function call(action, payload = {}) {
@@ -28,6 +29,7 @@ function Highlighted({ text }) {
 export default function Moderation() {
   const [isAdmin, setIsAdmin] = useState(null);
   const [items, setItems] = useState([]);
+  const [corrs, setCorrs] = useState([]); // 수정 제안(pending)
   const [updatedAt, setUpdatedAt] = useState(null);
   const [edit, setEdit] = useState(null); // { type, id, text }
   const timer = useRef(null);
@@ -37,7 +39,11 @@ export default function Moderation() {
   }, []);
 
   const load = useCallback(async () => {
-    const r = await call('list_recent', { limit: 100 });
+    const [r, rc] = await Promise.all([
+      call('list_recent', { limit: 100 }),
+      call('list_corrections', { status: 'pending' }),
+    ]);
+    if (rc.ok) setCorrs(rc.data.items ?? []);
     if (!r.ok) return;
     const withFlags = (r.data.items ?? []).map((it) => ({ ...it, flags: flagText(it.text) }));
     // 부정어 포함 글을 위로, 그 다음 최신순
@@ -49,6 +55,17 @@ export default function Moderation() {
     setItems(withFlags);
     setUpdatedAt(new Date());
   }, []);
+
+  async function applyCorr(c) {
+    const r = await call('apply_correction', { id: c.id });
+    if (r.ok) setCorrs((prev) => prev.filter((x) => x.id !== c.id));
+    else alert('적용 실패: ' + (r.status ?? '오류') + (r.status === 'BAD_TIME' ? ' (시간 형식: 예 "수3 수4 금1")' : ''));
+  }
+  async function rejectCorr(c) {
+    if (!confirm('이 수정 제안을 반려할까요?')) return;
+    const r = await call('reject_correction', { id: c.id });
+    if (r.ok) setCorrs((prev) => prev.filter((x) => x.id !== c.id));
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -101,8 +118,34 @@ export default function Moderation() {
 
       <p className="mod-status">
         실시간(15초) · 총 {items.length}건 · <span className="mod-flag-n">검토필요 {flaggedCount}건</span>
+        {corrs.length > 0 && <span className="mod-flag-n"> · 수정제안 {corrs.length}건</span>}
         {updatedAt && ` · ${updatedAt.toLocaleTimeString('ko-KR')} 갱신`}
       </p>
+
+      {corrs.length > 0 && (
+        <>
+          <h3 className="mod-corr-head">🚩 정보 수정 제안 {corrs.length}건</h3>
+          <ul className="mod-list">
+            {corrs.map((c) => (
+              <li key={`corr-${c.id}`} className="card mod-card">
+                <div className="mod-card-top">
+                  <span className="tag tag-primary mod-type">수정제안</span>
+                  <span className="mod-course">{c.label || c.target} · <span className="mod-corr-field">{FIELD_LABEL[c.field] || c.field}</span></span>
+                  <span className="mod-time">{new Date(c.created_at).toLocaleString('ko-KR')}</span>
+                </div>
+                <p className="mod-text">
+                  {c.suggested ? <>제안값: <b className="mod-corr-sug">{c.suggested}</b></> : <span className="muted">제안값 없음</span>}
+                  {c.note ? <><br />설명: {c.note}</> : null}
+                </p>
+                <div className="mod-actions">
+                  <button className="btn-add btn-sm" onClick={() => applyCorr(c)}>적용</button>
+                  <button className="rev-del-btn" onClick={() => rejectCorr(c)}>반려</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <ul className="mod-list">
         {items.length === 0 && (

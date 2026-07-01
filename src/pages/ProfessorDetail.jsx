@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, buildSections } from '../lib/cache';
 import TimetableGrid from '../components/TimetableGrid';
+import CorrectionModal from '../components/CorrectionModal';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -37,6 +38,7 @@ export default function ProfessorDetail() {
   const [summary, setSummary] = useState([]);     // course_professor_rating rows
   const [reviews, setReviews] = useState([]);     // review rows (이 교수)
   const [loading, setLoading] = useState(true);
+  const [corr, setCorr] = useState(false);
 
   async function loadAll() {
     setLoading(true);
@@ -120,8 +122,20 @@ export default function ProfessorDetail() {
         <div className="prof-head-rating">
           <Stars value={overall} />
           <span className="prof-head-count">강의평 {totalReviews}개</span>
+          <button type="button" className="cor-flag-btn" onClick={() => setCorr(true)}>🚩 정보 수정 제안</button>
         </div>
       </section>
+
+      {corr && (
+        <CorrectionModal
+          subject={`교수 ${profName}`}
+          options={[
+            { label: '교수명', target: 'professor', targetKey: { code }, field: 'name', current: profName },
+            { label: '학과', target: 'professor', targetKey: { code }, field: 'department', current: prof?.department || '', placeholder: '예: 항공우주공학과' },
+          ]}
+          onClose={() => setCorr(false)}
+        />
+      )}
 
       {/* 담당 시간표 (현재 학기) */}
       <section className="prof-tt">

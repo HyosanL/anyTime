@@ -3,6 +3,19 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, buildSections, formatTimes, sectionKey } from '../lib/cache';
+import CorrectionModal from '../components/CorrectionModal';
+
+// 분반 하나에 대한 '수정 제안' 항목들(시간/강의실/교수/과목명/학점).
+function sectionCorrectionOptions(s) {
+  const secKey = { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no };
+  return [
+    { label: '요일·교시(시간)', target: 'section_time', targetKey: secKey, field: 'time', placeholder: '예: 수3 수4 금1', current: formatTimes(s.times) },
+    { label: '강의실', target: 'section_time', targetKey: secKey, field: 'room', placeholder: '예: 302' },
+    { label: '담당교수', target: 'section', targetKey: secKey, field: 'professor', placeholder: '교수 이름', current: s.professor_name || '' },
+    { label: '과목명', target: 'course', targetKey: { code: s.course_code }, field: 'name', current: s.course_name },
+    { label: '학점', target: 'course', targetKey: { code: s.course_code }, field: 'credits', placeholder: '예: 3', current: s.credits ?? '' },
+  ];
+}
 
 // 화면4: 강의 검색 → 시간표 추가. 카탈로그는 IndexedDB 캐시 우선(오프라인 가능).
 export default function CourseSearch() {
@@ -18,6 +31,7 @@ export default function CourseSearch() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
+  const [corr, setCorr] = useState(null); // { subject, options }
 
   async function loadCatalog(force = false) {
     force ? setRefreshing(true) : setLoading(true);
@@ -163,6 +177,13 @@ export default function CourseSearch() {
                     <Link className="section-review-link" to={`/exams/${s.course_code}`}>
                       족보 →
                     </Link>
+                    <button
+                      type="button"
+                      className="cor-flag-btn"
+                      onClick={() => setCorr({ subject: `${s.course_name} ${s.section_no}분반`, options: sectionCorrectionOptions(s) })}
+                    >
+                      🚩 수정 제안
+                    </button>
                   </span>
                 </div>
                 <button
@@ -176,6 +197,10 @@ export default function CourseSearch() {
             );
           })}
         </ul>
+      )}
+
+      {corr && (
+        <CorrectionModal subject={corr.subject} options={corr.options} onClose={() => setCorr(null)} />
       )}
     </div>
   );

@@ -1,0 +1,29 @@
+/* correction.css — 정보 수정 제안 모달 + 모더레이션 패널 */
+.cor-flag-btn {
+  background: none; border: none; padding: 0;
+  color: var(--text-3); font-size: 0.78rem; cursor: pointer;
+}
+.cor-flag-btn:hover { color: var(--primary); }
+
+.cor-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.cor-modal {
+  width: 100%; max-width: 420px; max-height: 90vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 1rem 1.1rem 1.2rem;
+  display: flex; flex-direction: column; gap: 0.55rem;
+}
+.cor-head { display: flex; align-items: center; justify-content: space-between; }
+.cor-x { background: none; border: none; font-size: 1rem; color: var(--text-2); cursor: pointer; }
+.cor-subject { margin: 0; font-size: 0.85rem; color: var(--text-2); }
+.cor-current { margin: 0; font-size: 0.82rem; color: var(--text-2); }
+.cor-hint { margin: 0; font-size: 0.72rem; color: var(--text-3); text-align: center; }
+.cor-done { display: flex; flex-direction: column; gap: 0.7rem; }
+
+/* 모더레이션: 수정 제안 패널 */
+.mod-corr-head { margin: 0.2rem 0 0.4rem; font-size: 0.9rem; font-weight: 700; }
+.mod-corr-field { color: var(--primary); font-weight: 600; }
+.mod-corr-sug { color: var(--text-1); }
