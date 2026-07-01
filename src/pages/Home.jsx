@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import Badge, { badgeOf } from '../components/Badge';
-import ThemeToggle from '../components/ThemeToggle';
 import TimetableGrid from '../components/TimetableGrid';
 import { getCatalog, buildMyTimetable, saveTimetableCache, readTimetableCache } from '../lib/cache';
 import { boardEnabled } from '../lib/board';
@@ -167,25 +166,16 @@ export default function Home() {
   return (
     <div className="page home">
       <header className="page-header">
-        <span className="home-brand">애타</span>
+        <Link to="/profile" className="home-ident">
+          <strong className="home-ident-name">{cadet?.username}</strong>
+          <Badge tier={tier} level={count} size={22} />
+        </Link>
         <div className="home-header-actions">
-          <ThemeToggle />
           <button className="link-btn" onClick={logout}>로그아웃</button>
         </div>
       </header>
 
       <div className="home-body">
-        <Link to="/profile" className="card home-profile">
-          <Badge tier={tier} level={count} size={48} />
-          <div className="home-profile-text">
-            <p className="home-hello">
-              <strong>{cadet?.username}</strong> 님, 환영합니다
-            </p>
-            <p className="home-tier">{tier === 'rainbow' ? '레인보우' : tier === 'gold' ? '골드' : tier === 'silver' ? '실버' : '그레이'} · Lv.{count}</p>
-          </div>
-          <span className="home-profile-arrow row-chevron">›</span>
-        </Link>
-
         <section className="card home-tt">
           <div className="home-tt-head">
             <h2 className="card-title">{current ? `${current.year}-${current.term} ` : ''}시간표</h2>

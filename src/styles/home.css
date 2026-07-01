@@ -12,15 +12,29 @@
 }
 
 /* ============================================================
-   홈 헤더
+   홈 헤더 — 좌측 아이디+뱃지 카드(→ /profile), 우측 로그아웃
    ============================================================ */
-.home-brand {
+.home-ident {
   grid-column: 1;
   justify-self: start;
-  font-size: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.55rem 0.25rem 0.4rem;
+  border-radius: var(--r-full);
+  color: var(--text);
+  transition: background 0.15s ease, transform 0.06s ease;
+}
+.home-ident:hover { background: var(--card-hover); }
+.home-ident:active { transform: scale(0.97); background: var(--card-active); }
+.home-ident-name {
+  font-size: 1.1rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60vw;
 }
 .home-header-actions {
   grid-column: 3;
@@ -29,32 +43,6 @@
   align-items: center;
   gap: 0.5rem;
 }
-
-/* ============================================================
-   프로필 요약 카드 (홈 → /profile 링크)
-   ============================================================ */
-.home-profile {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.95rem 1.05rem;
-  color: var(--text);
-  transition: background 0.15s ease, transform 0.06s ease, border-color 0.15s ease;
-}
-.home-profile:hover { background: var(--card-hover); border-color: var(--border-strong); }
-.home-profile:active { transform: scale(0.992); background: var(--card-active); }
-.home-profile-text { flex: 1; min-width: 0; }
-.home-hello {
-  font-size: 0.98rem;
-  color: var(--text);
-}
-.home-hello strong { font-weight: 700; }
-.home-tier {
-  font-size: 0.8rem;
-  color: var(--text-3);
-  margin-top: 0.15rem;
-}
-.home-profile-arrow { flex: none; }
 
 /* ============================================================
    홈 시간표 카드

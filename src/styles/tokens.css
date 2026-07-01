@@ -77,8 +77,8 @@
   --bar-bg: rgba(255, 255, 255, 0.82);
   --bar-border: var(--border);
 
-  /* 모바일 상태바 색(theme-color) — 참고용 */
-  --status-bar: #f5f6f8;
+  /* 모바일 상태바 색(theme-color) — 앱 상단바(헤더)에 맞춤 */
+  --status-bar: #ffffff;
 
   /* 레이아웃 */
   --app-w: 460px;

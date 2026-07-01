@@ -4,7 +4,8 @@
 import { useEffect, useState } from 'react';
 
 const KEY = 'theme'; // 'system' | 'light' | 'dark'
-const META = { light: '#f5f6f8', dark: '#0b0f16' };
+// 상태바(theme-color)는 앱 상단바(헤더) 색과 맞춘다: 라이트=흰색, 다크=상단바 배경.
+const META = { light: '#ffffff', dark: '#0b0f16' };
 
 const mql = () => window.matchMedia('(prefers-color-scheme: dark)');
 
