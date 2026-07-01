@@ -77,7 +77,7 @@ async function mapLimit(items, limit, fn) {
 const cleanName = (s) => String(s || '').replace(/\s+/g, '').trim();
 const cleanProf = (s) => {
   const first = String(s || '').split(/[,，]/)[0]; // 팀티칭이면 대표 1명
-  const n = first.replace(/\s+/g, '').trim();
+  const n = first.replace(/\s+/g, ' ').trim(); // 공백 축약(제거 아님) — 영문 이름 "Dan Kingyens" 유지
   return n || null;
 };
 
