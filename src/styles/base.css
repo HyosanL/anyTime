@@ -21,6 +21,13 @@ body {
   line-height: 1.5;
 }
 
+/* 모바일: iOS 상태바(노치) 영역은 body 배경으로 칠해진다.
+   → 본문 바깥 배경(--bg)이 아니라 앱 상단바(헤더=--surface/--status-bar) 색과 맞춘다.
+   데스크톱(≥480px)은 중앙 컬럼 뒤 --bg 레이어링을 유지한다. */
+@media (max-width: 479.98px) {
+  body { background: var(--status-bar); }
+}
+
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; }
 ::selection { background: var(--primary-weak); }
