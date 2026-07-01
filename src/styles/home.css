@@ -150,6 +150,12 @@
   color: var(--accent);
 }
 
+/* prof(교수 검색) 변형 — amber 토큰 */
+.nav-tile-prof .nav-tile-ic {
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
 /* admin 변형 — 강조 보더 + chip 아이콘 */
 .nav-tile-admin {
   border-color: var(--primary-weak-border);

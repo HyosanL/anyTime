@@ -6,6 +6,8 @@ import Onboarding from './pages/Onboarding';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import CourseSearch from './pages/CourseSearch';
+import ProfessorSearch from './pages/ProfessorSearch';
+import ProfessorDetail from './pages/ProfessorDetail';
 import Reviews from './pages/Reviews';
 import Exams from './pages/Exams';
 import Memo from './pages/Memo';
@@ -96,6 +98,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
+          <Route path="/professors" element={<ProtectedRoute><ProfessorSearch /></ProtectedRoute>} />
+          <Route path="/professor/:code" element={<ProtectedRoute><ProfessorDetail /></ProtectedRoute>} />
           <Route path="/reviews/:courseCode" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
           <Route path="/exams/:courseCode" element={<ProtectedRoute><Exams /></ProtectedRoute>} />
           <Route path="/memo/:courseCode/:year/:term/:sectionNo" element={<ProtectedRoute><Memo /></ProtectedRoute>} />
