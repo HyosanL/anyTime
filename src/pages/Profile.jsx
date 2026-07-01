@@ -13,7 +13,7 @@ const TIERS = [
   { key: 'rainbow', label: '레인보우', min: 100 },
 ];
 
-// 화면8: 레벨/프로필. cadet_level 기준 본인 뱃지 + 다음 등급까지 진행.
+// 화면8: 레벨/프로필. cadet.post_count 기준 본인 뱃지(badgeOf) + 다음 등급까지 진행.
 export default function Profile() {
   const { cadet } = useAuthContext();
   const navigate = useNavigate();

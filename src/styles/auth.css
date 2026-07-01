@@ -7,7 +7,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 1.4rem;
-  padding: 2.5rem var(--pad) calc(2.5rem + env(safe-area-inset-bottom));
+  padding: calc(2.5rem + env(safe-area-inset-top)) var(--pad) calc(2.5rem + env(safe-area-inset-bottom));
 }
 
 /* 브랜드 헤더(로고 + 제목 + 부제) */

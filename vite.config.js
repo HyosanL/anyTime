@@ -13,7 +13,7 @@ export default defineConfig({
         short_name: '애타',
         description: '공군사관학교 강의정보 공유 PWA',
         lang: 'ko',
-        theme_color: '#1e40af',
+        theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',

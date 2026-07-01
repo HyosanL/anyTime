@@ -12,7 +12,7 @@ async function authHeaders() {
   return session ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
-// 족보 보관기간(년). cleanup-exams / purge_old_exams 와 동일해야 함.
+// 족보 보관기간(년). DB의 purge_old_exams() pg_cron 과 동일해야 함.
 export const EXAM_RETENTION_YEARS = 5;
 
 // 업로드일 기준 만료일(Date) 계산

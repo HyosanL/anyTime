@@ -13,6 +13,19 @@ async function call(action, payload = {}) {
   return { ok: status === 'OK', status, data };
 }
 
+// 교수 명단 동기화(sync-professors) 는 admin-action 이 아니라 전용 Edge Function.
+async function invokeSync(mode) {
+  let { data, error } = await supabase.functions.invoke('sync-professors', { body: { mode } });
+  if (error) { try { data = await error.context?.json?.(); } catch { data = null; } }
+  return { ok: data?.status === 'OK', status: data?.status ?? 'ERROR', data: data ?? {} };
+}
+
+const fmtDateTime = (iso) => {
+  if (!iso) return '없음';
+  try { return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch { return iso; }
+};
+
 // 기능 카드: 이모지 아이콘 + 제목 + 한 줄 설명 + 본문
 function Card({ icon, title, desc, children }) {
   return (
@@ -29,6 +42,110 @@ function Card({ icon, title, desc, children }) {
   );
 }
 
+// 교수 명단 동기화 카드: 공식 홈페이지 크롤 → 미리보기(diff) → 반영.
+function ProfessorSyncCard({ syncedAt, onApplied }) {
+  const [busy, setBusy] = useState('');        // '' | 'preview' | 'apply'
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null);
+  const [msg, setMsg] = useState('');
+
+  async function doPreview() {
+    setBusy('preview'); setMsg(''); setResult(null); setPreview(null);
+    const r = await invokeSync('preview');
+    setBusy('');
+    if (r.ok) setPreview(r.data);
+    else setMsg(r.status === 'NO_DATA'
+      ? '⚠️ 공사 홈페이지에서 명단을 가져오지 못했습니다. (서버에서 사이트 접속이 차단되었을 수 있습니다)'
+      : `⚠️ 실패: ${r.status}`);
+  }
+  async function doApply() {
+    if (!confirm('크롤한 명단을 반영합니다. 새 교수 추가와 학과 변경만 적용되며, 기존 교수는 삭제되지 않습니다.')) return;
+    setBusy('apply'); setMsg('');
+    const r = await invokeSync('apply');
+    setBusy('');
+    if (r.ok) {
+      setResult(r.data); setPreview(null);
+      setMsg(`✅ 반영 완료 — 추가 ${r.data.added} · 학과변경 ${r.data.updated} · 유지 ${r.data.unchanged}`);
+      onApplied?.();
+    } else setMsg(r.status === 'NO_DATA'
+      ? '⚠️ 명단을 가져오지 못해 반영하지 않았습니다.'
+      : `⚠️ 실패: ${r.status}`);
+  }
+
+  const p = preview;
+  return (
+    <Card icon="🔄" title="교수 명단 동기화"
+      desc="공군사관학교 공식 홈페이지(교수소개)에서 학과별 교수 명단을 가져와 대조합니다. 새 교수는 추가하고 학과가 바뀐 교수는 갱신하며, 기존 교수는 삭제하지 않습니다. 주기 자동 갱신은 pg_cron 으로 설정합니다(db/sync_professors_cron.sql).">
+      <div className="adm-code-box">
+        <span className="adm-code-label">마지막 동기화</span>
+        <span className="adm-code-value">{fmtDateTime(syncedAt)}</span>
+      </div>
+
+      <div className="adm-btn-row">
+        <button className="btn-add" disabled={!!busy} onClick={doPreview}>
+          {busy === 'preview' ? '불러오는 중…' : '미리보기 불러오기'}
+        </button>
+        {p && (
+          <button className="btn-add" disabled={!!busy}
+            onClick={doApply} title="추가/학과변경 반영">
+            {busy === 'apply' ? '반영 중…' : `반영하기 (추가 ${p.add.length}·변경 ${p.deptChanges.length})`}
+          </button>
+        )}
+      </div>
+      {msg && <p className={`admin-msg ${msg.startsWith('⚠️') ? 'is-fail' : 'is-ok'}`}>{msg}</p>}
+
+      {p && (
+        <div className="adm-expand">
+          <p className="note">학과 {p.scanned.departments}개 · 교수 {p.scanned.professors}명 확인.
+            {' '}추가 <b>{p.add.length}</b> · 학과변경 <b>{p.deptChanges.length}</b> · 유지 {p.unchanged}
+            {p.ambiguous.length > 0 && <> · 동명이인 보류 {p.ambiguous.length}</>}
+            {p.orphans.length > 0 && <> · 홈페이지에 없음 {p.orphans.length}</>}
+          </p>
+
+          {p.add.length > 0 && <>
+            <div className="section-label adm-sub-label">추가될 교수 ({p.add.length})</div>
+            <div className="adm-tags">
+              {p.add.map((a, i) => <span key={i} className="tag tag-success">{a.name} · {a.department}</span>)}
+            </div>
+          </>}
+
+          {p.deptChanges.length > 0 && <>
+            <div className="section-label adm-sub-label">학과 변경 ({p.deptChanges.length})</div>
+            <div className="adm-tags">
+              {p.deptChanges.map((c, i) => <span key={i} className="tag tag-primary">{c.name}: {c.from || '—'} → {c.to}</span>)}
+            </div>
+          </>}
+
+          {p.orphans.length > 0 && <>
+            <div className="section-label adm-sub-label">홈페이지에 없는 기존 교수 ({p.orphans.length}) — 자동 삭제되지 않음. 필요 시 교수 관리에서 수동 삭제</div>
+            <div className="adm-tags">
+              {p.orphans.map((o) => <span key={o.code} className="tag tag-warn">{o.name}{o.department ? ` · ${o.department}` : ''}</span>)}
+            </div>
+          </>}
+
+          {p.ambiguous.length > 0 && <>
+            <div className="section-label adm-sub-label">동명이인 보류 ({p.ambiguous.length}) — 교수 관리에서 직접 확인</div>
+            <div className="adm-tags">
+              {p.ambiguous.map((a, i) => <span key={i} className="tag">{a.name} · {a.dept}</span>)}
+            </div>
+          </>}
+
+          {p.errors?.length > 0 && (
+            <p className="note">일부 페이지를 읽지 못했습니다: {p.errors.join(' / ')}</p>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <p className="note">반영 결과 — 추가 {result.added} · 학과변경 {result.updated} · 유지 {result.unchanged}
+          {result.orphans > 0 && ` · 홈페이지에 없음 ${result.orphans}(유지)`}
+          {result.ambiguous > 0 && ` · 동명이인 보류 ${result.ambiguous}`}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 
 // 허브 항목 정의 (key는 라우팅 section 과 일치). moderation 은 별도 페이지로 링크.
@@ -37,6 +154,7 @@ const SECTIONS = [
   { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
   { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
+  { key: 'professors-sync', icon: '🔄', title: '교수 명단 동기화', sub: '공식 홈페이지에서 교수 명단 자동 갱신' },
   { key: 'semesters', icon: '🗓️', title: '학기 · 교시', sub: '현재 학기와 교시 시각 설정' },
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
   { key: 'settings', icon: '⚙️', title: '지오펜싱 · 기간', sub: '캠퍼스 위치·반경·각종 기간' },
@@ -312,6 +430,10 @@ export default function Admin() {
               <button className="btn-add btn-block" onClick={async () => { if (!prof.name.trim()) return; const r = await run('add_professor', prof, '교수 추가(코드 자동)'); if (r.ok) setProf({ code: '', name: '', department: '' }); }}>교수 추가</button>
             )}
           </Card>
+        )}
+
+        {section === 'professors-sync' && (
+          <ProfessorSyncCard syncedAt={setting.professors_synced_at} onApplied={loadAll} />
         )}
 
         {section === 'semesters' && (

@@ -83,5 +83,17 @@ export const listComments = (postId) =>
 export const react = (postId, kind) => supabase.rpc('board_react', { p_post_id: postId, p_kind: kind }).then((r) => r.data);
 export const addComment = (postId, parentId, content, password) =>
   supabase.rpc('create_comment_b', { p_post_id: postId, p_parent: parentId || null, p_content: content, p_password: password }).then((r) => r.data);
-export const deletePost = (id, password) => supabase.rpc('delete_post', { p_id: id, p_password: password });
+// 게시글 삭제는 R2 이미지까지 함께 지우도록 /api/board-delete(Pages Functions) 경유.
+// (내부에서 delete_post RPC 로 비번 검증·행 삭제 후 R2 객체 제거)
+export const deletePost = async (id, password) => {
+  const res = await fetch('/api/board-delete', {
+    method: 'POST',
+    headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, password }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (body.status === 'OK') return { data: true, error: null };
+  if (body.status === 'BAD_PASSWORD' || body.status === 'NOT_FOUND') return { data: false, error: null };
+  return { data: null, error: new Error(body.status || 'ERROR') };
+};
 export const deleteComment = (id, password) => supabase.rpc('delete_comment_b', { p_id: id, p_password: password });

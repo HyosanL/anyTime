@@ -77,7 +77,8 @@
   --bar-bg: rgba(255, 255, 255, 0.82);
   --bar-border: var(--border);
 
-  /* 모바일 상태바 색(theme-color) — 앱 상단바(헤더)에 맞춤 */
+  /* 모바일 상태바 색 — 앱 상단바(헤더)에 맞춤.
+     theme-color 메타(Safari)와 html 배경(iOS standalone 상태바 영역) 양쪽에서 쓴다. */
   --status-bar: #ffffff;
 
   /* 레이아웃 */

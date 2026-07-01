@@ -12,7 +12,7 @@ const DB_NAME = 'anytime-cache';
 const DB_VERSION = 1;
 const STORE = 'kv';
 const SYNCED_KEY = '_syncedAt';
-const STALE_MS = 6 * 60 * 60 * 1000; // 6시간
+const STALE_MS = 24 * 60 * 60 * 1000; // 24시간 (강의 데이터는 학기당 거의 불변 → egress 절감. 관리자 수정 시 수동 새로고침으로 즉시 반영)
 
 // 캐시할 카탈로그 테이블 (공용 읽기 전용 데이터)
 const TABLES = ['professor', 'semester', 'course', 'period', 'section', 'section_time'];

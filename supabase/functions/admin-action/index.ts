@@ -85,7 +85,11 @@ Deno.serve(async (req) => {
       case 'get_app_setting': {
         const { data } = await admin.from('app_setting')
           .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days, board_enabled').eq('id', 1).maybeSingle()
-        return json({ status: 'OK', setting: data ?? {} })
+        const setting: Record<string, unknown> = data ?? {}
+        // professors_synced_at 은 라이브에 컬럼이 아직 없을 수 있어 별도·방어적으로 조회(없으면 무시).
+        const { data: s2 } = await admin.from('app_setting').select('professors_synced_at').eq('id', 1).maybeSingle()
+        if (s2 && 'professors_synced_at' in s2) setting.professors_synced_at = (s2 as Record<string, unknown>).professors_synced_at
+        return json({ status: 'OK', setting })
       }
       case 'set_board_enabled': {
         await admin.from('app_setting').update({ board_enabled: !!payload.value }).eq('id', 1).throwOnError()
