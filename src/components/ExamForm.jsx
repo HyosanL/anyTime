@@ -1,45 +1,66 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
-import { uploadExamFile } from '../lib/storage';
+import { uploadExamFiles, EXAM_RETENTION_YEARS } from '../lib/storage';
 import { maskProfanity } from '../lib/moderation';
 
 const TYPES = ['중간고사', '기말고사', '퀴즈', '과제', '기타'];
+const CUR_YEAR = new Date().getFullYear();
+const MIN_YEAR = 2000;
+const MAX_FILES = 10;
 
-// 족보 업로드 폼: 파일 → Storage 업로드 → create_exam(메타+key) RPC.
+// 족보 업로드 폼: 파일(다중) → Storage 업로드 → create_exam(메타+files) RPC.
 export default function ExamForm({ courseCode, onDone }) {
   const [title, setTitle] = useState('');
   const [examType, setExamType] = useState('중간고사');
-  const [srcYear, setSrcYear] = useState('');
+  const [srcYear, setSrcYear] = useState(CUR_YEAR);
   const [srcTerm, setSrcTerm] = useState('');
   const [description, setDescription] = useState('');
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]); // File[]
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  function pickFiles(list) {
+    const picked = Array.from(list || []);
+    setFiles((prev) => {
+      // 이름+크기로 중복 제거하고 이어붙임(여러 번 선택해도 누적)
+      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
+      const merged = [...prev];
+      for (const f of picked) {
+        const k = `${f.name}:${f.size}`;
+        if (!seen.has(k)) { seen.add(k); merged.push(f); }
+      }
+      return merged.slice(0, MAX_FILES);
+    });
+  }
+  const removeFile = (i) => setFiles((prev) => prev.filter((_, idx) => idx !== i));
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     if (!title.trim()) return setError('제목을 입력하세요.');
-    if (!file) return setError('파일을 선택하세요.');
-    if (file.size > 100 * 1024 * 1024) return setError('파일은 100MB 이하여야 합니다.');
+    if (files.length === 0) return setError('파일을 선택하세요.');
+    if (files.length > MAX_FILES) return setError(`파일은 최대 ${MAX_FILES}개까지 첨부할 수 있습니다.`);
+    if (files.some((f) => f.size > 100 * 1024 * 1024)) return setError('각 파일은 100MB 이하여야 합니다.');
     if (password.length < 2) return setError('게시글 비밀번호를 입력하세요(삭제용).');
 
     setSubmitting(true);
     try {
-      const up = await uploadExamFile(courseCode, file); // {key, file_name, file_size, mime_type}
+      const uploaded = await uploadExamFiles(courseCode, files); // [{key,name,size,mime}]
+      const first = uploaded[0];
       const { error } = await supabase.rpc('create_exam', {
         p_post_password: password,
         p_course_code: courseCode,
-        p_src_year: srcYear ? Number(srcYear) : null,
+        p_src_year: srcYear,
         p_src_term: srcTerm ? Number(srcTerm) : null,
         p_title: maskProfanity(title.trim()),
         p_exam_type: examType,
-        p_file_url: up.key,
-        p_file_name: up.file_name,
-        p_file_size: up.file_size,
-        p_mime_type: up.mime_type,
+        p_file_url: first.key,
+        p_file_name: first.name,
+        p_file_size: first.size,
+        p_mime_type: first.mime,
         p_description: maskProfanity(description.trim()) || null,
+        p_files: uploaded,
       });
       if (error) {
         setError(error.message || '등록에 실패했습니다.');
@@ -67,10 +88,22 @@ export default function ExamForm({ courseCode, onDone }) {
             {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
-        <label className="field rev-form-field">
+        <div className="field rev-form-field">
           <span className="field-label">연도</span>
-          <input type="number" value={srcYear} onChange={(e) => setSrcYear(e.target.value)} placeholder="2025" />
-        </label>
+          <div className="year-stepper">
+            <button
+              type="button" className="year-step-btn" aria-label="연도 낮추기"
+              onClick={() => setSrcYear((y) => Math.max(MIN_YEAR, y - 1))}
+              disabled={srcYear <= MIN_YEAR}
+            >−</button>
+            <span className="year-step-val">{srcYear}</span>
+            <button
+              type="button" className="year-step-btn" aria-label="연도 높이기"
+              onClick={() => setSrcYear((y) => Math.min(CUR_YEAR, y + 1))}
+              disabled={srcYear >= CUR_YEAR}
+            >＋</button>
+          </div>
+        </div>
         <label className="field rev-form-field">
           <span className="field-label">학기</span>
           <select value={srcTerm} onChange={(e) => setSrcTerm(e.target.value)}>
@@ -86,11 +119,29 @@ export default function ExamForm({ courseCode, onDone }) {
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="내용·출처 등(선택)" />
       </label>
 
-      <label className="field rev-form-field">
-        <span className="field-label">파일 (100MB 이하)</span>
-        <input type="file" accept=".pdf,.ppt,.pptx,.hwp,.docx,.zip,.jpg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      <div className="field rev-form-field">
+        <span className="field-label">파일 (각 100MB 이하 · 최대 {MAX_FILES}개)</span>
+        <label className="exam-file-pick">
+          <span className="exam-file-pick-label">＋ 파일 선택{files.length ? ` (${files.length})` : ''}</span>
+          <input
+            type="file" multiple
+            accept=".pdf,.ppt,.pptx,.hwp,.docx,.zip,.jpg,.png"
+            onChange={(e) => { pickFiles(e.target.files); e.target.value = ''; }}
+          />
+        </label>
+        {files.length > 0 && (
+          <ul className="exam-file-chips">
+            {files.map((f, i) => (
+              <li key={`${f.name}:${f.size}:${i}`} className="exam-file-chip">
+                <span className="exam-file-chip-name">{f.name}</span>
+                <button type="button" className="exam-file-chip-x" aria-label="제거" onClick={() => removeFile(i)}>×</button>
+              </li>
+            ))}
+          </ul>
+        )}
         <span className="account-note exam-file-note">용량이 크면 PDF 압축 후 올려주세요(스캔본은 화질만 유지되게).</span>
-      </label>
+        <span className="account-note exam-file-note">업로드 후 {EXAM_RETENTION_YEARS}년간 보관되며, 이후 자동 삭제됩니다.</span>
+      </div>
 
       <label className="field rev-form-field">
         <span className="field-label">게시글 비밀번호</span>

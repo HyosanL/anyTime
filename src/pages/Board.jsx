@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, listPosts, listHot, createPost, uploadBoardImage, PAGE_SIZE, boardEnabled } from '../lib/board';
+import { getBoard, listPosts, listHot, createPost, uploadBoardImages, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
+
+const MAX_IMAGES = 10;
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
 function timeAgo(iso) {
@@ -28,9 +30,23 @@ export default function Board() {
   const [pTitle, setPTitle] = useState('');
   const [content, setContent] = useState('');
   const [password, setPassword] = useState('');
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]); // File[]
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  function pickFiles(list) {
+    const picked = Array.from(list || []);
+    setFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
+      const merged = [...prev];
+      for (const f of picked) {
+        const k = `${f.name}:${f.size}`;
+        if (!seen.has(k)) { seen.add(k); merged.push(f); }
+      }
+      return merged.slice(0, MAX_IMAGES);
+    });
+  }
+  const removeFile = (i) => setFiles((prev) => prev.filter((_, idx) => idx !== i));
 
   async function load(p) {
     if (isHot) { setPosts(await listHot(p)); setTitle('🔥 HOT'); }
@@ -46,10 +62,10 @@ export default function Board() {
     if (password.length < 2) return setErr('삭제용 비밀번호를 입력하세요.');
     setBusy(true);
     try {
-      let key = null;
-      if (file) key = await uploadBoardImage(file);
-      await createPost(Number(id), maskProfanity(pTitle.trim()), maskProfanity(content.trim()), password, key);
-      setPTitle(''); setContent(''); setPassword(''); setFile(null); setWriting(false);
+      let keys = [];
+      if (files.length) keys = await uploadBoardImages(files);
+      await createPost(Number(id), maskProfanity(pTitle.trim()), maskProfanity(content.trim()), password, keys);
+      setPTitle(''); setContent(''); setPassword(''); setFiles([]); setWriting(false);
       if (page === 0) load(0); else setPage(0);
     } catch (e2) { setErr(e2.message || '작성 실패'); }
     setBusy(false);
@@ -77,9 +93,22 @@ export default function Board() {
           <input className="board-title-input" value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="제목" />
           <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="무슨 생각을 하고 있나요?" />
           <label className="board-file-field">
-            <span className="board-file-label">📷 이미지 첨부{file ? ` · ${file.name}` : ''}</span>
-            <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <span className="board-file-label">📷 이미지 첨부{files.length ? ` · ${files.length}장` : ` (최대 ${MAX_IMAGES}장)`}</span>
+            <input
+              type="file" accept="image/*" multiple
+              onChange={(e) => { pickFiles(e.target.files); e.target.value = ''; }}
+            />
           </label>
+          {files.length > 0 && (
+            <ul className="board-file-chips">
+              {files.map((f, i) => (
+                <li key={`${f.name}:${f.size}:${i}`} className="board-file-chip">
+                  <span className="board-file-chip-name">{f.name}</span>
+                  <button type="button" className="board-file-chip-x" aria-label="제거" onClick={() => removeFile(i)}>×</button>
+                </li>
+              ))}
+            </ul>
+          )}
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용 비밀번호" />
           {err && <p className="error-msg">{err}</p>}
           <button className="btn-add btn-block" disabled={busy}>{busy ? '등록 중…' : '글 등록'}</button>

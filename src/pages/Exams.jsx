@@ -2,8 +2,21 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
-import { downloadExam, deleteExam } from '../lib/storage';
+import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage';
 import ExamForm from '../components/ExamForm';
+
+// 파일 크기 표기(1.2MB 등)
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.max(1, Math.round(kb))}KB`;
+  return `${(kb / 1024).toFixed(1)}MB`;
+}
+// 만료일 표기(YYYY.MM.DD)
+function fmtDate(d) {
+  if (!d) return '';
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+}
 
 const DEL_MSG = {
   BAD_PASSWORD: '비밀번호가 일치하지 않습니다.',
@@ -45,10 +58,10 @@ export default function Exams() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseCode]);
 
-  async function download(ex) {
-    setBusyId(ex.id);
+  async function download(file, fallbackName) {
+    setBusyId(file.key);
     try {
-      await downloadExam(ex.file_url, ex.file_name || ex.title);
+      await downloadExam(file.key, file.name || fallbackName);
     } catch {
       alert('다운로드에 실패했습니다.');
     } finally {
@@ -100,7 +113,10 @@ export default function Exams() {
             아직 올라온 족보가 없습니다.
           </li>
         ) : (
-          exams.map((ex) => (
+          exams.map((ex) => {
+            const files = examFiles(ex);
+            const expiry = examExpiry(ex.created_at);
+            return (
             <li key={ex.id} className="rev-card exam-card">
               <div className="rev-card-top">
                 <strong>{ex.title}</strong>
@@ -111,10 +127,35 @@ export default function Exams() {
                 {ex.src_year ? `${ex.src_year}-${ex.src_term ?? '?'}학기 출처` : '출처 미상'}
               </p>
               {ex.description && <p className="rev-comment">{ex.description}</p>}
-              <div className="rev-card-bottom">
-                <button className="btn-add btn-sm" onClick={() => download(ex)} disabled={busyId === ex.id}>
-                  {busyId === ex.id ? '…' : '⬇ 다운로드'}
-                </button>
+
+              <ul className="exam-files">
+                {files.length === 0 && <li className="exam-file-row muted">첨부파일 없음</li>}
+                {files.map((f, i) => (
+                  <li key={f.key || i} className="exam-file-row">
+                    <span className="exam-file-info">
+                      <span className="exam-file-ic" aria-hidden="true">📎</span>
+                      <span className="exam-file-name" title={f.name || ex.title}>{f.name || `첨부 ${i + 1}`}</span>
+                      {f.size ? <span className="exam-file-size">{fmtSize(f.size)}</span> : null}
+                    </span>
+                    <button
+                      className="btn-add btn-sm"
+                      onClick={() => download(f, ex.title)}
+                      disabled={busyId === f.key}
+                    >
+                      {busyId === f.key ? '…' : '⬇'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              {expiry && (
+                <p className="exam-expire">
+                  <span className="exam-meta-ic" aria-hidden="true">⏳</span>
+                  만료 {fmtDate(expiry)}
+                </p>
+              )}
+
+              <div className="rev-card-bottom exam-card-bottom">
                 {delTarget === ex.id ? (
                   <span className="rev-del">
                     <input
@@ -132,7 +173,8 @@ export default function Exams() {
               </div>
               {delTarget === ex.id && delErr && <p className="error-msg">{delErr}</p>}
             </li>
-          ))
+            );
+          })
         )}
       </ul>
     </div>

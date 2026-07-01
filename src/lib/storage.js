@@ -12,6 +12,24 @@ async function authHeaders() {
   return session ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
+// 족보 보관기간(년). cleanup-exams / purge_old_exams 와 동일해야 함.
+export const EXAM_RETENTION_YEARS = 5;
+
+// 업로드일 기준 만료일(Date) 계산
+export function examExpiry(createdAt) {
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setFullYear(d.getFullYear() + EXAM_RETENTION_YEARS);
+  return d;
+}
+
+// 행의 첨부파일들을 [{key,name,size,mime}] 로 정규화(다중 files 우선, 없으면 구버전 단일).
+export function examFiles(ex) {
+  if (Array.isArray(ex?.files) && ex.files.length) return ex.files;
+  if (ex?.file_url) return [{ key: ex.file_url, name: ex.file_name, size: ex.file_size, mime: ex.mime_type }];
+  return [];
+}
+
 // 업로드 → { key, file_name, file_size, mime_type }
 export async function uploadExamFile(courseCode, file) {
   const fd = new FormData();
@@ -27,6 +45,16 @@ export async function uploadExamFile(courseCode, file) {
     throw new Error('업로드에 실패했습니다.');
   }
   return res.json();
+}
+
+// 여러 파일을 순차 업로드 → [{key,name,size,mime}, ...]
+export async function uploadExamFiles(courseCode, files) {
+  const out = [];
+  for (const f of files) {
+    const up = await uploadExamFile(courseCode, f);
+    out.push({ key: up.key, name: up.file_name, size: up.file_size, mime: up.mime_type });
+  }
+  return out;
 }
 
 // 다운로드(브라우저 저장) — 인증 헤더로 받아 blob 으로 저장

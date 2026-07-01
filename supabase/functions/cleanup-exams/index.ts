@@ -25,12 +25,17 @@ Deno.serve(async (req) => {
   // 5년 경과 족보 조회
   const { data: old, error } = await admin
     .from('exam_archive')
-    .select('id, file_url')
+    .select('id, file_url, files')
     .lt('created_at', cutoff)
   if (error) return Response.json({ status: 'ERROR', detail: error.message }, { status: 500 })
 
   const ids = (old ?? []).map((r) => r.id)
-  const files = (old ?? []).map((r) => r.file_url).filter(Boolean)
+  const fileSet = new Set<string>()
+  for (const r of old ?? []) {
+    if (Array.isArray(r.files)) for (const f of r.files) { if (f?.key) fileSet.add(f.key) }
+    if (r.file_url) fileSet.add(r.file_url)
+  }
+  const files = [...fileSet]
 
   if (files.length) await admin.storage.from('exam-files').remove(files)
   if (ids.length) await admin.from('exam_archive').delete().in('id', ids)

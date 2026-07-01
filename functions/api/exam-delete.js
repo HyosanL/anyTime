@@ -7,11 +7,15 @@ export async function onRequestPost(context) {
 
   const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: data.token, 'Content-Type': 'application/json' };
 
-  // 1) 파일 key 확보(삭제 전)
+  // 1) 파일 key 확보(삭제 전) — 다중첨부(files) + 구버전 단일(file_url)
   const rowRes = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/exam_archive?id=eq.${id}&select=file_url`, { headers: H });
+    `${env.SUPABASE_URL}/rest/v1/exam_archive?id=eq.${id}&select=file_url,files`, { headers: H });
   const row = (await rowRes.json())?.[0];
   if (!row) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
+
+  const keys = new Set();
+  if (Array.isArray(row.files)) for (const f of row.files) { if (f?.key) keys.add(f.key); }
+  if (row.file_url) keys.add(row.file_url);
 
   // 2) 비번 검증 + 행 삭제 + 레벨 -1 (유저 JWT 로 RPC)
   const delRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/delete_exam`, {
@@ -24,7 +28,7 @@ export async function onRequestPost(context) {
   }
   if ((await delRes.json()) === false) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
 
-  // 3) R2 객체 제거
-  if (row.file_url) await env.EXAM_FILES.delete(row.file_url);
+  // 3) R2 객체 제거(첨부 전체)
+  for (const key of keys) await env.EXAM_FILES.delete(key);
   return Response.json({ status: 'OK' });
 }

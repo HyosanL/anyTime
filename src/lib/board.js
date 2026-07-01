@@ -29,6 +29,19 @@ export async function uploadBoardImage(file) {
   return (await res.json()).key;
 }
 
+// 여러 이미지를 순차 업로드 → key 배열
+export async function uploadBoardImages(files) {
+  const keys = [];
+  for (const f of files) keys.push(await uploadBoardImage(f));
+  return keys;
+}
+
+// 게시글의 이미지 key 배열(다중 image_keys 우선, 없으면 구버전 단일 image_key)
+export function postImageKeys(post) {
+  if (Array.isArray(post?.image_keys) && post.image_keys.length) return post.image_keys;
+  return post?.image_key ? [post.image_key] : [];
+}
+
 export async function boardImageObjectUrl(key) {
   const res = await fetch(`/api/board-image?key=${encodeURIComponent(key)}`, { headers: await authHeaders() });
   if (!res.ok) return null;
@@ -50,8 +63,11 @@ export const listHot = (page = 0) =>
   supabase.from('board_post').select('*').eq('hot', true)
     .order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
     .then((r) => r.data || []);
-export const createPost = (boardId, title, content, password, imageKey) =>
-  supabase.rpc('create_post', { p_board_id: boardId, p_title: title, p_content: content, p_password: password, p_image_key: imageKey || null }).then((r) => r.data);
+export const createPost = (boardId, title, content, password, imageKeys) =>
+  supabase.rpc('create_post', {
+    p_board_id: boardId, p_title: title, p_content: content, p_password: password,
+    p_image_keys: imageKeys && imageKeys.length ? imageKeys : null,
+  }).then((r) => r.data);
 
 // 즐겨찾기 / 활성화
 export const listFavoriteIds = () =>

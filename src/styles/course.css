@@ -271,6 +271,48 @@
 }
 .exam-meta-ic { font-size: 0.8rem; }
 
+/* 첨부파일 목록(파일명 + 개별 다운로드) */
+.exam-files {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.1rem 0 0;
+  padding: 0;
+}
+.exam-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.exam-file-row.muted { justify-content: flex-start; color: var(--text-3); font-size: 0.82rem; }
+.exam-file-info { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.exam-file-ic { flex: none; font-size: 0.82rem; }
+.exam-file-name {
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exam-file-size { flex: none; font-size: 0.72rem; color: var(--text-3); }
+.exam-file-row .btn-sm { flex: none; }
+
+.exam-expire {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  color: var(--text-3);
+}
+.exam-card-bottom { justify-content: flex-end; }
+
 .rev-actions { padding: 0.7rem var(--pad) 0.2rem; }
 
 /* ============================================================
@@ -358,6 +400,107 @@
   gap: 0.6rem;
 }
 .exam-file-note { margin: 0; }
+
+/* 연도 스텝퍼(현재연도 기준 ±, 양수 고정) */
+.year-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  height: 2.5rem;
+  padding: 0 0.25rem;
+  background: var(--input-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.year-step-btn {
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.year-step-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.year-step-btn:disabled { opacity: 0.4; cursor: default; }
+.year-step-val {
+  flex: 1;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 다중 파일 선택 버튼 + 선택칩 */
+.exam-file-pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.8rem;
+  background: var(--input-bg);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.exam-file-pick:hover { border-color: var(--primary); background: var(--card-hover); }
+.exam-file-pick-label { font-size: 0.85rem; font-weight: 600; color: var(--text-2); }
+.exam-file-pick input[type="file"] {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+.exam-file-chips {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+.exam-file-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.exam-file-chip-name {
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exam-file-chip-x,
+.board-file-chip-x {
+  flex: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.exam-file-chip-x:hover,
+.board-file-chip-x:hover { color: var(--danger, var(--warn)); }
 
 /* 별점 입력 */
 .rev-scores-block {

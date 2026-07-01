@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPost, listComments, react, addComment, deletePost, deleteComment } from '../lib/board';
+import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
 import BoardImage from '../components/BoardImage';
 
@@ -81,7 +81,7 @@ export default function Post() {
           <span className="metric">💬 {comments.length}</span>
         </div>
         <p className="post-content">{post.content}</p>
-        {post.image_key && <BoardImage imageKey={post.image_key} className="post-image" />}
+        {postImageKeys(post).map((k) => <BoardImage key={k} imageKey={k} className="post-image" />)}
         <div className="post-react">
           <button className="react-pill" onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
           <button className="react-pill" onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
