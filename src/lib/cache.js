@@ -146,7 +146,6 @@ export function buildSections(catalog) {
         key: sectionKey(s),
         ...s,
         course_name: courseByCode[s.course_code]?.name ?? s.course_code,
-        credits: courseByCode[s.course_code]?.credits ?? null,
         department: courseByCode[s.course_code]?.department ?? null,
         professor_name: profByCode[s.professor_code]?.name ?? null,
         times,

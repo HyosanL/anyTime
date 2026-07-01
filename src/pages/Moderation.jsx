@@ -4,7 +4,7 @@ import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보' };
-const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과', credits: '학점' };
+const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
 const POLL_MS = 15000;
 
 async function call(action, payload = {}) {
@@ -31,6 +31,7 @@ export default function Moderation() {
   const [items, setItems] = useState([]);
   const [corrs, setCorrs] = useState([]); // 수정 제안(pending)
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [reviewedAt, setReviewedAt] = useState(null); // 마지막 '모두 확인 처리' 컷오프
   const [edit, setEdit] = useState(null); // { type, id, text }
   const timer = useRef(null);
 
@@ -53,8 +54,19 @@ export default function Moderation() {
       return a.created_at < b.created_at ? 1 : -1;
     });
     setItems(withFlags);
+    setReviewedAt(r.data.reviewed_at ?? null);
     setUpdatedAt(new Date());
   }, []);
+
+  // '모두 확인 처리': 지금까지의 글을 대시보드에서 숨김(데이터는 유지). 이후 새 글만 표시.
+  async function clearAll() {
+    const flagged = items.filter((i) => i.flags.length).length;
+    const warn = flagged > 0 ? `검토필요 ${flagged}건이 아직 남아있습니다.\n` : '';
+    if (!confirm(`${warn}지금까지의 글 ${items.length}건을 모두 확인 처리할까요?\n(이후 새로 올라오는 글만 표시됩니다. 글은 삭제되지 않습니다.)`)) return;
+    const r = await call('clear_moderation');
+    if (r.ok) { setItems([]); setReviewedAt(r.data.reviewed_at ?? null); }
+    else alert('처리 실패: ' + (r.status ?? '오류'));
+  }
 
   async function applyCorr(c) {
     const r = await call('apply_correction', { id: c.id });
@@ -114,12 +126,14 @@ export default function Moderation() {
         <Link to="/admin" className="link-btn">← 관리자</Link>
         <h2>모더레이션</h2>
         <button className="link-btn" onClick={load}>새로고침</button>
+        {items.length > 0 && <button className="link-btn" onClick={clearAll}>모두 확인 처리</button>}
       </header>
 
       <p className="mod-status">
         실시간(15초) · 총 {items.length}건 · <span className="mod-flag-n">검토필요 {flaggedCount}건</span>
         {corrs.length > 0 && <span className="mod-flag-n"> · 수정제안 {corrs.length}건</span>}
         {updatedAt && ` · ${updatedAt.toLocaleTimeString('ko-KR')} 갱신`}
+        {reviewedAt && <span className="muted"> · {new Date(reviewedAt).toLocaleString('ko-KR')} 확인처리됨</span>}
       </p>
 
       {corrs.length > 0 && (

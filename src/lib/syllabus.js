@@ -92,7 +92,6 @@ function normRow(r) {
     : [];
   return {
     course,
-    credits: r.credits == null ? null : Number(r.credits) || null,
     sectionNo,
     professor: cleanProf(r.professor),
     department: r.department ? String(r.department).trim() : null,
@@ -155,19 +154,17 @@ export async function parseSyllabus(file, { onProgress } = {}) {
       if (!prev.department && r.department) prev.department = r.department;
       if ((r.times?.length || 0) > (prev.times?.length || 0)) prev.times = r.times;
       if (!prev.room && r.room) prev.room = r.room;
-      if (prev.credits == null && r.credits != null) prev.credits = r.credits;
     }
   }
   return { rows: [...byKey.values()], periods, pageCount: pages.length, coursePages: coursePages.length };
 }
 
 // ---------- CSV 소스: 표 CSV → rows (parseSyllabus 와 같은 rows 형태) ----------
-// 헤더 인식(유연): 과목명/학점/분반/담당교수/학과/강의시간/강의실. 그 외 열(대상·비고 등)은 무시.
+// 헤더 인식(유연): 과목명/분반/담당교수/학과/강의시간/강의실. 그 외 열(학점·대상·비고 등)은 무시.
 // 분반을 비우면 과목별 파일 등장 순서대로 1,2,3… 자동 부여(명시된 번호와 겹치지 않게).
 // 강의시간은 "수1 수2 금1"(요일+교시), 연속은 "수1-2"/"수1~2" 허용. 팀티칭 교수는 첫 1명만 사용.
 const CSV_ALIASES = {
   course: ['과목명', '과목', 'course', 'name'],
-  credits: ['학점', 'credits', 'credit'],
   sectionNo: ['분반', 'section', '섹션'],
   professor: ['담당교수', '교수', 'professor', 'prof'],
   department: ['학과', '소속', 'department', 'dept'],
@@ -197,7 +194,7 @@ function parseCsvTable(text) {
 }
 
 function mapCsvHeader(header) {
-  const idx = { course: -1, credits: -1, sectionNo: -1, professor: -1, department: -1, times: -1, room: -1 };
+  const idx = { course: -1, sectionNo: -1, professor: -1, department: -1, times: -1, room: -1 };
   header.forEach((h, i) => {
     const key = String(h || '').replace(/\s+/g, '').toLowerCase();
     if (!key) return;
@@ -229,7 +226,7 @@ export function parseCsvRows(text) {
   if (hi < 0) hi = 0;
   const idx = mapCsvHeader(table[hi]);
   const hasHeader = idx.course >= 0;
-  if (!hasHeader) { idx.course = 0; idx.credits = 1; idx.sectionNo = 2; idx.professor = 3; idx.department = 4; idx.times = 5; idx.room = 6; }
+  if (!hasHeader) { idx.course = 0; idx.sectionNo = 1; idx.professor = 2; idx.department = 3; idx.times = 4; idx.room = 5; }
   const get = (r, k) => (idx[k] >= 0 ? String(r[idx[k]] ?? '').trim() : '');
 
   const prelim = [];
@@ -239,7 +236,6 @@ export function parseCsvRows(text) {
     if (!course) continue;
     prelim.push({
       course,
-      credits: get(r, 'credits') ? Number(get(r, 'credits')) || null : null,
       sectionRaw: get(r, 'sectionNo'),
       professor: get(r, 'professor'),
       department: get(r, 'department') || null,
@@ -257,7 +253,6 @@ export function parseCsvRows(text) {
   const rows = prelim
     .map((p) => normRow({
       course: p.course,
-      credits: p.credits,
       sectionNo: (p.sectionRaw && Number(p.sectionRaw) > 0) ? Number(p.sectionRaw) : nextFree(p.course),
       professor: p.professor,
       department: p.department,
@@ -269,12 +264,12 @@ export function parseCsvRows(text) {
 }
 
 export const CSV_TEMPLATE = [
-  '과목명,학점,분반,담당교수,학과,강의시간,강의실,대상',
+  '과목명,분반,담당교수,학과,강의시간,강의실,대상',
   '# 분반을 비우면 과목별로 1,2,3… 자동 부여됩니다. 시간은 "요일+교시"(예: 수1 수2 금1), 연속교시는 수1-2 도 가능. 팀티칭은 대표교수 1명만.',
-  '기초물리학및실험,2,,김득수,,수1 수2 금1,403,3반',
-  '기초물리학및실험,2,,김득수,,수5 수6 금3,403,4반',
-  '대학수학,3,,이용균,,화6 목3 목4,401,1반',
-  '대학수학,3,,이용균,,화5 목1 목2,402,2반',
+  '기초물리학및실험,,김득수,,수1 수2 금1,403,3반',
+  '기초물리학및실험,,김득수,,수5 수6 금3,403,4반',
+  '대학수학,,이용균,,화6 목3 목4,401,1반',
+  '대학수학,,이용균,,화5 목1 목2,402,2반',
 ].join('\n');
 
 // ---------- 대조(reconcile): 기존 catalog와 비교 ----------
@@ -292,8 +287,7 @@ export function reconcile(rows, periods, catalog, year, term) {
   // 과목별 그룹
   const courseGroups = new Map();
   for (const r of rows) {
-    const g = courseGroups.get(r.course) ?? courseGroups.set(r.course, { name: r.course, credits: null, sections: new Map() }).get(r.course);
-    if (g.credits == null && r.credits != null) g.credits = r.credits;
+    const g = courseGroups.get(r.course) ?? courseGroups.set(r.course, { name: r.course, sections: new Map() }).get(r.course);
     const sec = g.sections.get(r.sectionNo) ?? g.sections.set(r.sectionNo, { sectionNo: r.sectionNo, professor: r.professor, slots: [], room: r.room }).get(r.sectionNo);
     if (!sec.professor && r.professor) sec.professor = r.professor;
     if (!sec.room && r.room) sec.room = r.room;
@@ -337,7 +331,6 @@ export function reconcile(rows, periods, catalog, year, term) {
     return {
       name: g.name,
       code: existing?.code ?? null,
-      credits: g.credits,
       include: true,
       sections: [...g.sections.values()]
         .sort((a, b) => a.sectionNo - b.sectionNo)
@@ -393,7 +386,7 @@ export async function applyPlan(plan, { onProgress } = {}) {
   const BATCH = 12;
   for (let i = 0; i < courses.length; i += BATCH) {
     const batch = courses.slice(i, i + BATCH).map((c) => ({
-      name: c.name, code: c.code, credits: c.credits, create: c.code == null,
+      name: c.name, code: c.code, create: c.code == null,
       sections: c.sections.map((s) => ({
         sectionNo: s.sectionNo,
         professorCode: s.professorName ? (profCodes[s.professorName] ?? null) : null,

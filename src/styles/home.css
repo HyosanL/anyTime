@@ -334,18 +334,21 @@
 
 /* 좌측 시각 열 — 메인 눈금(시, 08·09…) + 부 눈금(교시 번호, 작게 왼쪽) */
 .tt-hour {
+  position: relative;
   width: 46px;
   vertical-align: top;
   padding-top: 0.35rem;
   white-space: nowrap;
 }
-/* 부 눈금: 교시 번호 (작게, 흐리게, 시각 왼쪽) */
+/* 부 눈금: 교시 번호 — 나눔 선(행 상단) 위치에 맞춰 좌측 벽면에 붙임 */
 .tt-period {
+  position: absolute;
+  top: 1px;
+  left: 1px;
   font-size: 0.58rem;
   font-weight: 700;
+  line-height: 1;
   color: var(--text-3);
-  vertical-align: text-top;
-  margin-right: 0.15rem;
 }
 /* 메인 눈금: 시(hour) — 분 없이 08, 09 … */
 .tt-h {

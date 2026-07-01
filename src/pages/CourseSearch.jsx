@@ -5,7 +5,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, buildSections, formatTimes, sectionKey } from '../lib/cache';
 import CorrectionModal from '../components/CorrectionModal';
 
-// 분반 하나에 대한 '수정 제안' 항목들(시간/강의실/교수/과목명/학점).
+// 분반 하나에 대한 '수정 제안' 항목들(시간/강의실/교수/과목명).
 function sectionCorrectionOptions(s) {
   const secKey = { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no };
   return [
@@ -13,7 +13,6 @@ function sectionCorrectionOptions(s) {
     { label: '강의실', target: 'section_time', targetKey: secKey, field: 'room', placeholder: '예: 302' },
     { label: '담당교수', target: 'section', targetKey: secKey, field: 'professor', placeholder: '교수 이름', current: s.professor_name || '' },
     { label: '과목명', target: 'course', targetKey: { code: s.course_code }, field: 'name', current: s.course_name },
-    { label: '학점', target: 'course', targetKey: { code: s.course_code }, field: 'credits', placeholder: '예: 3', current: s.credits ?? '' },
   ];
 }
 
@@ -161,7 +160,6 @@ export default function CourseSearch() {
                   </p>
                   <p className="section-sub">
                     {s.professor_name ?? '교수 미정'}
-                    {s.credits != null && <span className="dot">{s.credits}학점</span>}
                   </p>
                   <p className="section-times">
                     <span className="section-time-ic" aria-hidden="true">🕒</span>

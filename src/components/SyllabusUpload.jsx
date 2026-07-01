@@ -119,7 +119,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       {isCsv ? (
         <p className="note">
           과목·분반 표를 <b>CSV</b>로 올리면(또는 붙여넣으면) 기존 DB와 <b>대조</b>합니다.
-          열: <b>과목명·학점·분반·담당교수·학과·강의시간·강의실</b>. <b>분반을 비우면</b> 과목별로 1,2,3… 자동 부여되고,
+          열: <b>과목명·분반·담당교수·학과·강의시간·강의실</b>. <b>분반을 비우면</b> 과목별로 1,2,3… 자동 부여되고,
           강의시간은 <b>“수1 수2 금1”</b>(요일+교시) 형식입니다. 교수는 이름으로 매칭하며 <b>적용 전 반드시 검토</b>하세요.
         </p>
       ) : (
@@ -147,7 +147,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           </div>
           <label className="field syl-paste">
             <span className="field-label">또는 CSV 붙여넣기</span>
-            <textarea rows={5} placeholder={'과목명,학점,분반,담당교수,학과,강의시간,강의실\n기초물리학및실험,2,,김득수,,수1 수2 금1,403'}
+            <textarea rows={5} placeholder={'과목명,분반,담당교수,학과,강의시간,강의실\n기초물리학및실험,,김득수,,수1 수2 금1,403'}
               value={paste} onChange={(e) => { setPaste(e.target.value); resetOut(); }} />
           </label>
         </>
@@ -219,7 +219,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   <input type="checkbox" checked={c.include !== false} onChange={(e) => setCourseInclude(i, e.target.checked)} />
                   <b>{c.name}</b>
                   <span className={`tag ${c.code == null ? 'tag-primary' : 'tag-success'}`}>{c.code == null ? '신규' : '통합'}</span>
-                  <span className="muted">{c.sections.length}분반{c.credits ? ` · ${c.credits}학점` : ''}</span>
+                  <span className="muted">{c.sections.length}분반</span>
                 </label>
                 <div className="syl-sections">
                   {c.sections.map((s) => (

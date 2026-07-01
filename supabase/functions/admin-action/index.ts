@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
       case 'set_course':
         await admin.from('course').upsert({
           code: payload.code, name: payload.name,
-          department: payload.department ?? null, credits: payload.credits ?? null,
+          department: payload.department ?? null,
         }).throwOnError()
         return json({ status: 'OK' })
       case 'set_semester': {
@@ -188,10 +188,18 @@ Deno.serve(async (req) => {
       }
       case 'list_recent': {
         const limit = Math.min(Number(payload.limit) || 80, 200)
+        // '모두 확인 처리' 컷오프 이후 글만 노출 (이전 글은 데이터는 남고 표시만 숨김)
+        const { data: setting } = await admin.from('app_setting').select('mod_reviewed_at').eq('id', 1).maybeSingle()
+        const cutoff = (setting?.mod_reviewed_at as string | null) ?? null
+        // deno-lint-ignore no-explicit-any
+        const recent = (t: string, cols: string): any => {
+          const q = admin.from(t).select(cols).order('created_at', { ascending: false }).limit(limit)
+          return cutoff ? q.gt('created_at', cutoff) : q
+        }
         const [rev, memo, exam] = await Promise.all([
-          admin.from('review').select('id,course_code,professor_code,prof_comment,course_comment,created_at').order('created_at', { ascending: false }).limit(limit),
-          admin.from('class_memo').select('id,course_code,year,term,section_no,content,created_at').order('created_at', { ascending: false }).limit(limit),
-          admin.from('exam_archive').select('id,course_code,title,description,created_at').order('created_at', { ascending: false }).limit(limit),
+          recent('review', 'id,course_code,professor_code,prof_comment,course_comment,created_at'),
+          recent('class_memo', 'id,course_code,year,term,section_no,content,created_at'),
+          recent('exam_archive', 'id,course_code,title,description,created_at'),
         ])
         const items = [
           ...(rev.data ?? []).map((r) => ({
@@ -208,7 +216,13 @@ Deno.serve(async (req) => {
             text: [e.title, e.description].filter(Boolean).join(' — '), meta: {},
           })),
         ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-        return json({ status: 'OK', items })
+        return json({ status: 'OK', items, reviewed_at: cutoff })
+      }
+      // 모더레이션 '모두 확인 처리': 컷오프를 현재로 갱신 → 이전 글은 대시보드에서 숨김(삭제 아님)
+      case 'clear_moderation': {
+        const at = new Date().toISOString()
+        await admin.from('app_setting').update({ mod_reviewed_at: at }).eq('id', 1).throwOnError()
+        return json({ status: 'OK', reviewed_at: at })
       }
       case 'list_admins': {
         const { data } = await admin.from('cadet').select('id, username').eq('is_admin', true)
@@ -234,7 +248,7 @@ Deno.serve(async (req) => {
       case 'add_course': {
         const { data: code } = await admin.rpc('gen_course_code')
         await admin.from('course').insert({
-          code, name: payload.name, department: payload.department ?? null, credits: payload.credits ?? null,
+          code, name: payload.name, department: payload.department ?? null,
         }).throwOnError()
         return json({ status: 'OK', code })
       }
@@ -244,7 +258,7 @@ Deno.serve(async (req) => {
         for (const co of courses) {
           const { data: code } = await admin.rpc('gen_course_code')
           await admin.from('course').insert({
-            code, name: co.name, department: co.department ?? null, credits: co.credits ?? null,
+            code, name: co.name, department: co.department ?? null,
           }).throwOnError()
           for (const se of (co.sections ?? [])) {
             await admin.from('section').insert({
@@ -308,10 +322,8 @@ Deno.serve(async (req) => {
           if (!code || co.create) {
             const { data: c } = await admin.rpc('gen_course_code')
             code = c
-            await admin.from('course').insert({ code, name: co.name, credits: co.credits ?? null }).throwOnError()
+            await admin.from('course').insert({ code, name: co.name }).throwOnError()
             nC++
-          } else if (co.credits != null) {
-            await admin.from('course').update({ credits: co.credits }).eq('code', code).throwOnError()
           }
           for (const se of ((co.sections as any[]) ?? [])) {
             await admin.from('section').upsert({
@@ -380,7 +392,6 @@ Deno.serve(async (req) => {
           else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
         } else if (c.target === 'course') {
           if (c.field === 'name') await admin.from('course').update({ name: val }).eq('code', key.code).throwOnError()
-          else if (c.field === 'credits') await admin.from('course').update({ credits: val ? Number(val) : null }).eq('code', key.code).throwOnError()
           else return json({ status: 'UNSUPPORTED_FIELD' }, 400)
         } else if (c.target === 'section') {
           if (c.field !== 'professor') return json({ status: 'UNSUPPORTED_FIELD' }, 400)

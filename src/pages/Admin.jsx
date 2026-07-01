@@ -62,7 +62,7 @@ export default function Admin() {
   const [selCourse, setSelCourse] = useState('');
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
-  const [course, setCourse] = useState({ code: '', name: '', credits: 3 });
+  const [course, setCourse] = useState({ code: '', name: '' });
   const [prof, setProf] = useState({ code: '', name: '', department: '' });
   const [pq, setPq] = useState('');
   const [sem, setSem] = useState({ year: 2026, term: 1, is_current: true });
@@ -187,11 +187,11 @@ export default function Admin() {
                   <div className="adm-item-row">
                     <div className="adm-item-body">
                       <div className="adm-item-title">{c.name}</div>
-                      <div className="adm-item-sub">{[c.code, c.department, c.credits ? `${c.credits}학점` : ''].filter(Boolean).join(' · ')}</div>
+                      <div className="adm-item-sub">{[c.code, c.department].filter(Boolean).join(' · ')}</div>
                     </div>
                     <div className="adm-item-acts">
                       <button className="btn-ghost btn-sm" onClick={() => setSelCourse(selCourse === c.code ? '' : c.code)}>{selCourse === c.code ? '닫기' : '분반'}</button>
-                      <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '', credits: c.credits || 3 })}>수정</button>
+                      <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '' })}>수정</button>
                       <button className="rev-del-btn" onClick={() => { if (confirm(`'${c.name}' 과목과 분반·강의시간이 모두 삭제됩니다.`)) run('delete_catalog', { table: 'course', key: { code: c.code } }, '과목 삭제'); }}>삭제</button>
                     </div>
                   </div>
@@ -241,15 +241,14 @@ export default function Admin() {
             <div className="section-label adm-sub-label">{course.code ? `과목 수정 (${course.code})` : '새 과목 추가'}</div>
             <div className="adm-form-grid">
               <label className="field"><span className="field-label">과목명</span><input placeholder={course.code ? '과목명' : '새 과목명'} value={course.name} onChange={(e) => setCourse({ ...course, name: e.target.value })} /></label>
-              <label className="field"><span className="field-label">학점</span><input type="number" value={course.credits} onChange={(e) => setCourse({ ...course, credits: +e.target.value })} /></label>
             </div>
             {course.code ? (
               <div className="adm-btn-row">
-                <button className="btn-add" onClick={async () => { const r = await run('set_course', { code: course.code, name: course.name, credits: course.credits }, '과목 수정'); if (r.ok) setCourse({ code: '', name: '', credits: 3 }); }}>저장</button>
-                <button className="rev-del-btn" onClick={() => setCourse({ code: '', name: '', credits: 3 })}>취소</button>
+                <button className="btn-add" onClick={async () => { const r = await run('set_course', { code: course.code, name: course.name }, '과목 수정'); if (r.ok) setCourse({ code: '', name: '' }); }}>저장</button>
+                <button className="rev-del-btn" onClick={() => setCourse({ code: '', name: '' })}>취소</button>
               </div>
             ) : (
-              <button className="btn-add btn-block" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', { name: course.name, credits: course.credits }, '과목 추가(코드 자동)'); if (r.ok) setCourse({ code: '', name: '', credits: 3 }); }}>과목 추가 (코드 자동)</button>
+              <button className="btn-add btn-block" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', { name: course.name }, '과목 추가(코드 자동)'); if (r.ok) setCourse({ code: '', name: '' }); }}>과목 추가 (코드 자동)</button>
             )}
           </Card>
         )}
