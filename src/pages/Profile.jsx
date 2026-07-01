@@ -7,10 +7,10 @@ import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
 
 const TIERS = [
-  { key: 'gray', label: '그레이', min: 0 },
-  { key: 'silver', label: '실버', min: 10 },
-  { key: 'gold', label: '골드', min: 50 },
-  { key: 'rainbow', label: '레인보우', min: 100 },
+  { key: 'bronze', label: '브론즈', min: 0 },
+  { key: 'silver', label: '실버', min: 20 },
+  { key: 'gold', label: '골드', min: 100 },
+  { key: 'rainbow', label: '레인보우', min: 200 },
 ];
 
 // 화면8: 레벨/프로필. cadet.post_count 기준 본인 뱃지(badgeOf) + 다음 등급까지 진행.

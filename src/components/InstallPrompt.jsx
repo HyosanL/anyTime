@@ -18,7 +18,10 @@ function isStandalone() {
 
 // PWA 설치 안내
 // - Android/Chrome 등: beforeinstallprompt 를 잡아 "설치" 버튼으로 즉시 설치
-// - iOS(Safari): beforeinstallprompt 미지원 → "공유 → 홈 화면에 추가" 수동 안내
+// - iOS(Safari): beforeinstallprompt 미지원 → 수동 안내(iOS 는 설치 API 자체가 없음).
+//   iOS 26 실제 경로: ⋯(더보기) → 공유 → (목록 내려서) 홈 화면에 추가 → 추가.
+//   공유 시트는 건너뛸 수 없다. 다만 iOS 26 부터 "웹 앱으로 열기"가 기본 ON 이라
+//   마지막은 토글 없이 "추가"만 누르면 앱처럼 열린다.
 export default function InstallPrompt() {
   const [deferred, setDeferred] = useState(null);
   const [showIosGuide, setShowIosGuide] = useState(false);
@@ -89,13 +92,16 @@ export default function InstallPrompt() {
             <h3>홈 화면에 추가하기</h3>
             <ol className="ios-steps">
               <li>
-                사파리 아래(또는 위)의 <b>공유 버튼 <IosShareIcon /></b> 을 누르세요.
+                주소창 오른쪽의 <b>더보기 <MoreIcon /></b> 를 누르세요.
               </li>
               <li>
-                메뉴를 내려 <b>“홈 화면에 추가”</b> 를 선택하세요.
+                메뉴에서 <b>공유 <IosShareIcon /></b> 를 누르세요.
               </li>
               <li>
-                오른쪽 위 <b>“추가”</b> 를 누르면 완료예요.
+                목록을 아래로 내려 <b>“홈 화면에 추가”</b> 를 누르세요.
+              </li>
+              <li>
+                <b>“추가”</b> 를 누르면 끝이에요. 애타가 자동으로 앱처럼 열려요.
               </li>
             </ol>
             <p className="note">
@@ -111,6 +117,25 @@ export default function InstallPrompt() {
         </div>
       )}
     </>
+  );
+}
+
+// iOS 더보기 아이콘(원 안의 점 3개 — 주소창 옆 ⋯ 버튼).
+function MoreIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      style={{ verticalAlign: '-3px' }}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="7.4" cy="12" r="1.5" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" stroke="none" />
+      <circle cx="16.6" cy="12" r="1.5" stroke="none" />
+    </svg>
   );
 }
 

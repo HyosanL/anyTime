@@ -330,6 +330,7 @@
 .tt th.tt-hour {
   position: relative;
   width: 30px;                 /* 폭 축소: 우측정렬된 숫자 왼쪽 빈 공간 제거 */
+  height: 46px;                /* 행 높이 하한 = 칸(td)과 동일 — 그 시간대 수업이 없거나 위 수업의 rowSpan에 덮여 td가 사라져도 이 열은 항상 존재하므로 행이 쪼그라들지 않음(첫~마지막 수업 사이 시간대 균등 표시) */
   vertical-align: top;         /* 격자 상단선에 닿게(세로 위로) */
   text-align: right;           /* 격자 좌측 벽면에 붙게 — 우측정렬 */
   padding: 0;                  /* 상·우 여백 없이 오른쪽 위 모서리에 붙임 */

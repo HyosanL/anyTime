@@ -316,7 +316,8 @@ a.list-row, .list-row a { color: inherit; }
   box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.6), inset 0 -2px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .badge-num { font-weight: 800; line-height: 1; color: #2b2f36; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
-.badge-gray { background: linear-gradient(135deg, #c2c6cc 0%, #8b9097 38%, #e4e7ea 50%, #777c83 62%, #aab0b7 100%); }
+.badge-bronze { background: linear-gradient(135deg, #e8b98f 0%, #a5642e 38%, #f3d3ac 50%, #8a4f22 62%, #cd8a4e 100%); }
+.badge-bronze .badge-num { color: #45280f; text-shadow: 0 1px 0 rgba(255, 226, 194, 0.55); }
 .badge-silver { background: linear-gradient(135deg, #f4f6f8 0%, #c2c8cf 38%, #ffffff 50%, #aeb4bc 62%, #e4e8ec 100%); }
 .badge-gold { background: linear-gradient(135deg, #fbe69a 0%, #d9a72a 38%, #fff6cf 50%, #c8901a 62%, #eec24a 100%); }
 .badge-gold .badge-num { color: #5a3d08; text-shadow: 0 1px 0 rgba(255, 240, 190, 0.6); }
