@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, buildSections, sectionKey } from '../lib/cache';
+import PullToRefresh from '../components/PullToRefresh';
 
 // 교수 검색: 교수명·학과로 찾아 교수 상세(강의평·시간표)로 이동.
 // - 내 확정시간표 담당 교수를 상단에 노출(검색 전에도).
@@ -16,33 +17,37 @@ export default function ProfessorSearch() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // silent: 당겨서 새로고침 때는 화면을 '불러오는 중…'으로 갈아치우지 않는다
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
+    setError('');
+    let sections = [];
+    try {
+      const catalog = await getCatalog();
+      setProfessors(catalog.professor ?? []);
+      sections = buildSections(catalog).sections;
+    } catch {
+      setError('교수 목록을 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
+    }
+    // 내 확정시간표 → 담당 교수 코드(현재 학기 분반 기준)
+    const { data: tt } = await supabase.from('timetable').select('*');
+    if (tt && sections.length) {
+      const regKeys = new Set(tt.map(sectionKey));
+      const codes = new Set();
+      sections.forEach((s) => { if (regKeys.has(s.key) && s.professor_code) codes.add(s.professor_code); });
+      setMyProfCodes([...codes]);
+    }
+    // 강의평 집계(있으면 검색 결과에 별점·후기수 표시)
+    const { data } = await supabase
+      .from('professor_rating')
+      .select('professor_code, review_count, avg_overall');
+    if (data) setRatings(Object.fromEntries(data.map((r) => [r.professor_code, r])));
+    setLoading(false);
+  }
+
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError('');
-      let sections = [];
-      try {
-        const catalog = await getCatalog();
-        setProfessors(catalog.professor ?? []);
-        sections = buildSections(catalog).sections;
-      } catch {
-        setError('교수 목록을 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
-      }
-      // 내 확정시간표 → 담당 교수 코드(현재 학기 분반 기준)
-      const { data: tt } = await supabase.from('timetable').select('*');
-      if (tt && sections.length) {
-        const regKeys = new Set(tt.map(sectionKey));
-        const codes = new Set();
-        sections.forEach((s) => { if (regKeys.has(s.key) && s.professor_code) codes.add(s.professor_code); });
-        setMyProfCodes([...codes]);
-      }
-      // 강의평 집계(있으면 검색 결과에 별점·후기수 표시)
-      const { data } = await supabase
-        .from('professor_rating')
-        .select('professor_code, review_count, avg_overall');
-      if (data) setRatings(Object.fromEntries(data.map((r) => [r.professor_code, r])));
-      setLoading(false);
-    })();
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const q = query.trim().toLowerCase();
@@ -101,7 +106,7 @@ export default function ProfessorSearch() {
   );
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={() => load(true)}>
       <header className="page-header row">
         <h2>교수 검색</h2>
       </header>
@@ -154,6 +159,6 @@ export default function ProfessorSearch() {
           )}
         </>
       )}
-    </div>
+    </PullToRefresh>
   );
 }

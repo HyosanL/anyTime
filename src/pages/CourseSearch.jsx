@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, buildSections, formatTimes, sectionKey } from '../lib/cache';
 import CorrectionModal from '../components/CorrectionModal';
+import PullToRefresh from '../components/PullToRefresh';
 
 // 분반 하나에 대한 '수정 제안' 항목들(시간/강의실/교수/과목명).
 // meta: { periods:number[], professors:[{code,name,department}] } — 양식 빌더에 전달.
@@ -27,15 +28,15 @@ export default function CourseSearch() {
   const [registered, setRegistered] = useState(new Set()); // 시간표에 담긴 분반키
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [busyKey, setBusyKey] = useState(null);
   const [corr, setCorr] = useState(null); // { subject, options }
   // 수정 제안 양식 빌더용: 교시 목록 + 교수 목록
   const [meta, setMeta] = useState({ periods: [], professors: [] });
 
+  // force: 당겨서 새로고침 — 서버 우선으로 다시 받되 전체 로딩 화면은 띄우지 않는다
   async function loadCatalog(force = false) {
-    force ? setRefreshing(true) : setLoading(true);
+    if (!force) setLoading(true);
     setError('');
     try {
       const catalog = await getCatalog({ force });
@@ -50,7 +51,6 @@ export default function CourseSearch() {
       setError('카탈로그를 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }
 
@@ -173,12 +173,9 @@ export default function CourseSearch() {
   };
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={() => Promise.all([loadCatalog(true), loadTimetable()])}>
       <header className="page-header row">
         <h2>강의 검색</h2>
-        <button className="link-btn" onClick={() => loadCatalog(true)} disabled={refreshing}>
-          {refreshing ? '갱신 중…' : '새로고침'}
-        </button>
       </header>
 
       <div className="search-bar">
@@ -237,6 +234,6 @@ export default function CourseSearch() {
       {corr && (
         <CorrectionModal subject={corr.subject} options={corr.options} onClose={() => setCorr(null)} />
       )}
-    </div>
+    </PullToRefresh>
   );
 }

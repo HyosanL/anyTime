@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 import { clearCatalog, kvGet, kvSet } from '../lib/cache';
+import PullToRefresh from '../components/PullToRefresh';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
@@ -200,10 +201,9 @@ export default function Moderation() {
   const deletedUnread = deleted.filter((d) => !d.reviewed).length;
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={load}>
       <header className="page-header">
         <h2>검열</h2>
-        <button className="link-btn" onClick={load}>새로고침</button>
       </header>
 
       <p className="mod-status">
@@ -383,7 +383,7 @@ export default function Moderation() {
           </ul>
         </>
       )}
-    </div>
+    </PullToRefresh>
   );
 }
 
