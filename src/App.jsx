@@ -13,6 +13,7 @@ const CourseSearch = lazy(() => import('./pages/CourseSearch'));
 const ProfessorSearch = lazy(() => import('./pages/ProfessorSearch'));
 const ProfessorDetail = lazy(() => import('./pages/ProfessorDetail'));
 const Reviews = lazy(() => import('./pages/Reviews'));
+const ReviewWrite = lazy(() => import('./pages/ReviewWrite'));
 const Exams = lazy(() => import('./pages/Exams'));
 const Memo = lazy(() => import('./pages/Memo'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="/professors" element={<ProtectedRoute><ProfessorSearch /></ProtectedRoute>} />
           <Route path="/professor/:code" element={<ProtectedRoute><ProfessorDetail /></ProtectedRoute>} />
           <Route path="/reviews/:courseCode" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
+          <Route path="/review-write/:courseCode/:year/:term/:sectionNo" element={<ProtectedRoute><ReviewWrite /></ProtectedRoute>} />
           <Route path="/exams/:courseCode" element={<ProtectedRoute><Exams /></ProtectedRoute>} />
           <Route path="/memo/:courseCode/:year/:term/:sectionNo" element={<ProtectedRoute><Memo /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

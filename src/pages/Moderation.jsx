@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 import { clearCatalog } from '../lib/cache';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
+const REASON_LABEL = { burst_3: '30분 3건', threshold_10: '누적 10건' };
 const POLL_MS = 15000;
 // 파급이 큰 항목(과목명/교수명/학과)은 자동반영 대상이 아니며, 3건↑ 쌓이면 수동 검토 강조.
 const HIGH_RISK = new Set(['course:name', 'professor:name', 'professor:department']);
@@ -47,6 +47,7 @@ export default function Moderation() {
   const [reported, setReported] = useState([]);  // 신고 누적 글(list_reported)
   const [corrs, setCorrs] = useState([]);        // 수정 제안(pending)
   const [autos, setAutos] = useState([]);        // 자동반영됨(미확인)
+  const [deleted, setDeleted] = useState([]);    // 신고 누적 자동삭제 아카이브
   const [updatedAt, setUpdatedAt] = useState(null);
   const [reviewedAt, setReviewedAt] = useState(null); // 마지막 '모두 확인 처리' 컷오프
   const [edit, setEdit] = useState(null); // { type, id, text }
@@ -57,15 +58,17 @@ export default function Moderation() {
   }, []);
 
   const load = useCallback(async () => {
-    const [r, rc, rr, ra] = await Promise.all([
+    const [r, rc, rr, ra, rd] = await Promise.all([
       call('list_recent', { limit: 100 }),
       call('list_corrections', { status: 'pending' }),
       call('list_reported'),
       call('list_auto_notices'),
+      call('list_deleted'),
     ]);
     if (rc.ok) setCorrs(rc.data.items ?? []);
     if (rr.ok) setReported(rr.data.items ?? []);
     if (ra.ok) setAutos(ra.data.items ?? []);
+    if (rd.ok) setDeleted(rd.data.items ?? []);
     if (r.ok) {
       const withFlags = (r.data.items ?? []).map((it) => ({ ...it, flags: flagText(it.text) }));
       // 부정어 포함 글을 위로, 그 다음 최신순
@@ -124,6 +127,19 @@ export default function Moderation() {
     if (r.ok) setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
   }
 
+  // ── 삭제됨(신고 누적 자동삭제 아카이브): 복구 / 확인 ──
+  async function restoreDeleted(it) {
+    if (!confirm(`이 ${TYPE_LABEL[it.type]}을(를) 복구할까요? (신고 수는 0으로 초기화됩니다)`)) return;
+    const r = await call('restore_deleted', { id: it.id });
+    if (r.ok) setDeleted((prev) => prev.filter((x) => x.id !== it.id));
+    else alert('복구 실패: ' + (r.status === 'PARENT_GONE' ? '소속 과목/게시판이 이미 정리되어 복구할 수 없습니다.'
+      : r.status === 'ALREADY_EXISTS' ? '이미 복구된 글입니다.' : (r.status ?? '오류')));
+  }
+  async function ackDeleted(it) {
+    const r = await call('ack_deleted', { id: it.id });
+    if (r.ok) setDeleted((prev) => prev.map((x) => (x.id === it.id ? { ...x, reviewed: true } : x)));
+  }
+
   // ── 수정 제안: 그룹 단위 적용/반려 ──
   async function applyGroup(g) {
     for (const id of g.ids) {
@@ -153,7 +169,6 @@ export default function Moderation() {
     return (
       <div className="page">
         <header className="page-header">
-          <Link to="/" className="link-btn">← 홈</Link>
           <h2>검열</h2>
         </header>
         <div className="empty">
@@ -166,11 +181,11 @@ export default function Moderation() {
 
   const flaggedCount = items.filter((i) => i.flags.length).length;
   const corrCount = corrGroups.length + autoGroups.length;
+  const deletedUnread = deleted.filter((d) => !d.reviewed).length;
 
   return (
     <div className="page">
       <header className="page-header">
-        <Link to="/" className="link-btn">← 홈</Link>
         <h2>검열</h2>
         <button className="link-btn" onClick={load}>새로고침</button>
       </header>
@@ -194,6 +209,10 @@ export default function Moderation() {
         <button className={`mod-tab ${tab === 'corr' ? 'is-active' : ''}`} onClick={() => setTab('corr')}>
           수정 제안
           {corrCount > 0 && <span className="mod-tab-badge">{corrCount}</span>}
+        </button>
+        <button className={`mod-tab ${tab === 'deleted' ? 'is-active' : ''}`} onClick={() => setTab('deleted')}>
+          삭제됨
+          {deletedUnread > 0 && <span className="mod-tab-badge warn">{deletedUnread}</span>}
         </button>
       </div>
 
@@ -315,6 +334,36 @@ export default function Moderation() {
                 </li>
               );
             })}
+          </ul>
+        </>
+      )}
+
+      {/* ④ 삭제됨(신고 누적 자동삭제 아카이브) */}
+      {tab === 'deleted' && (
+        <>
+          <p className="mod-status muted">
+            신고 누적(30분 3건·누적 10건)으로 자동삭제된 글입니다. 담합·오신고로 판단되면 복구하세요. 30일 뒤 자동 파기됩니다.
+          </p>
+          <ul className="mod-list">
+            {deleted.length === 0 && (
+              <li className="empty"><span className="empty-emoji">🗑️</span><p>자동삭제된 글이 없습니다.</p></li>
+            )}
+            {deleted.map((it) => (
+              <li key={`del-${it.id}`} className={`card mod-card ${it.reviewed ? '' : 'flagged'}`}>
+                <div className="mod-card-top">
+                  <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
+                  <span className="mod-course">{it.course_code}</span>
+                  <span className="tag tag-warn mod-badge">🚨 신고 {it.report_count}건 · {REASON_LABEL[it.reason] || it.reason}</span>
+                  {it.reviewed && <span className="tag mod-badge">확인됨</span>}
+                  <span className="mod-time">{new Date(it.created_at).toLocaleString('ko-KR')}</span>
+                </div>
+                <p className="mod-text"><Highlighted text={it.text || '(내용 없음)'} /></p>
+                <div className="mod-actions">
+                  <button className="btn-add btn-sm" onClick={() => restoreDeleted(it)}>복구</button>
+                  {!it.reviewed && <button className="rev-del-btn" onClick={() => ackDeleted(it)}>확인</button>}
+                </div>
+              </li>
+            ))}
           </ul>
         </>
       )}

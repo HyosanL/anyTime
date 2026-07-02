@@ -175,7 +175,6 @@ export default function CourseSearch() {
   return (
     <div className="page">
       <header className="page-header row">
-        <Link to="/" className="link-btn">← 홈</Link>
         <h2>강의 검색</h2>
         <button className="link-btn" onClick={() => loadCatalog(true)} disabled={refreshing}>
           {refreshing ? '갱신 중…' : '새로고침'}

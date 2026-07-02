@@ -103,7 +103,6 @@ export default function ProfessorSearch() {
   return (
     <div className="page">
       <header className="page-header row">
-        <Link to="/" className="link-btn">← 홈</Link>
         <h2>교수 검색</h2>
       </header>
 

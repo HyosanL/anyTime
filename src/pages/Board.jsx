@@ -59,7 +59,6 @@ export default function Board() {
     e.preventDefault(); setErr('');
     if (!pTitle.trim()) return setErr('제목을 입력하세요.');
     if (!content.trim()) return setErr('내용을 입력하세요.');
-    if (password.length < 2) return setErr('삭제용 비밀번호를 입력하세요.');
     setBusy(true);
     try {
       let keys = [];
@@ -76,7 +75,6 @@ export default function Board() {
   return (
     <div className="page noscreenshot">
       <header className="page-header">
-        <Link to="/boards" className="link-btn">← 게시판</Link>
         <h2>{title}</h2>
         {!isHot && enabled && <button className="link-btn" onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</button>}
       </header>
@@ -109,7 +107,7 @@ export default function Board() {
               ))}
             </ul>
           )}
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용 비밀번호" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용 비밀번호 (선택 · 비우면 누구나 삭제)" />
           {err && <p className="error-msg">{err}</p>}
           <button className="btn-add btn-block" disabled={busy}>{busy ? '등록 중…' : '글 등록'}</button>
         </form>

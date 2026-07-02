@@ -328,7 +328,6 @@ export default function Admin() {
   if (!isAdmin) return (
     <div className="page">
       <header className="page-header">
-        <Link to="/" className="link-btn">← 홈</Link>
         <h2>관리자</h2>
       </header>
       <div className="empty">
@@ -346,7 +345,6 @@ export default function Admin() {
     return (
       <div className="page admin">
         <header className="page-header">
-          <Link to="/" className="link-btn">← 홈</Link>
           <h2>관리자</h2>
         </header>
         {banner}
@@ -374,7 +372,6 @@ export default function Admin() {
     return (
       <div className="page admin">
         <header className="page-header">
-          <Link to="/admin" className="link-btn">← 관리자</Link>
           <h2>관리자</h2>
         </header>
         <div className="empty">
@@ -390,7 +387,6 @@ export default function Admin() {
   return (
     <div className="page admin">
       <header className="page-header">
-        <Link to="/admin" className="link-btn">← 관리자</Link>
         <h2>{TITLE_OF[section]}</h2>
       </header>
 

@@ -42,7 +42,6 @@ export default function ExamForm({ courseCode, onDone }) {
     if (files.length === 0) return setError('파일을 선택하세요.');
     if (files.length > MAX_FILES) return setError(`파일은 최대 ${MAX_FILES}개까지 첨부할 수 있습니다.`);
     if (files.some((f) => f.size > 100 * 1024 * 1024)) return setError('각 파일은 100MB 이하여야 합니다.');
-    if (password.length < 2) return setError('게시글 비밀번호를 입력하세요(삭제용).');
 
     setSubmitting(true);
     try {
@@ -144,8 +143,8 @@ export default function ExamForm({ courseCode, onDone }) {
       </div>
 
       <label className="field rev-form-field">
-        <span className="field-label">게시글 비밀번호</span>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용" />
+        <span className="field-label">삭제용 비밀번호 (선택)</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비우면 누구나 삭제 가능" />
       </label>
 
       {error && <p className="error-msg">{error}</p>}

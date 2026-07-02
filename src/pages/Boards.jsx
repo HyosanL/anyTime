@@ -26,7 +26,6 @@ export default function Boards() {
   return (
     <div className="page noscreenshot">
       <header className="page-header">
-        <Link to="/" className="link-btn">← 홈</Link>
         <h2>익명게시판</h2>
       </header>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage';
@@ -69,6 +69,14 @@ export default function Exams() {
     }
   }
 
+  // 비번 없는(누구나 삭제 가능) 족보: 확인 후 바로 삭제
+  async function deleteOpen(id) {
+    if (!confirm('이 족보를 삭제할까요?')) return;
+    const status = await deleteExam(id, '');
+    if (status === 'OK') { setExams((prev) => prev.filter((e) => e.id !== id)); return; }
+    alert(DEL_MSG[status] || DEL_MSG.ERROR);
+  }
+
   async function confirmDelete() {
     setDelErr('');
     const status = await deleteExam(delTarget, delPw);
@@ -83,8 +91,7 @@ export default function Exams() {
 
   return (
     <div className="page">
-      <header className="page-header row">
-        <Link to="/search" className="link-btn">← 검색</Link>
+      <header className="page-header">
         <h2>{courseName} 족보</h2>
       </header>
 
@@ -156,19 +163,23 @@ export default function Exams() {
               )}
 
               <div className="rev-card-bottom exam-card-bottom">
-                {delTarget === ex.id ? (
-                  <span className="rev-del">
-                    <input
-                      type="password"
-                      value={delPw}
-                      onChange={(e) => setDelPw(e.target.value)}
-                      placeholder="게시글 비번"
-                    />
-                    <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
-                    <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
-                  </span>
+                {ex.post_password_hash ? (
+                  delTarget === ex.id ? (
+                    <span className="rev-del">
+                      <input
+                        type="password"
+                        value={delPw}
+                        onChange={(e) => setDelPw(e.target.value)}
+                        placeholder="게시글 비번"
+                      />
+                      <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
+                      <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
+                    </span>
+                  ) : (
+                    <button className="rev-del-btn" onClick={() => { setDelTarget(ex.id); setDelErr(''); }}>삭제</button>
+                  )
                 ) : (
-                  <button className="rev-del-btn" onClick={() => { setDelTarget(ex.id); setDelErr(''); }}>삭제</button>
+                  <button className="rev-del-btn" onClick={() => deleteOpen(ex.id)}>삭제</button>
                 )}
               </div>
               {delTarget === ex.id && delErr && <p className="error-msg">{delErr}</p>}

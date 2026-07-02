@@ -457,6 +457,32 @@ Deno.serve(async (req) => {
         await admin.from(table).update({ report_count: 0 }).eq('id', id).throwOnError()
         return json({ status: 'OK' })
       }
+      // ── 삭제됨(신고 누적 자동삭제 아카이브) ──
+      // 스냅샷 목록(복구·검토용). snapshot 원본은 반환하지 않음(비번 해시 등 미노출).
+      case 'list_deleted': {
+        const { data } = await admin.from('deleted_content')
+          .select('id, type, orig_id, label, text, report_count, reason, reviewed, deleted_at')
+          .order('deleted_at', { ascending: false }).limit(200)
+        const items = (data ?? []).map((d) => ({
+          id: d.id, type: d.type, orig_id: d.orig_id, course_code: d.label ?? '',
+          text: d.text ?? '', report_count: d.report_count, reason: d.reason,
+          reviewed: d.reviewed, created_at: d.deleted_at,
+        }))
+        return json({ status: 'OK', items })
+      }
+      // 복구: 스냅샷을 원본 테이블로 재삽입(DB 함수) 후 아카이브 행 제거.
+      case 'restore_deleted': {
+        const { data: st, error } = await admin.rpc('restore_deleted', { p_arch_id: payload.id })
+        if (error) return json({ status: 'ERROR', detail: error.message }, 500)
+        const code = st === 'OK' ? 200 : st === 'NOT_FOUND' ? 404
+          : (st === 'ALREADY_EXISTS' || st === 'PARENT_GONE') ? 409 : 400
+        return json({ status: st ?? 'ERROR' }, code)
+      }
+      // 확인(검토완료): 미확인 배지에서 제외. 데이터는 30일 자동 파기까지 유지.
+      case 'ack_deleted': {
+        await admin.from('deleted_content').update({ reviewed: true }).eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
       default:
         return json({ status: 'BAD_REQUEST', detail: 'unknown action' }, 400)
     }

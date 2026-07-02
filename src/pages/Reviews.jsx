@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 
@@ -97,6 +97,14 @@ export default function Reviews() {
   const [delPw, setDelPw] = useState('');
   const [delErr, setDelErr] = useState('');
 
+  // 비번 없는(누구나 삭제 가능) 강의평: 확인 후 바로 삭제
+  async function deleteOpen(id) {
+    if (!confirm('이 강의평을 삭제할까요?')) return;
+    const { data, error } = await supabase.rpc('delete_review', { p_id: id, p_post_password: '' });
+    if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
+    setReviews((prev) => prev.filter((r) => r.id !== id));
+  }
+
   async function confirmDelete() {
     setDelErr('');
     const { data, error } = await supabase.rpc('delete_review', {
@@ -118,8 +126,7 @@ export default function Reviews() {
 
   return (
     <div className="page">
-      <header className="page-header row">
-        <Link to="/search" className="link-btn">← 검색</Link>
+      <header className="page-header">
         <h2>{courseName} 강의평</h2>
       </header>
 
@@ -191,19 +198,23 @@ export default function Reviews() {
                 <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
                 <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>
               </span>
-              {delTarget === r.id ? (
-                <span className="rev-del">
-                  <input
-                    type="password"
-                    value={delPw}
-                    onChange={(e) => setDelPw(e.target.value)}
-                    placeholder="게시글 비번"
-                  />
-                  <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
-                  <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
-                </span>
+              {r.post_password_hash ? (
+                delTarget === r.id ? (
+                  <span className="rev-del">
+                    <input
+                      type="password"
+                      value={delPw}
+                      onChange={(e) => setDelPw(e.target.value)}
+                      placeholder="게시글 비번"
+                    />
+                    <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
+                    <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
+                  </span>
+                ) : (
+                  <button className="rev-del-btn" onClick={() => { setDelTarget(r.id); setDelErr(''); }}>삭제</button>
+                )
               ) : (
-                <button className="rev-del-btn" onClick={() => { setDelTarget(r.id); setDelErr(''); }}>삭제</button>
+                <button className="rev-del-btn" onClick={() => deleteOpen(r.id)}>삭제</button>
               )}
             </div>
             {delTarget === r.id && delErr && <p className="error-msg">{delErr}</p>}

@@ -3,9 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskProfanity } from '../lib/moderation';
-import ReviewForm from '../components/ReviewForm';
 
-// 화면6: 수업 메모 (분반 종속·휘발성). 확정시간표 등록 생도만 작성/열람(RPC 강제).
+// 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
   const { courseCode, year, term, sectionNo } = useParams();
   const y = Number(year);
@@ -14,7 +13,6 @@ export default function Memo() {
 
   const [header, setHeader] = useState({ name: courseCode, prof: '', profCode: '', times: '' });
   const [rev, setRev] = useState({ minDays: 30, daysHeld: null }); // 강의평 자격
-  const [showReview, setShowReview] = useState(false);
   const [memos, setMemos] = useState([]);
   const [allowed, setAllowed] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -89,7 +87,6 @@ export default function Memo() {
     e.preventDefault();
     setError('');
     if (!content.trim()) return setError('내용을 입력하세요.');
-    if (password.length < 2) return setError('게시글 비밀번호를 입력하세요(삭제용).');
     setSubmitting(true);
     const { error } = await supabase.rpc('create_memo', {
       p_post_password: password,
@@ -116,6 +113,14 @@ export default function Memo() {
     else alert('신고되었습니다.');
   }
 
+  // 비번 없는(누구나 삭제 가능) 메모: 확인 후 바로 삭제
+  async function deleteOpen(id) {
+    if (!confirm('이 메모를 삭제할까요?')) return;
+    const { data, error } = await supabase.rpc('delete_memo', { p_id: id, p_post_password: '' });
+    if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
+    setMemos((prev) => prev.filter((m) => m.id !== id));
+  }
+
   async function confirmDelete() {
     setDelErr('');
     const { data, error } = await supabase.rpc('delete_memo', {
@@ -131,8 +136,7 @@ export default function Memo() {
 
   return (
     <div className="page">
-      <header className="page-header row">
-        <Link to="/" className="link-btn">← 홈</Link>
+      <header className="page-header">
         <h2>{header.name} 메모</h2>
       </header>
 
@@ -140,31 +144,26 @@ export default function Memo() {
         <p className="memo-sub">
           {[header.prof, header.times, `${sn}분반`].filter(Boolean).join(' · ')}
         </p>
-        <p className="memo-note note">※ 수업 메모는 학기 종속·휘발성이며, 이 분반을 확정시간표에 등록한 생도만 보고 쓸 수 있습니다.</p>
       </div>
 
-      {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화 */}
+      {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화(눌러서 새 화면으로) */}
       <section className="memo-review">
         {(() => {
           const eligible = rev.daysHeld != null && rev.daysHeld >= rev.minDays;
-          if (showReview && eligible) {
+          if (eligible) {
             return (
-              <ReviewForm
-                courseCode={courseCode}
-                professors={header.profCode ? [{ code: header.profCode, name: header.prof }] : []}
-                defaultProf={header.profCode}
-                onDone={() => setShowReview(false)}
-              />
+              <Link to={`/review-write/${courseCode}/${y}/${t}/${sn}`} className="btn-add btn-block">
+                ✍️ 강의평 쓰기
+              </Link>
             );
           }
           return (
             <button
               className="btn-add btn-block"
-              disabled={!eligible}
-              onClick={() => setShowReview(true)}
-              title={eligible ? '' : `확정시간표에 ${rev.minDays}일 이상 보유 후 작성 가능`}
+              disabled
+              title={`확정시간표에 ${rev.minDays}일 이상 보유 후 작성 가능`}
             >
-              ✍️ 강의평 쓰기{eligible ? '' : rev.daysHeld == null ? ' (미등록)' : ` (앞으로 ${rev.minDays - rev.daysHeld}일)`}
+              ✍️ 강의평 쓰기{rev.daysHeld == null ? ' (미등록)' : ` (앞으로 ${rev.minDays - rev.daysHeld}일)`}
             </button>
           );
         })()}
@@ -193,12 +192,13 @@ export default function Memo() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="삭제용 비번"
+                placeholder="삭제용 비번 (선택)"
               />
               <button type="submit" className="btn-add" disabled={submitting}>
                 {submitting ? '등록 중…' : '메모 등록'}
               </button>
             </div>
+            <p className="account-note">비번을 비우면 누구나 삭제할 수 있어요.</p>
             {error && <p className="error-msg">{error}</p>}
           </form>
 
@@ -216,19 +216,23 @@ export default function Memo() {
                   <span className="memo-date">{new Date(m.created_at).toLocaleString('ko-KR')}</span>
                   <span className="memo-actions">
                     <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>
-                    {delTarget === m.id ? (
-                      <span className="rev-del">
-                        <input
-                          type="password"
-                          value={delPw}
-                          onChange={(e) => setDelPw(e.target.value)}
-                          placeholder="비번"
-                        />
-                        <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
-                        <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
-                      </span>
+                    {m.post_password_hash ? (
+                      delTarget === m.id ? (
+                        <span className="rev-del">
+                          <input
+                            type="password"
+                            value={delPw}
+                            onChange={(e) => setDelPw(e.target.value)}
+                            placeholder="비번"
+                          />
+                          <button className="btn-add btn-sm" onClick={confirmDelete}>확인</button>
+                          <button className="btn-remove btn-sm" onClick={() => { setDelTarget(null); setDelPw(''); setDelErr(''); }}>취소</button>
+                        </span>
+                      ) : (
+                        <button className="rev-del-btn" onClick={() => { setDelTarget(m.id); setDelErr(''); }}>삭제</button>
+                      )
                     ) : (
-                      <button className="rev-del-btn" onClick={() => { setDelTarget(m.id); setDelErr(''); }}>삭제</button>
+                      <button className="rev-del-btn" onClick={() => deleteOpen(m.id)}>삭제</button>
                     )}
                   </span>
                 </div>

@@ -109,7 +109,6 @@ export default function ProfessorDetail() {
   return (
     <div className="page">
       <header className="page-header row">
-        <Link to="/professors" className="link-btn">← 교수 검색</Link>
         <h2>{profName}</h2>
       </header>
 

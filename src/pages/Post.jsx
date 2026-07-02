@@ -18,9 +18,18 @@ function timeAgo(iso) {
   return `${d.getMonth() + 1}.${d.getDate()}`;
 }
 
-function CommentDelete({ id, onDone }) {
+function CommentDelete({ id, hasPw, onDone }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
+  // 비번 없는 댓글: 확인 후 바로 삭제(누구나)
+  if (!hasPw) {
+    return <button className="rev-del-btn" onClick={async () => {
+      if (!confirm('이 댓글을 삭제할까요?')) return;
+      const { data, error } = await deleteComment(id, '');
+      if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
+      onDone();
+    }}>삭제</button>;
+  }
   if (!open) return <button className="rev-del-btn" onClick={() => setOpen(true)}>삭제</button>;
   return (
     <span className="comment-del">
@@ -51,9 +60,17 @@ export default function Post() {
   }
   async function submitComment(e) {
     e.preventDefault();
-    if (!cText.trim() || cPw.length < 2) return;
+    if (!cText.trim()) return;
     await addComment(Number(id), replyTo, maskProfanity(cText.trim()), cPw);
     setCText(''); setCPw(''); setReplyTo(null); load();
+  }
+  // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글은 확인 후 바로 삭제
+  async function onDeleteClick() {
+    if (post.post_password_hash) { setShowDel((v) => !v); return; }
+    if (!confirm('이 게시글을 삭제할까요?')) return;
+    const { data, error } = await deletePost(Number(id), '');
+    if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
+    navigate(-1);
   }
   async function doDelete() {
     const { data, error } = await deletePost(Number(id), delPw);
@@ -69,7 +86,6 @@ export default function Post() {
   return (
     <div className="page noscreenshot">
       <header className="page-header">
-        <button className="link-btn" onClick={() => navigate(-1)}>← 뒤로</button>
         <h2>게시글</h2>
       </header>
 
@@ -86,7 +102,7 @@ export default function Post() {
           <button className="react-pill" onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
           <button className="react-pill" onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
           <button className="react-pill react-report" onClick={() => doReact('report')}>🚨 <b>{post.report_count}</b></button>
-          <button className="rev-del-btn post-del-toggle" onClick={() => setShowDel((v) => !v)}>삭제</button>
+          <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
         {showDel && (
           <div className="post-del-row">
@@ -102,7 +118,7 @@ export default function Post() {
         )}
         <textarea value={cText} onChange={(e) => setCText(e.target.value)} rows={2} placeholder={replyTo ? '답글을 입력하세요' : '댓글을 입력하세요'} />
         <div className="comment-form-row">
-          <input type="password" value={cPw} onChange={(e) => setCPw(e.target.value)} placeholder="삭제용 비번" />
+          <input type="password" value={cPw} onChange={(e) => setCPw(e.target.value)} placeholder="삭제용 비번 (선택)" />
           <button className="btn-add">등록</button>
         </div>
       </form>
@@ -120,12 +136,12 @@ export default function Post() {
             <p className="comment-body">{c.content}</p>
             <div className="comment-actions">
               <button className="link-btn" onClick={() => setReplyTo(c.id)}>답글</button>
-              <CommentDelete id={c.id} onDone={load} />
+              <CommentDelete id={c.id} hasPw={!!c.post_password_hash} onDone={load} />
             </div>
             {repliesOf(c.id).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
-                <div className="comment-actions"><CommentDelete id={rc.id} onDone={load} /></div>
+                <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.post_password_hash} onDone={load} /></div>
               </div>
             ))}
           </li>

@@ -3,7 +3,7 @@
 export async function onRequestPost(context) {
   const { request, env, data } = context;
   const { id, password } = await request.json().catch(() => ({}));
-  if (!id || !password) return Response.json({ status: 'BAD_REQUEST' }, { status: 400 });
+  if (!id) return Response.json({ status: 'BAD_REQUEST' }, { status: 400 });
 
   const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: data.token, 'Content-Type': 'application/json' };
 
@@ -19,7 +19,7 @@ export async function onRequestPost(context) {
 
   // 2) 비번 검증 + 행 삭제 + 레벨 -1 (유저 JWT 로 RPC)
   const delRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/delete_exam`, {
-    method: 'POST', headers: H, body: JSON.stringify({ p_id: id, p_post_password: password }),
+    method: 'POST', headers: H, body: JSON.stringify({ p_id: id, p_post_password: password || '' }),
   });
   if (!delRes.ok) {
     const t = await delRes.text();

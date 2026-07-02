@@ -52,7 +52,6 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
     e.preventDefault();
     setError('');
     if (!scores.overall) return setError('종합 평점은 필수입니다.');
-    if (password.length < 2) return setError('게시글 비밀번호를 입력하세요(수정·삭제용).');
 
     setSubmitting(true);
     const { error } = await supabase.rpc('create_review', {
@@ -125,8 +124,8 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
       </label>
 
       <label className="field rev-form-field">
-        <span className="field-label">게시글 비밀번호</span>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="수정·삭제용" />
+        <span className="field-label">삭제용 비밀번호 (선택)</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비우면 누구나 삭제 가능" />
       </label>
 
       {error && <p className="error-msg">{error}</p>}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
 import { supabase } from '../supabase';
@@ -66,7 +66,6 @@ export default function Profile() {
   return (
     <div className="page">
       <header className="page-header">
-        <Link to="/" className="link-btn">← 홈</Link>
         <h2>프로필</h2>
       </header>
 
