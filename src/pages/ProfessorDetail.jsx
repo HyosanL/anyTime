@@ -5,6 +5,7 @@ import { getCatalog, buildSections } from '../lib/cache';
 import { getReacted, markReacted } from '../lib/reactions';
 import TimetableGrid from '../components/TimetableGrid';
 import CorrectionModal from '../components/CorrectionModal';
+import PullToRefresh from '../components/PullToRefresh';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -41,8 +42,9 @@ export default function ProfessorDetail() {
   const [loading, setLoading] = useState(true);
   const [corr, setCorr] = useState(false);
 
-  async function loadAll() {
-    setLoading(true);
+  // silent: 당겨서 새로고침 때는 화면을 '불러오는 중…'으로 갈아치우지 않는다
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true);
     const catalog = await getCatalog().catch(() => null);
     if (catalog) {
       const p = (catalog.professor ?? []).find((x) => x.code === code);
@@ -112,7 +114,7 @@ export default function ProfessorDetail() {
   const profName = prof?.name ?? code;
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
       <header className="page-header row">
         <h2>{profName}</h2>
       </header>
@@ -238,6 +240,6 @@ export default function ProfessorDetail() {
           ))}
         </ul>
       )}
-    </div>
+    </PullToRefresh>
   );
 }

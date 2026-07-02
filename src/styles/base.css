@@ -59,6 +59,36 @@ button { font-family: inherit; }
 .page { padding-bottom: 2rem; animation: page-in 0.22s ease; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
+/* ---------- 아래로 당겨 새로고침(PullToRefresh) ---------- */
+/* 브라우저 기본 당겨서-새로고침/오버스크롤 글로우를 끄고 커스텀 인디케이터만 쓴다 */
+html, body { overscroll-behavior-y: contain; }
+
+.ptr { position: relative; }
+/* 인디케이터는 콘텐츠 위쪽(화면 밖)에 붙어 있다가, 당길 때 함께 내려와 드러난다 */
+.ptr-ind {
+  position: absolute; top: -52px; left: 0; right: 0; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.ptr-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+.ptr-arrow {
+  font-size: 0.95rem; font-weight: 700; line-height: 1; color: var(--text-3);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.ptr-ready .ptr-arrow { transform: rotate(180deg); color: var(--primary); }
+.ptr-spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--primary);
+  animation: ptr-rot 0.7s linear infinite;
+}
+@keyframes ptr-rot { to { transform: rotate(360deg); } }
+
 .page-center {
   display: flex; align-items: center; justify-content: center;
   min-height: 60dvh; color: var(--text-3); padding: 2rem; text-align: center;

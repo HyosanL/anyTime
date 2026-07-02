@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskProfanity } from '../lib/moderation';
 import { getReacted, markReacted } from '../lib/reactions';
+import PullToRefresh from '../components/PullToRefresh';
 
 // 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
@@ -57,8 +58,9 @@ export default function Memo() {
     setRev({ minDays: md ?? 30, daysHeld });
   }
 
-  async function loadMemos() {
-    setLoading(true);
+  // silent: 당겨서 새로고침 때는 목록을 '불러오는 중…'으로 갈아치우지 않는다
+  async function loadMemos(silent = false) {
+    if (!silent) setLoading(true);
     setError('');
     const { data, error } = await supabase.rpc('get_memos', {
       p_course_code: courseCode,
@@ -140,7 +142,7 @@ export default function Memo() {
   }
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={() => loadMemos(true)}>
       <header className="page-header">
         <h2>{header.name} 메모</h2>
       </header>
@@ -249,6 +251,6 @@ export default function Memo() {
           </ul>
         </>
       )}
-    </div>
+    </PullToRefresh>
   );
 }

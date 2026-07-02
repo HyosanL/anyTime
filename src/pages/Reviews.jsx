@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import { getReacted, markReacted } from '../lib/reactions';
+import PullToRefresh from '../components/PullToRefresh';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -43,8 +44,9 @@ export default function Reviews() {
     [professors]
   );
 
-  async function loadAll() {
-    setLoading(true);
+  // silent: 당겨서 새로고침 때는 목록을 '불러오는 중…'으로 갈아치우지 않는다
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true);
     setError('');
     // 과목명·교수 목록은 카탈로그 캐시에서
     const catalog = await getCatalog().catch(() => null);
@@ -130,7 +132,7 @@ export default function Reviews() {
   }
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
       <header className="page-header">
         <h2>{courseName} 강의평</h2>
       </header>
@@ -228,6 +230,6 @@ export default function Reviews() {
           </li>
         ))}
       </ul>
-    </div>
+    </PullToRefresh>
   );
 }

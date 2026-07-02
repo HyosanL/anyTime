@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { listBoards, createBoard, listFavoriteIds, addFavorite, removeFavorite } from '../lib/board';
 import { kvGet, kvSet } from '../lib/cache';
+import PullToRefresh from '../components/PullToRefresh';
 
 export default function Boards() {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export default function Boards() {
   const sorted = [...(boards ?? [])].sort((a, b) => (favSet.has(b.id) ? 1 : 0) - (favSet.has(a.id) ? 1 : 0));
 
   return (
-    <div className="page noscreenshot">
+    <PullToRefresh className="page noscreenshot" onRefresh={() => load(q).catch(() => {})}>
       <header className="page-header">
         <h2>익명게시판</h2>
       </header>
@@ -92,6 +93,6 @@ export default function Boards() {
           </li>
         )}
       </ul>
-    </div>
+    </PullToRefresh>
   );
 }

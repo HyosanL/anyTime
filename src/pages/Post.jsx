@@ -5,6 +5,7 @@ import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { maskProfanity } from '../lib/moderation';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
+import PullToRefresh from '../components/PullToRefresh';
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
 function timeAgo(iso) {
@@ -123,7 +124,7 @@ export default function Post() {
   const ago = timeAgo(post.created_at);
 
   return (
-    <div className="page noscreenshot">
+    <PullToRefresh className="page noscreenshot" onRefresh={load}>
       <header className="page-header">
         <h2>게시글</h2>
       </header>
@@ -186,6 +187,6 @@ export default function Post() {
           </li>
         ))}
       </ul>
-    </div>
+    </PullToRefresh>
   );
 }

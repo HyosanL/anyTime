@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getBoard, listPosts, listHot, createPost, uploadBoardImages, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
 import { kvGet, kvSet } from '../lib/cache';
+import PullToRefresh from '../components/PullToRefresh';
 
 const MAX_IMAGES = 10;
 
@@ -92,7 +93,7 @@ export default function Board() {
   const preview = (s) => { const t = (s || '').replace(/\s+/g, ' ').trim(); return t.length > 60 ? t.slice(0, 60) + '…' : t; };
 
   return (
-    <div className="page noscreenshot">
+    <PullToRefresh className="page noscreenshot" onRefresh={() => load(page)}>
       <header className="page-header">
         <h2>{title}</h2>
         {!isHot && enabled && <button className="link-btn" onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</button>}
@@ -172,6 +173,6 @@ export default function Board() {
           </div>
         </>
       )}
-    </div>
+    </PullToRefresh>
   );
 }

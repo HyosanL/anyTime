@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage';
 import ExamForm from '../components/ExamForm';
+import PullToRefresh from '../components/PullToRefresh';
 
 // 파일 크기 표기(1.2MB 등)
 function fmtSize(bytes) {
@@ -38,8 +39,9 @@ export default function Exams() {
   const [delPw, setDelPw] = useState('');
   const [delErr, setDelErr] = useState('');
 
-  async function loadAll() {
-    setLoading(true);
+  // silent: 당겨서 새로고침 때는 목록을 '불러오는 중…'으로 갈아치우지 않는다
+  async function loadAll(silent = false) {
+    if (!silent) setLoading(true);
     const catalog = await getCatalog().catch(() => null);
     const course = catalog?.course?.find((c) => c.code === courseCode);
     if (course) setCourseName(course.name);
@@ -90,7 +92,7 @@ export default function Exams() {
   }
 
   return (
-    <div className="page">
+    <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
       <header className="page-header">
         <h2>{courseName} 족보</h2>
       </header>
@@ -188,6 +190,6 @@ export default function Exams() {
           })
         )}
       </ul>
-    </div>
+    </PullToRefresh>
   );
 }
