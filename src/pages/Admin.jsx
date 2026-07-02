@@ -398,28 +398,31 @@ export default function Admin() {
 
       <div className="cards admin-cards">
         {section === 'notices' && (
-          <Card icon="📢" title="공지사항" desc="사용자가 앱에 접속하면 홈 화면에서 활성 공지를 팝업으로 봅니다. 닫아도 다음 접속 때 다시 표시되며, 내리면(비활성) 즉시 사라집니다.">
+          <Card icon="📢" title="공지사항" desc="사용자가 앱에 접속하면 홈 화면에서 게시 중인 공지를 팝업으로 봅니다. 게시 후 48시간이 지나면 자동으로 내려가고, 한 번 본 사용자에게는 다시 표시되지 않습니다(수정·재게시하면 다시 표시).">
             {notices.length === 0 ? (
               <p className="note adm-empty-row">등록된 공지가 없습니다. 아래에서 작성하세요.</p>
             ) : (
               <ul className="list adm-list">
-                {notices.map((n) => (
-                  <li key={n.id} className="adm-item">
-                    <div className="adm-item-row">
-                      <div className="adm-item-body">
-                        <div className="adm-item-title">
-                          <span className={`tag ${n.is_active ? 'tag-success' : 'tag-warn'}`}>{n.is_active ? '게시 중' : '내려짐'}</span> {n.title}
+                {notices.map((n) => {
+                  const live = n.is_active && new Date(n.expires_at) > new Date();
+                  return (
+                    <li key={n.id} className="adm-item">
+                      <div className="adm-item-row">
+                        <div className="adm-item-body">
+                          <div className="adm-item-title">
+                            <span className={`tag ${live ? 'tag-success' : 'tag-warn'}`}>{!n.is_active ? '내려짐' : live ? '게시 중' : '만료'}</span> {n.title}
+                          </div>
+                          <div className="adm-item-sub">{fmtDateTime(n.created_at)}{live ? ` · ${fmtDateTime(n.expires_at)} 까지` : ''}</div>
                         </div>
-                        <div className="adm-item-sub">{fmtDateTime(n.created_at)}{n.updated_at !== n.created_at ? ` · 수정 ${fmtDateTime(n.updated_at)}` : ''}</div>
+                        <div className="adm-item-acts">
+                          <button className="btn-ghost btn-sm" onClick={() => run('set_notice_active', { id: n.id, value: !live }, live ? '공지 내림' : '공지 게시(48시간)')}>{live ? '내리기' : '게시(48h)'}</button>
+                          <button className="link-btn" onClick={() => setNtc({ id: n.id, title: n.title, content: n.content })}>수정</button>
+                          <button className="rev-del-btn" onClick={() => { if (confirm(`'${n.title}' 공지를 삭제합니다.`)) run('delete_notice', { id: n.id }, '공지 삭제'); }}>삭제</button>
+                        </div>
                       </div>
-                      <div className="adm-item-acts">
-                        <button className="btn-ghost btn-sm" onClick={() => run('set_notice_active', { id: n.id, value: !n.is_active }, n.is_active ? '공지 내림' : '공지 게시')}>{n.is_active ? '내리기' : '게시'}</button>
-                        <button className="link-btn" onClick={() => setNtc({ id: n.id, title: n.title, content: n.content })}>수정</button>
-                        <button className="rev-del-btn" onClick={() => { if (confirm(`'${n.title}' 공지를 삭제합니다.`)) run('delete_notice', { id: n.id }, '공지 삭제'); }}>삭제</button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
@@ -433,7 +436,7 @@ export default function Admin() {
                 <button className="rev-del-btn" onClick={() => setNtc({ id: null, title: '', content: '' })}>취소</button>
               </div>
             ) : (
-              <button className="btn-add btn-block" onClick={async () => { if (!ntc.title.trim() || !ntc.content.trim()) return; const r = await run('set_notice', ntc, '공지 등록 (즉시 게시)'); if (r.ok) setNtc({ id: null, title: '', content: '' }); }}>공지 등록 (즉시 게시)</button>
+              <button className="btn-add btn-block" onClick={async () => { if (!ntc.title.trim() || !ntc.content.trim()) return; const r = await run('set_notice', ntc, '공지 등록 (48시간 게시)'); if (r.ok) setNtc({ id: null, title: '', content: '' }); }}>공지 등록 (48시간 게시)</button>
             )}
           </Card>
         )}

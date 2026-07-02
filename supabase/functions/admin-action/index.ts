@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       // 관리자 목록(비활성 포함 — RLS 는 활성만 노출하므로 여기서 service_role 로 조회)
       case 'list_notices': {
         const { data } = await admin.from('notice')
-          .select('id, title, content, is_active, created_at, updated_at')
+          .select('id, title, content, is_active, expires_at, created_at, updated_at')
           .order('created_at', { ascending: false }).limit(100)
         return json({ status: 'OK', items: data ?? [] })
       }
@@ -109,9 +109,11 @@ Deno.serve(async (req) => {
         return json({ status: 'OK' })
       }
       case 'set_notice_active': {
-        await admin.from('notice')
-          .update({ is_active: !!payload.value, updated_at: new Date().toISOString() })
-          .eq('id', payload.id).throwOnError()
+        const on = !!payload.value
+        const patch: Record<string, unknown> = { is_active: on, updated_at: new Date().toISOString() }
+        // 게시(재게시)하면 그 시점부터 48시간 게시. updated_at 갱신으로 본 사람에게도 다시 표시.
+        if (on) patch.expires_at = new Date(Date.now() + 48 * 3600_000).toISOString()
+        await admin.from('notice').update(patch).eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
       case 'delete_notice': {
