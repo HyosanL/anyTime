@@ -256,6 +256,7 @@ function NewSectionForm({ courseCode, cat, run, defYear, defTerm }) {
 // 허브 항목 정의 (key는 라우팅 section 과 일치). 검열(moderation)은 별도 페이지로 링크하며 최상단.
 const SECTIONS = [
   { key: 'moderation', icon: '🧹', title: '검열', sub: '신고·자동필터 강의평·수정제안 검토', to: '/admin/moderation' },
+  { key: 'notices', icon: '📢', title: '공지사항', sub: '홈 화면 팝업 공지 작성·관리' },
   { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 분반 하나씩 관리' },
   { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
   { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
@@ -279,6 +280,8 @@ export default function Admin() {
   const [currentCode, setCurrentCode] = useState('');
   const [setting, setSetting] = useState({});
   const [boardsList, setBoardsList] = useState([]);
+  const [notices, setNotices] = useState([]);
+  const [ntc, setNtc] = useState({ id: null, title: '', content: '' });
 
   // 폼 상태
   const [q, setQ] = useState('');
@@ -296,6 +299,7 @@ export default function Admin() {
     call('list_admins').then((r) => r.ok && setAdmins(r.data.admins ?? []));
     call('get_signup_code').then((r) => r.ok && setCurrentCode(r.data.code ?? ''));
     call('get_app_setting').then((r) => r.ok && setSetting(r.data.setting ?? {}));
+    call('list_notices').then((r) => r.ok && setNotices(r.data.items ?? []));
     supabase.from('board').select('id, name').order('last_activity_at', { ascending: false }).then(({ data }) => setBoardsList(data || []));
   }
   useEffect(() => {
@@ -393,6 +397,47 @@ export default function Admin() {
       {banner}
 
       <div className="cards admin-cards">
+        {section === 'notices' && (
+          <Card icon="📢" title="공지사항" desc="사용자가 앱에 접속하면 홈 화면에서 활성 공지를 팝업으로 봅니다. 닫아도 다음 접속 때 다시 표시되며, 내리면(비활성) 즉시 사라집니다.">
+            {notices.length === 0 ? (
+              <p className="note adm-empty-row">등록된 공지가 없습니다. 아래에서 작성하세요.</p>
+            ) : (
+              <ul className="list adm-list">
+                {notices.map((n) => (
+                  <li key={n.id} className="adm-item">
+                    <div className="adm-item-row">
+                      <div className="adm-item-body">
+                        <div className="adm-item-title">
+                          <span className={`tag ${n.is_active ? 'tag-success' : 'tag-warn'}`}>{n.is_active ? '게시 중' : '내려짐'}</span> {n.title}
+                        </div>
+                        <div className="adm-item-sub">{fmtDateTime(n.created_at)}{n.updated_at !== n.created_at ? ` · 수정 ${fmtDateTime(n.updated_at)}` : ''}</div>
+                      </div>
+                      <div className="adm-item-acts">
+                        <button className="btn-ghost btn-sm" onClick={() => run('set_notice_active', { id: n.id, value: !n.is_active }, n.is_active ? '공지 내림' : '공지 게시')}>{n.is_active ? '내리기' : '게시'}</button>
+                        <button className="link-btn" onClick={() => setNtc({ id: n.id, title: n.title, content: n.content })}>수정</button>
+                        <button className="rev-del-btn" onClick={() => { if (confirm(`'${n.title}' 공지를 삭제합니다.`)) run('delete_notice', { id: n.id }, '공지 삭제'); }}>삭제</button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="divider adm-divider" />
+            <div className="section-label adm-sub-label">{ntc.id ? '공지 수정' : '새 공지 작성'}</div>
+            <label className="field"><span className="field-label">제목</span><input placeholder="공지 제목" value={ntc.title} onChange={(e) => setNtc({ ...ntc, title: e.target.value })} /></label>
+            <label className="field"><span className="field-label">내용</span><textarea placeholder="공지 내용 (줄바꿈이 그대로 표시됩니다)" value={ntc.content} onChange={(e) => setNtc({ ...ntc, content: e.target.value })} /></label>
+            {ntc.id ? (
+              <div className="adm-btn-row">
+                <button className="btn-add" onClick={async () => { if (!ntc.title.trim() || !ntc.content.trim()) return; const r = await run('set_notice', ntc, '공지 수정 (본 사람에게도 다시 표시)'); if (r.ok) setNtc({ id: null, title: '', content: '' }); }}>저장</button>
+                <button className="rev-del-btn" onClick={() => setNtc({ id: null, title: '', content: '' })}>취소</button>
+              </div>
+            ) : (
+              <button className="btn-add btn-block" onClick={async () => { if (!ntc.title.trim() || !ntc.content.trim()) return; const r = await run('set_notice', ntc, '공지 등록 (즉시 게시)'); if (r.ok) setNtc({ id: null, title: '', content: '' }); }}>공지 등록 (즉시 게시)</button>
+            )}
+          </Card>
+        )}
+
         {section === 'courses' && (
           <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 선택하면 분반을 하나씩 관리합니다. 아래에서 과목을 추가/수정하며, 과목코드는 자동 부여됩니다.">
             <div className="search-bar adm-inline-search">

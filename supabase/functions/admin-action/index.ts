@@ -86,6 +86,38 @@ Deno.serve(async (req) => {
         await admin.from('app_setting').update({ [field]: payload.value }).eq('id', 1).throwOnError()
         return json({ status: 'OK' })
       }
+      // ── 공지사항 ──
+      // 관리자 목록(비활성 포함 — RLS 는 활성만 노출하므로 여기서 service_role 로 조회)
+      case 'list_notices': {
+        const { data } = await admin.from('notice')
+          .select('id, title, content, is_active, created_at, updated_at')
+          .order('created_at', { ascending: false }).limit(100)
+        return json({ status: 'OK', items: data ?? [] })
+      }
+      // id 없으면 생성, 있으면 수정. 수정 시 updated_at 갱신 → 이미 본 사용자에게도 팝업 재표시.
+      case 'set_notice': {
+        const title = String(payload.title ?? '').trim()
+        const content = String(payload.content ?? '').trim()
+        if (!title || !content) return json({ status: 'BAD_REQUEST' }, 400)
+        if (payload.id) {
+          // 수정: 활성 상태는 유지(내림/게시는 set_notice_active 로만)
+          await admin.from('notice').update({ title, content, updated_at: new Date().toISOString() })
+            .eq('id', payload.id).throwOnError()
+        } else {
+          await admin.from('notice').insert({ title, content, is_active: true }).throwOnError()
+        }
+        return json({ status: 'OK' })
+      }
+      case 'set_notice_active': {
+        await admin.from('notice')
+          .update({ is_active: !!payload.value, updated_at: new Date().toISOString() })
+          .eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'delete_notice': {
+        await admin.from('notice').delete().eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
       case 'get_signup_code': {
         const { data } = await admin.from('app_setting').select('signup_code').eq('id', 1).maybeSingle()
         return json({ status: 'OK', code: data?.signup_code ?? '' })

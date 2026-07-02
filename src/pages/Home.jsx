@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import Badge, { badgeOf } from '../components/Badge';
+import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
 import { getCatalog, buildMyTimetable, saveTimetableCache, readTimetableCache } from '../lib/cache';
 import { boardEnabled } from '../lib/board';
@@ -165,6 +166,7 @@ export default function Home() {
 
   return (
     <div className="page home">
+      <NoticePopup />
       <header className="page-header">
         <Link to="/profile" className="home-ident">
           <strong className="home-ident-name">{cadet?.username}</strong>
