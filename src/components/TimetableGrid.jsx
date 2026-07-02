@@ -59,7 +59,15 @@ export default function TimetableGrid({ mine = [], periods = [], customClasses =
   });
 
   if (blocks.length === 0) {
-    return <p className="muted center">시간표가 비어 있습니다. 강의를 검색해 추가하거나 “직접 추가”로 넣어보세요.</p>;
+    return (
+      <div className="empty tt-empty">
+        <span className="empty-emoji" aria-hidden="true">🗓️</span>
+        <p className="tt-empty-title">아직 시간표가 비어 있어요</p>
+        <p className="muted">수업을 검색해 시간표에 추가해 보세요.</p>
+        <Link to="/search" className="btn btn-primary tt-empty-cta">🔍 강의 검색하기</Link>
+        <p className="tt-empty-hint">DB에 없는 수업은 위 ‘＋ 직접 추가’로 넣을 수 있어요.</p>
+      </div>
+    );
   }
 
   // 표시 요일(월~금 + 실제 쓰이는 토/일)

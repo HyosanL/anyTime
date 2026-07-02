@@ -68,6 +68,24 @@
   gap: 0.45rem;
 }
 
+/* 확정시간표가 비어 있을 때: 강의 검색 유도 */
+.tt-empty {
+  padding: 2.25rem 1.25rem 2rem;
+  gap: 0.35rem;
+}
+.tt-empty-title {
+  font-weight: 700;
+  color: var(--text);
+}
+.tt-empty-cta {
+  margin-top: 0.85rem;
+}
+.tt-empty-hint {
+  margin-top: 0.7rem;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
 /* 직접 추가 폼 */
 .tt-add-form {
   display: flex;
