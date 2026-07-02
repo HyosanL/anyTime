@@ -90,6 +90,20 @@ export async function clearCatalog() {
   await tx.done;
 }
 
+// ---------------------------------------------------------------------
+//  범용 SWR 캐시(stale-while-revalidate): 캐시가 있으면 즉시 화면에 띄우고
+//  서버 응답이 오면 교체. 게시판 목록·글 목록·게시글·검열 등 재방문 화면용.
+// ---------------------------------------------------------------------
+export async function kvGet(key) {
+  try { return await (await getDB()).get(STORE, key); } catch { return undefined; }
+}
+export async function kvSet(key, value) {
+  try { await (await getDB()).put(STORE, value, key); } catch { /* 캐시 실패는 무시 */ }
+}
+export async function kvDel(key) {
+  try { await (await getDB()).delete(STORE, key); } catch { /* 캐시 실패는 무시 */ }
+}
+
 // 확정시간표 행 캐시 (오프라인 표시용 write-through)
 const TT_KEY = 'timetable';
 

@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
+import { getReacted, markReacted } from '../lib/reactions';
 import { maskProfanity } from '../lib/moderation';
+import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
@@ -44,18 +46,38 @@ export default function Post() {
   const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
+  const [gone, setGone] = useState(false); // 서버 기준으로 삭제/없는 글
+  const [reacted, setReacted] = useState({}); // 이 기기에서 이미 누른 반응 { like, dislike, report }
   const [cText, setCText] = useState('');
   const [cPw, setCPw] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [delPw, setDelPw] = useState('');
   const [showDel, setShowDel] = useState(false);
+  const seq = useRef(0);
 
-  async function load() { setPost(await getPost(id)); setComments(await listComments(id)); }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  // 캐시 즉시 표시(SWR) → 서버 응답으로 교체. 서버에서 사라진 글이면 캐시 파기.
+  async function load() {
+    const my = ++seq.current;
+    let gotFresh = false;
+    kvGet(`bb:post:${id}`).then((c) => {
+      if (seq.current === my && !gotFresh && c?.post) { setPost(c.post); setComments(c.comments ?? []); }
+    });
+    try {
+      const [p, cs] = await Promise.all([getPost(id), listComments(id)]);
+      if (seq.current !== my) return;
+      gotFresh = true;
+      if (!p) { setGone(true); setPost(null); kvDel(`bb:post:${id}`); return; }
+      setPost(p); setComments(cs);
+      kvSet(`bb:post:${id}`, { post: p, comments: cs });
+    } catch { /* 오프라인 등: 캐시 유지 */ }
+  }
+  useEffect(() => { setGone(false); setReacted(getReacted('post', id)); load(); /* eslint-disable-next-line */ }, [id]);
 
   async function doReact(kind) {
+    if (reacted[kind]) return;
+    markReacted('post', id, kind); setReacted(getReacted('post', id)); // 요청 전에 먼저 기록해 연타 차단
     const r = await react(Number(id), kind);
-    if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); navigate(-1); return; }
+    if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); kvDel(`bb:post:${id}`); navigate(-1); return; }
     load();
   }
   async function submitComment(e) {
@@ -70,14 +92,27 @@ export default function Post() {
     if (!confirm('이 게시글을 삭제할까요?')) return;
     const { data, error } = await deletePost(Number(id), '');
     if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
+    kvDel(`bb:post:${id}`);
     navigate(-1);
   }
   async function doDelete() {
     const { data, error } = await deletePost(Number(id), delPw);
     if (error || data === false) { alert('비밀번호가 일치하지 않습니다.'); return; }
+    kvDel(`bb:post:${id}`);
     navigate(-1);
   }
 
+  if (gone) {
+    return (
+      <div className="page noscreenshot">
+        <header className="page-header"><h2>게시글</h2></header>
+        <div className="empty">
+          <span className="empty-emoji">🗑️</span>
+          <span>삭제되었거나 존재하지 않는 게시글입니다.</span>
+        </div>
+      </div>
+    );
+  }
   if (!post) return <div className="page-center">불러오는 중…</div>;
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (pid) => comments.filter((c) => c.parent_id === pid);
@@ -99,9 +134,9 @@ export default function Post() {
         <p className="post-content">{post.content}</p>
         {postImageKeys(post).map((k) => <BoardImage key={k} imageKey={k} className="post-image" />)}
         <div className="post-react">
-          <button className="react-pill" onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
-          <button className="react-pill" onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
-          <button className="react-pill react-report" onClick={() => doReact('report')}>🚨 <b>{post.report_count}</b></button>
+          <button className={`react-pill${reacted.like ? ' is-on' : ''}`} disabled={!!reacted.like} onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
+          <button className={`react-pill${reacted.dislike ? ' is-on' : ''}`} disabled={!!reacted.dislike} onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
+          <button className={`react-pill react-report${reacted.report ? ' is-on' : ''}`} disabled={!!reacted.report} onClick={() => doReact('report')}>🚨 <b>{post.report_count}</b></button>
           <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
         {showDel && (

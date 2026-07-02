@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
-import { clearCatalog } from '../lib/cache';
+import { clearCatalog, kvGet, kvSet } from '../lib/cache';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
-const REASON_LABEL = { burst_3: '30분 3건', threshold_10: '누적 10건' };
+// burst_3/threshold_10 은 구 기준(2026-07 이전) 아카이브 행 표시용으로 유지.
+const REASON_LABEL = { burst_10: '15분 10건', threshold_30: '누적 30건', burst_3: '30분 3건(구)', threshold_10: '누적 10건(구)' };
 const POLL_MS = 15000;
 // 파급이 큰 항목(과목명/교수명/학과)은 자동반영 대상이 아니며, 3건↑ 쌓이면 수동 검토 강조.
 const HIGH_RISK = new Set(['course:name', 'professor:name', 'professor:department']);
@@ -52,6 +53,7 @@ export default function Moderation() {
   const [reviewedAt, setReviewedAt] = useState(null); // 마지막 '모두 확인 처리' 컷오프
   const [edit, setEdit] = useState(null); // { type, id, text }
   const timer = useRef(null);
+  const freshRef = useRef(false); // 서버 응답 도착 후 늦게 온 캐시가 덮어쓰지 않도록
 
   useEffect(() => {
     supabase.rpc('is_admin').then(({ data }) => setIsAdmin(!!data));
@@ -65,6 +67,7 @@ export default function Moderation() {
       call('list_auto_notices'),
       call('list_deleted'),
     ]);
+    freshRef.current = true;
     if (rc.ok) setCorrs(rc.data.items ?? []);
     if (rr.ok) setReported(rr.data.items ?? []);
     if (ra.ok) setAutos(ra.data.items ?? []);
@@ -79,12 +82,25 @@ export default function Moderation() {
       });
       setItems(withFlags);
       setReviewedAt(r.data.reviewed_at ?? null);
+      // 다음 진입 때 즉시 표시할 스냅샷(SWR). 전부 성공했을 때만 저장.
+      if (rc.ok && rr.ok && ra.ok && rd.ok) {
+        kvSet('mod:snapshot', {
+          items: withFlags, corrs: rc.data.items ?? [], reported: rr.data.items ?? [],
+          autos: ra.data.items ?? [], deleted: rd.data.items ?? [], reviewedAt: r.data.reviewed_at ?? null,
+        });
+      }
     }
     setUpdatedAt(new Date());
   }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
+    // 캐시된 마지막 스냅샷 즉시 표시 → edge function 응답으로 교체
+    kvGet('mod:snapshot').then((c) => {
+      if (freshRef.current || !c) return;
+      setItems(c.items ?? []); setCorrs(c.corrs ?? []); setReported(c.reported ?? []);
+      setAutos(c.autos ?? []); setDeleted(c.deleted ?? []); setReviewedAt(c.reviewedAt ?? null);
+    });
     load();
     timer.current = setInterval(load, POLL_MS);
     return () => clearInterval(timer.current);
@@ -342,7 +358,7 @@ export default function Moderation() {
       {tab === 'deleted' && (
         <>
           <p className="mod-status muted">
-            신고 누적(30분 3건·누적 10건)으로 자동삭제된 글입니다. 담합·오신고로 판단되면 복구하세요. 30일 뒤 자동 파기됩니다.
+            신고 누적(15분 10건·누적 30건)으로 자동삭제된 글입니다. 담합·오신고로 판단되면 복구하세요. 30일 뒤 자동 파기됩니다.
           </p>
           <ul className="mod-list">
             {deleted.length === 0 && (

@@ -1,27 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { listBoards, createBoard, listFavoriteIds, addFavorite, removeFavorite } from '../lib/board';
+import { kvGet, kvSet } from '../lib/cache';
 
 export default function Boards() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
-  const [boards, setBoards] = useState([]);
+  const [boards, setBoards] = useState(null); // null = 아직 캐시/서버 어느 쪽도 안 옴
   const [favs, setFavs] = useState([]);
+  const freshRef = useRef(false); // 서버값 도착 후 늦게 온 캐시가 덮어쓰지 않도록
 
   async function load(query) {
-    setBoards(await listBoards(query));
-    setFavs(await listFavoriteIds());
+    const [bs, fs] = await Promise.all([listBoards(query), listFavoriteIds()]);
+    freshRef.current = true;
+    setBoards(bs); setFavs(fs);
+    if (!query) { kvSet('bb:boards', bs); kvSet('bb:favs', fs); }
   }
-  useEffect(() => { load(''); }, []);
+  useEffect(() => {
+    // 캐시 즉시 표시(SWR) → 서버 응답으로 교체
+    kvGet('bb:boards').then((c) => { if (!freshRef.current && c) setBoards(c); });
+    kvGet('bb:favs').then((c) => { if (!freshRef.current && c) setFavs(c); });
+    load('').catch(() => {});
+  }, []);
 
   async function toggleFav(id, isFav) {
     if (isFav) await removeFavorite(id); else await addFavorite(id);
-    setFavs(await listFavoriteIds());
+    const fs = await listFavoriteIds();
+    setFavs(fs); kvSet('bb:favs', fs);
   }
 
-  const exact = boards.some((b) => b.name === q.trim());
+  const exact = (boards ?? []).some((b) => b.name === q.trim());
   const favSet = new Set(favs);
-  const sorted = [...boards].sort((a, b) => (favSet.has(b.id) ? 1 : 0) - (favSet.has(a.id) ? 1 : 0));
+  const sorted = [...(boards ?? [])].sort((a, b) => (favSet.has(b.id) ? 1 : 0) - (favSet.has(a.id) ? 1 : 0));
 
   return (
     <div className="page noscreenshot">
@@ -75,7 +85,7 @@ export default function Boards() {
           );
         })}
 
-        {sorted.length === 0 && !q.trim() && (
+        {boards !== null && sorted.length === 0 && !q.trim() && (
           <li className="empty">
             <span className="empty-emoji">📭</span>
             <span>아직 게시판이 없습니다.</span>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
+import { getReacted, markReacted } from '../lib/reactions';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -86,8 +87,12 @@ export default function Reviews() {
     }
   }
 
+  const [, reactTick] = useState(0); // 신고 기록 후 버튼 상태 갱신용
+
   async function report(id) {
+    if (getReacted('review', id).report) return;
     if (!confirm('이 강의평을 신고할까요?')) return;
+    markReacted('review', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
     const { data } = await supabase.rpc('report_review', { p_id: id });
     if (data === 'DELETED') { setReviews((prev) => prev.filter((r) => r.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
     else alert('신고되었습니다.');
@@ -196,7 +201,9 @@ export default function Reviews() {
             <div className="rev-card-bottom">
               <span className="rev-actions-left">
                 <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
-                <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>
+                {getReacted('review', r.id).report
+                  ? <span className="rev-reported">🚨 신고됨</span>
+                  : <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>}
               </span>
               {r.post_password_hash ? (
                 delTarget === r.id ? (

@@ -248,6 +248,13 @@
 .react-pill:active { transform: scale(0.95); }
 .react-report:hover { background: var(--danger-weak); color: var(--danger); }
 .react-report:hover b { color: var(--danger); }
+/* 이 기기에서 이미 누른 반응 — 재클릭 불가 */
+.react-pill.is-on { background: var(--primary-weak); color: var(--primary); cursor: default; }
+.react-pill.is-on b { color: var(--primary); }
+.react-pill.is-on:hover { background: var(--primary-weak); }
+.react-pill.is-on:active { transform: none; }
+.react-report.is-on, .react-report.is-on:hover { background: var(--danger-weak); color: var(--danger); }
+.react-report.is-on b, .react-report.is-on:hover b { color: var(--danger); }
 .post-del-toggle { margin-left: auto; }
 .post-del-row {
   display: flex; align-items: center; gap: 0.5rem;

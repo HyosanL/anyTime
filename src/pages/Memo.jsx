@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskProfanity } from '../lib/moderation';
+import { getReacted, markReacted } from '../lib/reactions';
 
 // 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
@@ -106,8 +107,12 @@ export default function Memo() {
     loadMemos();
   }
 
+  const [, reactTick] = useState(0); // 신고 기록 후 버튼 상태 갱신용
+
   async function report(id) {
+    if (getReacted('memo', id).report) return;
     if (!confirm('이 메모를 신고할까요?')) return;
+    markReacted('memo', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
     const { data } = await supabase.rpc('report_memo', { p_id: id });
     if (data === 'DELETED') { setMemos((prev) => prev.filter((m) => m.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
     else alert('신고되었습니다.');
@@ -215,7 +220,9 @@ export default function Memo() {
                 <div className="memo-card-bottom">
                   <span className="memo-date">{new Date(m.created_at).toLocaleString('ko-KR')}</span>
                   <span className="memo-actions">
-                    <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>
+                    {getReacted('memo', m.id).report
+                      ? <span className="rev-reported">🚨 신고됨</span>
+                      : <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>}
                     {m.post_password_hash ? (
                       delTarget === m.id ? (
                         <span className="rev-del">

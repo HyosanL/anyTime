@@ -242,6 +242,8 @@
 .rev-like:hover { filter: brightness(0.97); }
 .rev-like:active { transform: scale(0.96); }
 .rev-report { color: var(--danger); }
+/* 이 기기에서 이미 신고한 글 표시 */
+.rev-reported { color: var(--text-3); font-size: 0.8rem; font-weight: 700; }
 
 /* 인라인 삭제(비번) */
 .rev-del {

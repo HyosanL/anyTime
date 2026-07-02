@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getBoard, listPosts, listHot, createPost, uploadBoardImages, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
+import { kvGet, kvSet } from '../lib/cache';
 
 const MAX_IMAGES = 10;
 
@@ -23,8 +24,9 @@ export default function Board() {
   const { id } = useParams();
   const isHot = id === 'hot';
   const [title, setTitle] = useState(isHot ? '🔥 HOT' : '게시판');
-  const [posts, setPosts] = useState([]);
+  const [posts, setPosts] = useState(null); // null = 아직 캐시/서버 어느 쪽도 안 옴
   const [page, setPage] = useState(0);
+  const seq = useRef(0); // 게시판/페이지 전환 시 늦게 온 응답이 덮어쓰지 않도록
   const [writing, setWriting] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [pTitle, setPTitle] = useState('');
@@ -48,9 +50,26 @@ export default function Board() {
   }
   const removeFile = (i) => setFiles((prev) => prev.filter((_, idx) => idx !== i));
 
+  // 캐시 즉시 표시(SWR) → 서버 응답으로 교체·캐시 갱신. 오프라인이면 캐시 유지.
   async function load(p) {
-    if (isHot) { setPosts(await listHot(p)); setTitle('🔥 HOT'); }
-    else { const b = await getBoard(id); setTitle(b?.name || '게시판'); setPosts(await listPosts(id, p)); }
+    const my = ++seq.current;
+    let gotFresh = false;
+    const postsKey = isHot ? `bb:hot:${p}` : `bb:posts:${id}:${p}`;
+    kvGet(postsKey).then((c) => { if (seq.current === my && !gotFresh && c) setPosts(c); });
+    if (!isHot) kvGet(`bb:board:${id}`).then((b) => { if (seq.current === my && !gotFresh && b) setTitle(b.name || '게시판'); });
+    try {
+      if (isHot) {
+        const rows = await listHot(p);
+        if (seq.current !== my) return;
+        gotFresh = true; setTitle('🔥 HOT'); setPosts(rows);
+        kvSet(postsKey, rows);
+      } else {
+        const [b, rows] = await Promise.all([getBoard(id), listPosts(id, p)]);
+        if (seq.current !== my) return;
+        gotFresh = true; setTitle(b?.name || '게시판'); setPosts(rows);
+        kvSet(postsKey, rows); if (b) kvSet(`bb:board:${id}`, b);
+      }
+    } catch { /* 오프라인 등: 캐시 유지 */ }
   }
   useEffect(() => { setPage(0); load(0); boardEnabled().then(setEnabled); /* eslint-disable-next-line */ }, [id]);
   useEffect(() => { load(page); /* eslint-disable-next-line */ }, [page]);
@@ -116,13 +135,13 @@ export default function Board() {
       {enabled && (
         <>
           <ul className="post-list">
-            {posts.length === 0 && (
+            {posts !== null && posts.length === 0 && (
               <li className="empty">
                 <span className="empty-emoji">📝</span>
                 <span>아직 글이 없습니다.{!isHot ? ' 첫 글을 남겨보세요.' : ''}</span>
               </li>
             )}
-            {posts.map((p) => {
+            {(posts ?? []).map((p) => {
               const snippet = preview(p.content);
               const ago = timeAgo(p.created_at);
               return (
@@ -149,7 +168,7 @@ export default function Board() {
           <div className="pager">
             <button className="btn-ghost btn-sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← 최신</button>
             <span className="pager-now">{page + 1}페이지</span>
-            <button className="btn-ghost btn-sm" disabled={posts.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>이전 글 →</button>
+            <button className="btn-ghost btn-sm" disabled={(posts?.length ?? 0) < PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>이전 글 →</button>
           </div>
         </>
       )}
