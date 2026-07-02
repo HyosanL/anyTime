@@ -86,6 +86,38 @@ Deno.serve(async (req) => {
         await admin.from('app_setting').update({ [field]: payload.value }).eq('id', 1).throwOnError()
         return json({ status: 'OK' })
       }
+      // ── 공지사항 ──
+      // 관리자 목록(비활성 포함 — RLS 는 활성만 노출하므로 여기서 service_role 로 조회)
+      case 'list_notices': {
+        const { data } = await admin.from('notice')
+          .select('id, title, content, is_active, created_at, updated_at')
+          .order('created_at', { ascending: false }).limit(100)
+        return json({ status: 'OK', items: data ?? [] })
+      }
+      // id 없으면 생성, 있으면 수정. 수정 시 updated_at 갱신 → 이미 본 사용자에게도 팝업 재표시.
+      case 'set_notice': {
+        const title = String(payload.title ?? '').trim()
+        const content = String(payload.content ?? '').trim()
+        if (!title || !content) return json({ status: 'BAD_REQUEST' }, 400)
+        const row = { title, content, is_active: payload.is_active !== false }
+        if (payload.id) {
+          await admin.from('notice').update({ ...row, updated_at: new Date().toISOString() })
+            .eq('id', payload.id).throwOnError()
+        } else {
+          await admin.from('notice').insert(row).throwOnError()
+        }
+        return json({ status: 'OK' })
+      }
+      case 'set_notice_active': {
+        await admin.from('notice')
+          .update({ is_active: !!payload.value, updated_at: new Date().toISOString() })
+          .eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'delete_notice': {
+        await admin.from('notice').delete().eq('id', payload.id).throwOnError()
+        return json({ status: 'OK' })
+      }
       case 'get_signup_code': {
         const { data } = await admin.from('app_setting').select('signup_code').eq('id', 1).maybeSingle()
         return json({ status: 'OK', code: data?.signup_code ?? '' })
@@ -386,26 +418,30 @@ Deno.serve(async (req) => {
         return json({ status: 'OK', items: data ?? [] })
       }
       case 'reject_correction': {
-        await admin.from('correction').update({ status: 'rejected' }).eq('id', payload.id).throwOnError()
+        // 반려는 기록 불필요 → 즉시 삭제(익명이라 이력 가치도 없음).
+        await admin.from('correction').delete().eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
       case 'apply_correction': {
         // 실제 반영 로직은 DB 함수(apply_correction_row)에 단일화 — 자동반영과 동일 경로.
+        // 반영 성공한 제안은 테이블에 남길 이유가 없어 즉시 삭제.
         const { data: st, error } = await admin.rpc('apply_correction_row', { p_id: payload.id })
         if (error) return json({ status: 'ERROR', detail: error.message }, 500)
+        if (st === 'OK') await admin.from('correction').delete().eq('id', payload.id).throwOnError()
         const code = st === 'OK' ? 200 : st === 'NOT_FOUND' ? 404 : st === 'ALREADY_DONE' ? 409 : 400
         return json({ status: st ?? 'ERROR' }, code)
       }
-      // 자동반영 알림: 사용자 동일 제안 3건↑로 시스템이 반영한 건 중 관리자 미확인.
+      // 자동반영 알림: 사용자 동일 제안 3건↑로 시스템이 반영한 건. 관리자 확인 전까지만 유지.
       case 'list_auto_notices': {
         const { data } = await admin.from('correction')
           .select('id, target, target_key, label, field, suggested, note, created_at')
-          .eq('auto_applied', true).eq('acknowledged', false)
+          .eq('auto_applied', true)
           .order('created_at', { ascending: false }).limit(200)
         return json({ status: 'OK', items: data ?? [] })
       }
       case 'ack_correction': {
-        await admin.from('correction').update({ acknowledged: true }).eq('id', payload.id).throwOnError()
+        // 알림 확인 = 처리 끝 → 삭제.
+        await admin.from('correction').delete().eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
       // ── 신고 확인 ──
