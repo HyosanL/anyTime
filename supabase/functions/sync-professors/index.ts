@@ -7,7 +7,7 @@
 //    1) 관리자 수동 : 프론트가 사용자 JWT 로 invoke → is_admin() 검증.
 //                     body.mode = 'preview'(크롤 후 미리보기, 쓰기 없음) | 'apply'(반영)
 //    2) 주기 실행   : pg_cron + pg_net 이 헤더 x-sync-secret == SYNC_SECRET 으로 호출.
-//                     이 경우 항상 mode='apply'.  (db/sync_professors_cron.sql)
+//                     이 경우 항상 mode='apply'.  (db/schema.sql 하단 크론 템플릿)
 //
 //  배포: supabase functions deploy sync-professors --no-verify-jwt
 //    (JWT 검증을 함수 내부에서 is_admin / 시크릿으로 직접 하므로 — signup 과 동일 패턴)

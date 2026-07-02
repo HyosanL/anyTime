@@ -75,7 +75,7 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
   const p = preview;
   return (
     <Card icon="🔄" title="교수 명단 동기화"
-      desc="공군사관학교 공식 홈페이지(교수소개)에서 학과별 교수 명단을 가져와 대조합니다. 새 교수는 추가하고 학과가 바뀐 교수는 갱신하며, 기존 교수는 삭제하지 않습니다. 주기 자동 갱신은 pg_cron 으로 설정합니다(db/sync_professors_cron.sql).">
+      desc="공군사관학교 공식 홈페이지(교수소개)에서 학과별 교수 명단을 가져와 대조합니다. 새 교수는 추가하고 학과가 바뀐 교수는 갱신하며, 기존 교수는 삭제하지 않습니다. 주기 자동 갱신은 pg_cron 으로 설정합니다(db/schema.sql 하단 크론 템플릿).">
       <div className="adm-code-box">
         <span className="adm-code-label">마지막 동기화</span>
         <span className="adm-code-value">{fmtDateTime(syncedAt)}</span>
