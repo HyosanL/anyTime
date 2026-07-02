@@ -22,3 +22,10 @@ export function markReacted(scope, id, kind) {
   if (ids.length > 500) for (const k of ids.slice(0, ids.length - 500)) delete all[k];
   try { localStorage.setItem(KEY, JSON.stringify(all)); } catch { /* 저장 실패 무시 */ }
 }
+
+// 반응 취소(좋아요/싫어요 토글 해제) — 신고는 취소 없음
+export function unmarkReacted(scope, id, kind) {
+  const all = readAll();
+  if (all[`${scope}:${id}`]) delete all[`${scope}:${id}`][kind];
+  try { localStorage.setItem(KEY, JSON.stringify(all)); } catch { /* 저장 실패 무시 */ }
+}

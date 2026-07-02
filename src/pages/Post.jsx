@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
-import { getReacted, markReacted } from '../lib/reactions';
+import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { maskProfanity } from '../lib/moderation';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
@@ -73,10 +73,14 @@ export default function Post() {
   }
   useEffect(() => { setGone(false); setReacted(getReacted('post', id)); load(); /* eslint-disable-next-line */ }, [id]);
 
+  // 좋아요/싫어요는 재클릭 시 취소(토글), 신고는 1회 후 취소 불가.
   async function doReact(kind) {
-    if (reacted[kind]) return;
-    markReacted('post', id, kind); setReacted(getReacted('post', id)); // 요청 전에 먼저 기록해 연타 차단
-    const r = await react(Number(id), kind);
+    const on = !!reacted[kind];
+    if (kind === 'report' && on) return;
+    // 요청 전에 먼저 로컬 기록/해제해 연타 차단
+    if (on) unmarkReacted('post', id, kind); else markReacted('post', id, kind);
+    setReacted(getReacted('post', id));
+    const r = await react(Number(id), on ? `un${kind}` : kind);
     if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); kvDel(`bb:post:${id}`); navigate(-1); return; }
     load();
   }
@@ -134,8 +138,8 @@ export default function Post() {
         <p className="post-content">{post.content}</p>
         {postImageKeys(post).map((k) => <BoardImage key={k} imageKey={k} className="post-image" />)}
         <div className="post-react">
-          <button className={`react-pill${reacted.like ? ' is-on' : ''}`} disabled={!!reacted.like} onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
-          <button className={`react-pill${reacted.dislike ? ' is-on' : ''}`} disabled={!!reacted.dislike} onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
+          <button className={`react-pill${reacted.like ? ' is-on' : ''}`} onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
+          <button className={`react-pill${reacted.dislike ? ' is-on' : ''}`} onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
           <button className={`react-pill react-report${reacted.report ? ' is-on' : ''}`} disabled={!!reacted.report} onClick={() => doReact('report')}>🚨 <b>{post.report_count}</b></button>
           <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
