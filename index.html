@@ -15,6 +15,22 @@
           if (m) m.setAttribute('content', dark ? '#0b0f16' : '#ffffff');
         } catch (e) {}
       })();
+      /* 카카오톡 인앱 브라우저 탈출 — 인앱에서는 PWA 설치·푸시가 안 되므로
+         iOS 는 사파리(kakaotalk://web/openExternal), Android 는 Chrome(intent://)으로
+         자동 전환한다. 외부로 넘긴 뒤 인앱 창은 닫는다(스킴 실패해도 무해). */
+      (function () {
+        try {
+          var ua = navigator.userAgent;
+          if (!/KAKAOTALK/i.test(ua)) return;
+          var url = location.href;
+          if (/android/i.test(ua)) {
+            location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+          } else {
+            location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
+          }
+          setTimeout(function () { location.href = 'kakaotalk://inappbrowser/close'; }, 500);
+        } catch (e) {}
+      })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon.svg" />
