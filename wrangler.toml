@@ -6,10 +6,14 @@ name = "anytime"
 compatibility_date = "2024-09-01"
 pages_build_output_dir = "dist"
 
-# Functions 런타임 변수 (anon 키는 RLS 보호로 공개 안전)
+# Functions 런타임 변수 (anon 키·VAPID 공개키는 공개 안전)
+# ※ 비밀값(SUPABASE_JWT_SECRET·SWEEP_SECRET·PUSH_SECRET·VAPID_PRIVATE_KEY)은
+#   Pages 대시보드 Secret(또는 wrangler pages secret put)으로만 관리.
 [vars]
 SUPABASE_URL = "https://yxolswmfbwisesnoyucr.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4b2xzd21mYndpc2Vzbm95dWNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTgyNTYsImV4cCI6MjA5ODI3NDI1Nn0.lJVQLSWiq0aqhZym52szF0I6lVJJHF0yRP11FxMKmbw"
+VAPID_PUBLIC_KEY = "BGtso3kqB7AAA-AOUSuuA7GevBHMj2z4I3y-hY6XC9hftbYb1qyTUEAi4kyKOTnY0N1wP7LkNuhhMpMdsVYtNFQ"
+VAPID_SUBJECT = "mailto:hyosanl0211@gmail.com"
 
 # R2 버킷 바인딩 (대시보드에서 'anytime-exams' 비공개 버킷 생성 필요)
 [[r2_buckets]]

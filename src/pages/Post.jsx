@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
+import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
 import { maskProfanity } from '../lib/moderation';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
@@ -54,6 +55,7 @@ export default function Post() {
   const [replyTo, setReplyTo] = useState(null);
   const [delPw, setDelPw] = useState('');
   const [showDel, setShowDel] = useState(false);
+  const [watching, setWatching] = useState(false); // 이 기기가 이 글의 댓글 알림을 받는 중
   const seq = useRef(0);
 
   // 캐시 즉시 표시(SWR) → 서버 응답으로 교체. 서버에서 사라진 글이면 캐시 파기.
@@ -72,7 +74,26 @@ export default function Post() {
       kvSet(`bb:post:${id}`, { post: p, comments: cs });
     } catch { /* 오프라인 등: 캐시 유지 */ }
   }
-  useEffect(() => { setGone(false); setReacted(getReacted('post', id)); load(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { setGone(false); setReacted(getReacted('post', id)); setWatching(isWatched(id)); load(); /* eslint-disable-next-line */ }, [id]);
+
+  // 🔔 댓글 알림 토글. 푸시 미지원(사파리 탭 등)이면 설치 안내로 대신한다.
+  async function toggleWatch() {
+    if (watching) {
+      setWatching(false);
+      await unwatchPost(id).catch(() => {});
+      return;
+    }
+    if (!pushSupported()) {
+      alert('이 브라우저에서는 알림을 받을 수 없어요.\n애타를 홈 화면에 설치하면(아이폰: 공유 → 홈 화면에 추가) 댓글 푸시 알림을 받을 수 있습니다.');
+      return;
+    }
+    if (!pushEnabled()) {
+      const r = await enablePush();
+      if (r === 'DENIED') { alert('알림 권한이 꺼져 있어요. 기기 설정에서 애타의 알림을 허용해주세요.'); return; }
+      if (r !== 'ON') { alert('알림 설정에 실패했습니다. 잠시 후 다시 시도해주세요.'); return; }
+    }
+    try { await watchPost(id); setWatching(true); } catch { alert('알림 설정에 실패했습니다.'); }
+  }
 
   // 좋아요/싫어요는 재클릭 시 취소(토글), 신고는 1회 후 취소 불가.
   async function doReact(kind) {
@@ -90,6 +111,10 @@ export default function Post() {
     if (!cText.trim()) return;
     await addComment(Number(id), replyTo, maskProfanity(cText.trim()), cPw);
     setCText(''); setCPw(''); setReplyTo(null); load();
+    // 푸시를 쓰는 기기면 댓글 단 글을 조용히 지켜보기(대댓글 알림)
+    if (pushEnabled() && !isWatched(id)) {
+      watchPost(id).then(() => setWatching(true)).catch(() => {});
+    }
   }
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글은 확인 후 바로 삭제
   async function onDeleteClick() {
@@ -142,6 +167,9 @@ export default function Post() {
           <button className={`react-pill${reacted.like ? ' is-on' : ''}`} onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
           <button className={`react-pill${reacted.dislike ? ' is-on' : ''}`} onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
           <button className={`react-pill react-report${reacted.report ? ' is-on' : ''}`} disabled={!!reacted.report} onClick={() => doReact('report')}>🚨 <b>{post.report_count}</b></button>
+          <button className={`react-pill${watching ? ' is-on' : ''}`} onClick={toggleWatch} title="이 글에 댓글이 달리면 푸시 알림">
+            {watching ? '🔔' : '🔕'} 알림
+          </button>
           <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
         {showDel && (

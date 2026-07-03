@@ -50,6 +50,12 @@ export async function onRequest(context) {
     return unauth();
   }
 
+  // 웹푸시 팬아웃: Supabase pg_net 트리거 전용(공유 시크릿 게이트).
+  if (path === '/api/push-fanout') {
+    if (env.PUSH_SECRET && request.headers.get('X-Push-Secret') === env.PUSH_SECRET) return next();
+    return unauth();
+  }
+
   const auth = request.headers.get('Authorization') || '';
   if (!auth.startsWith('Bearer ')) return unauth();
   const token = auth.slice(7);

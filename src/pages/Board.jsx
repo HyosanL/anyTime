@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getBoard, listPosts, listHot, createPost, uploadBoardImages, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
+import { pushEnabled, watchPost } from '../lib/push';
 import { kvGet, kvSet } from '../lib/cache';
 import PullToRefresh from '../components/PullToRefresh';
 
@@ -83,7 +84,10 @@ export default function Board() {
     try {
       let keys = [];
       if (files.length) keys = await uploadBoardImages(files);
-      await createPost(Number(id), maskProfanity(pTitle.trim()), maskProfanity(content.trim()), password, keys);
+      const newId = await createPost(Number(id), maskProfanity(pTitle.trim()), maskProfanity(content.trim()), password, keys);
+      // 푸시를 쓰는 기기면 내가 쓴 글을 조용히 지켜보기(댓글 알림).
+      // 서버는 "watch 한 기기"만 알 뿐 작성자는 저장하지 않는다.
+      if (newId && pushEnabled()) watchPost(newId).catch(() => {});
       setPTitle(''); setContent(''); setPassword(''); setFiles([]); setWriting(false);
       if (page === 0) load(0); else setPage(0);
     } catch (e2) { setErr(e2.message || '작성 실패'); }

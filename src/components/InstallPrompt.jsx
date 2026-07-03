@@ -68,7 +68,7 @@ export default function InstallPrompt() {
   return (
     <>
       <div className="install-banner">
-        <span>애타를 홈 화면에 추가하면 앱처럼 쓸 수 있어요.</span>
+        <span>애타를 홈 화면에 추가하면 앱처럼 쓰고, 댓글 푸시 알림도 받을 수 있어요.</span>
         <span className="install-actions">
           {ios ? (
             <button className="install-yes" onClick={() => setShowIosGuide(true)}>
@@ -106,6 +106,10 @@ export default function InstallPrompt() {
             </ol>
             <p className="note">
               사파리(Safari)에서만 추가할 수 있어요. 다른 앱으로 열었다면 사파리로 다시 열어주세요.
+            </p>
+            <p className="note">
+              🔔 설치하면 내 글에 댓글이 달릴 때 <b>푸시 알림</b>을 받을 수 있어요.
+              (게시글의 🔔 버튼 또는 프로필 → 푸시 알림에서 켜기)
             </p>
             <button
               className="install-yes ios-guide-close"

@@ -1,7 +1,8 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
+import { syncPush } from './lib/push';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import InstallPrompt from './components/InstallPrompt';
@@ -85,6 +86,13 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// 푸시 구독 자가치유: 로그인 세션이 잡히면 구독을 서버에 재업서트(유실·회전 복구).
+function PushSync() {
+  const { session } = useAuthContext();
+  useEffect(() => { if (session) syncPush(); }, [session]);
+  return null;
+}
+
 // 이미 로그인했으면 홈으로 (가입/로그인 화면 가드).
 function PublicOnly({ children }) {
   const { session, loading } = useAuthContext();
@@ -97,6 +105,7 @@ export default function App() {
   return (
     <AuthProvider>
       <div className="app">
+        <PushSync />
         <InstallPrompt />
         <GeoBanner />
         <Suspense fallback={<div className="page-center">로딩 중...</div>}>

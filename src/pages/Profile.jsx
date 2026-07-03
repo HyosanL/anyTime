@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
 import { supabase } from '../supabase';
+import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts } from '../lib/push';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -12,6 +13,65 @@ const TIERS = [
   { key: 'gold', label: '골드', min: 100 },
   { key: 'rainbow', label: '레인보우', min: 200 },
 ];
+
+// 푸시 알림 설정(기기별). 익명 유지: 서버엔 이 기기의 구독 endpoint 만 등록되고
+// 계정과 연결되지 않는다. 지원 안 되는 환경(사파리 탭 등)엔 설치 안내를 보여준다.
+function PushSettings() {
+  const supported = pushSupported();
+  const [on, setOn] = useState(() => pushEnabled());
+  const [hot, setHot] = useState(() => hotAlertsOn());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function toggle() {
+    setBusy(true); setMsg('');
+    if (on) {
+      await disablePush();
+      setOn(false);
+    } else {
+      const r = await enablePush();
+      if (r === 'ON') setOn(true);
+      else if (r === 'DENIED') setMsg('알림 권한이 꺼져 있어요. 기기 설정에서 애타의 알림을 허용해주세요.');
+      else setMsg('알림 설정에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+    setBusy(false);
+  }
+
+  function toggleHot(e) {
+    const v = e.target.checked;
+    setHot(v);
+    setHotAlerts(v).catch(() => {});
+  }
+
+  return (
+    <section className="card account-sec">
+      <h3 className="account-sec-title">푸시 알림</h3>
+      {!supported ? (
+        <p className="account-note">
+          이 브라우저에서는 푸시 알림을 받을 수 없어요. 애타를 <b>홈 화면에 설치</b>하면
+          (아이폰: Safari 공유 → 홈 화면에 추가) 댓글 알림을 받을 수 있습니다.
+        </p>
+      ) : (
+        <>
+          <p className="account-note">
+            내가 쓴 글·댓글 단 글에 새 댓글이 달리면 알려드려요. 게시글의 🔔 버튼으로
+            글마다 켜고 끌 수 있습니다. (알림은 이 기기에만 연결되며 계정과 연결되지 않아요.)
+          </p>
+          <button className={on ? 'btn-danger-soft btn-block' : 'btn-add btn-block'} onClick={toggle} disabled={busy}>
+            {on ? '푸시 알림 끄기' : '푸시 알림 켜기'}
+          </button>
+          {on && (
+            <label className="account-note" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <input type="checkbox" checked={hot} onChange={toggleHot} />
+              🔥 HOT 승격 게시글 알림 받기
+            </label>
+          )}
+          {msg && <p className="account-msg">{msg}</p>}
+        </>
+      )}
+    </section>
+  );
+}
 
 // 화면8: 레벨/프로필. cadet.post_count 기준 본인 뱃지(badgeOf) + 다음 등급까지 진행.
 export default function Profile() {
@@ -112,6 +172,8 @@ export default function Profile() {
             <ThemeToggle />
           </div>
         </section>
+
+        <PushSettings />
 
         <section className="card account-sec">
           <h3 className="account-sec-title">비밀번호 변경</h3>

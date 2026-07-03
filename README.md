@@ -22,6 +22,7 @@
 | 📚 **족보** | 기출자료 업로드/다운로드. 파일은 Cloudflare R2, 서버가 JWT 게이트로 중계(다중첨부). |
 | 📝 **수업메모** | 분반 종속·휘발성. 해당 분반을 확정시간표에 등록한 생도만 열람·작성. |
 | 💬 **익명게시판** | 게시판 검색/생성·즐겨찾기 · 글/댓글/대댓글 · 좋아요·싫어요 · 이미지(인라인) · HOT 고정. |
+| 🔔 **웹푸시 알림** | 지켜보는 글 댓글·HOT 승격 푸시(표준 Web Push/VAPID — FCM 등 외부 서비스 불필요). 구독은 기기 단위 익명(uid·시각 미저장). iOS는 홈 화면 설치 시 지원. |
 | 🏅 **레벨/뱃지** | 누적 작성수 기준 — 브론즈(<20)·실버(<100)·골드(<200)·레인보우(≥200). |
 | ✏️ **정보 수정 제안** | 잘못된 교수/시간/강의실 등을 익명 제안(요일·교시 빌더·교수 선택). 동일 3건↑ 분반 항목은 자동 반영. |
 | 🛠 **관리자** | 카탈로그 CRUD·CSV 일괄 · 교수 명단 동기화 · 설정 · **검열(신고·비속어·수정 제안 3탭)** · 아이디 차단. |
@@ -32,6 +33,7 @@
 - **계정 종속 데이터**(시간표·프로필·즐겨찾기)만 `auth.uid()` + **RLS로 본인만**.
 - **신고도 익명**: 횟수만 집계해 임계치(15분 10건 / 누적 30건) 도달 시 **글 자동삭제**. 신고자 차단·식별 없음.
 - **기기지문·IP·작성자 매핑을 어디에도 저장하지 않는다.** 차단은 관리자 수동(아이디 기준)만.
+- **푸시 알림도 익명**: 구독(`push_subscription`)·글 지켜보기(`post_watch`)에 **cadet_id·타임스탬프를 저장하지 않는다.** "내 글" 여부는 기기(localStorage)만 알고, 서버엔 브라우저가 발급한 endpoint URL만 등록된다.
 
 ## 🧱 기술 스택
 
@@ -39,9 +41,10 @@
 프론트   Vite 6 + React 19 + react-router 7  →  정적 빌드(dist)  →  Cloudflare Pages
 PWA      vite-plugin-pwa(Workbox) · IndexedDB(idb) 캐시
 백엔드   Supabase = PostgreSQL + Auth + RLS + SECURITY DEFINER RPC + Edge Functions(Deno)
-서버함수 Cloudflare Pages Functions(functions/api/*) — JWT 게이트 · R2 중계 · Workers AI
+서버함수 Cloudflare Pages Functions(functions/api/*) — JWT 게이트 · R2 중계 · Workers AI · 웹푸시 발송
 스토리지 Cloudflare R2 (버킷 anytime-exams) — 족보 파일 · 게시판 이미지
-스케줄   pg_cron + pg_net (DB 내부) — 정리(purge)·계정만료·keep-alive
+스케줄   pg_cron + pg_net (DB 내부) — 정리(purge)·계정만료·keep-alive·푸시 팬아웃 트리거
+푸시     표준 Web Push(RFC 8030/8291/8292) — VAPID 자체 서명·aes128gcm 암호화(functions/lib/webpush.js)
 ```
 
 ## 🏗 아키텍처
@@ -69,7 +72,8 @@ npm run deploy     # 빌드 후 Cloudflare Pages 배포(wrangler)
 2. **Edge Functions 배포**: `supabase functions deploy signup --no-verify-jwt`(및 `admin-action`·`delete-account`·`sync-professors --no-verify-jwt`).
 3. **관리자 지정**: `UPDATE cadet SET is_admin=TRUE WHERE username='<아이디>';` · 운영 전 `app_setting` 좌표·반경·가입코드 교체.
 4. **Cloudflare**: Pages에 repo 연결(빌드 `dist`), R2 버킷 `anytime-exams` + 바인딩 `EXAM_FILES`, `[vars]`에 URL·anon 키, 도메인 DNS.
-5. 카탈로그(교수·과목·분반)는 **관리자 화면**에서 등록(CSV 일괄. 원본: `docs/2026-1-lectures.csv`).
+5. **웹푸시**: VAPID 키쌍 생성 → 공개키는 `.env.production`(`VITE_VAPID_PUBLIC_KEY`)·`wrangler.toml`(`VAPID_PUBLIC_KEY`), 개인키·발송시크릿은 Pages Secret(`VAPID_PRIVATE_KEY`·`PUSH_SECRET`, `wrangler pages secret put …`). 같은 시크릿을 DB `push_config.fanout_secret`에도 시드(schema.sql 웹푸시 섹션 참고).
+6. 카탈로그(교수·과목·분반)는 **관리자 화면**에서 등록(CSV 일괄. 원본: `docs/2026-1-lectures.csv`).
 
 > ⚠️ **운영 DB에 `db/schema.sql`을 통째로 재실행하지 말 것** — 상단 정리 블록이 `cadet`/auth 데이터를 삭제한다. 운영 반영은 증분 `ALTER`로만.
 
@@ -78,7 +82,8 @@ npm run deploy     # 빌드 후 Cloudflare Pages 배포(wrangler)
 ```
 db/                 스키마 단일 원본(schema.sql) · 한글 주석(comments.sql)
 supabase/functions/ Edge Functions(signup · admin-action · sync-professors · delete-account)
-functions/api/      Pages Functions(_middleware · exam-* · board-* · parse-syllabus)
+functions/api/      Pages Functions(_middleware · exam-* · board-* · parse-syllabus · push-fanout)
+functions/lib/      공용 모듈(webpush — RFC 8291/8292 Web Push 발송)
 src/                React 앱(pages · components · lib · contexts · styles)
 docs/               (요구사항·ERD·릴레이션·DDL·개발환경) + 생성기(build/)
 ```
@@ -99,12 +104,13 @@ docs/               (요구사항·ERD·릴레이션·DDL·개발환경) + 생�
 
 ## 🗄 데이터 모델(요약)
 
-22개 테이블 + 2개 뷰. 상세는 ERD·릴레이션 문서 참조.
+25개 테이블 + 2개 뷰. 상세는 ERD·릴레이션 문서 참조.
 
 - **회원·기준정보**: `cadet` · `professor` · `course` · `semester` · `period`
 - **분반·시간표**: `section` · `section_time` · `timetable` · `custom_class`
 - **게시물(익명)**: `review`(+`review_report`) · `exam_archive` · `class_memo`(+`memo_report`)
 - **익명게시판**: `board` · `board_post` · `board_comment` · `board_event` · `board_favorite`
+- **웹푸시(익명)**: `push_subscription` · `post_watch` · `push_config`
 - **운영·설정**: `app_setting` · `block` · `correction`
 
 ## 🔒 보안·프라이버시
