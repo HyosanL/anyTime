@@ -387,6 +387,22 @@ a.list-row, .list-row a { color: inherit; }
 .install-yes { background: var(--primary); color: var(--on-primary); border: none; border-radius: var(--r-sm); padding: 0.35rem 0.8rem; font-weight: 700; cursor: pointer; }
 .install-no { background: transparent; color: var(--text-3); border: none; cursor: pointer; font-size: 0.95rem; }
 
+/* ---------- PWA 설치 게이트(모바일 강제 설치 화면) ---------- */
+.install-gate {
+  min-height: 100dvh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.1rem; text-align: center;
+  padding: calc(2rem + env(safe-area-inset-top)) 1.5rem calc(2.5rem + env(safe-area-inset-bottom));
+}
+.install-gate-head { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.install-gate-sub { font-size: 0.92rem; color: var(--text-2); line-height: 1.6; }
+.install-gate-steps {
+  display: flex; flex-direction: column; gap: 0.8rem; align-items: stretch;
+  width: 100%; max-width: 340px;
+}
+.install-gate-steps .ios-steps { text-align: left; margin: 0; }
+.install-gate-installed { margin-top: 0.4rem; }
+
 /* iOS 홈 화면 추가 안내 시트(사파리는 beforeinstallprompt 미지원 → 수동 안내) */
 .ios-guide-overlay {
   position: fixed; inset: 0; z-index: 100;

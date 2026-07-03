@@ -4,8 +4,8 @@ import { pushSupported, pushEnabled, enablePush } from '../lib/push';
 
 const DISMISS_KEY = 'pushPromptDismissed';
 
-// 홈 화면 앱(standalone) 여부 — 설치 전 브라우저에서는 InstallPrompt 가 설치를
-// 먼저 유도하므로(배너 중복 방지), 알림 배너는 설치된 앱에서만 띄운다.
+// 홈 화면 앱(standalone) 여부 — 설치 전 모바일 브라우저는 InstallGate 가 막고
+// 설치를 유도하므로, 알림 배너는 설치된 앱에서만 띄운다.
 function isStandalone() {
   return (
     window.navigator.standalone === true ||

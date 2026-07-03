@@ -5,7 +5,7 @@ import { verifyGeo } from './lib/geo';
 import { syncPush } from './lib/push';
 import Home from './pages/Home';
 import Login from './pages/Login';
-import InstallPrompt from './components/InstallPrompt';
+import InstallGate from './components/InstallGate';
 import PushPrompt from './components/PushPrompt';
 import LocationHelp from './components/LocationHelp';
 
@@ -116,8 +116,8 @@ export default function App() {
   return (
     <AuthProvider>
       <div className="app">
+        <InstallGate>
         <PushSync />
-        <InstallPrompt />
         <PushPrompt />
         <GeoBanner />
         <Suspense fallback={<div className="page-center">로딩 중...</div>}>
@@ -142,6 +142,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
+        </InstallGate>
       </div>
     </AuthProvider>
   );
