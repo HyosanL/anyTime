@@ -1,0 +1,18 @@
+# =====================================================================
+#  Cloudflare Pages 보안 헤더 — 익명성·보안 강화(앱 전역 적용)
+#  이 파일은 빌드 시 dist/ 루트로 복사되어 모든 응답에 헤더를 추가한다.
+#
+#  ⚠️ CSP script-src 의 'sha256-...' 는 index.html 인라인 테마 스크립트의 해시.
+#     그 인라인 스크립트를 수정하면 해시가 달라져 화면이 깨진다 → 아래 명령으로
+#     재계산해 교체할 것:
+#       node -e "const f=require('fs'),c=require('crypto');const m=f.readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/);console.log('sha256-'+c.createHash('sha256').update(m[1],'utf8').digest('base64'))"
+# =====================================================================
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'sha256-c8zt73Qln8AR4qtx5vopBe+4v767bmmFL24CxfVH2C4='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' https://yxolswmfbwisesnoyucr.supabase.co wss://yxolswmfbwisesnoyucr.supabase.co; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000

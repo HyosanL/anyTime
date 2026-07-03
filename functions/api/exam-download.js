@@ -12,7 +12,10 @@ export async function onRequestGet(context) {
 
   const headers = new Headers();
   headers.set('Content-Type', obj.httpMetadata?.contentType || 'application/octet-stream');
+  // 보안: 항상 첨부(다운로드)로만 내려주고, MIME 스니핑 차단 → 위장 파일이 브라우저에서
+  //       인라인 실행되지 않게 한다.
   headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+  headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Cache-Control', 'private, max-age=0');
   return new Response(obj.body, { headers });
 }
