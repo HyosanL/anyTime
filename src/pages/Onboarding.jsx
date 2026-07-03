@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signup, login, getPosition } from '../lib/auth';
+import LocationHelp from '../components/LocationHelp';
 
 const STATUS_MSG = {
   INVALID_CODE: '가입코드가 올바르지 않습니다.',
@@ -20,17 +21,25 @@ export default function Onboarding() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [geoFailed, setGeoFailed] = useState(false); // 위치 실패 → 권한 안내 링크 노출
+  const [showGeoHelp, setShowGeoHelp] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setGeoFailed(false);
     setSubmitting(true);
     try {
       // 위치 권한 → 좌표 (지오펜싱 필수)
       setStatus('📍 위치 확인 중… (권한 요청에 응답해 주세요)');
-      const { lat, lng } = await getPosition();
+      const { lat, lng, error: geoErr } = await getPosition();
       if (lat == null || lng == null) {
-        setError('위치 확인이 필요합니다. 위치 권한을 켜고 교내에서 다시 시도하세요.');
+        setGeoFailed(true);
+        setError(
+          geoErr === 'DENIED'
+            ? '위치 권한이 거부되어 있어 확인할 수 없어요. 아래 방법대로 권한을 켠 뒤 다시 시도해주세요.'
+            : '위치를 확인하지 못했어요. 기기의 위치(GPS)를 켜고 다시 시도해주세요.'
+        );
         return;
       }
 
@@ -102,12 +111,19 @@ export default function Onboarding() {
         <div className="auth-actions">
           {status && <p className="status-msg">{status}</p>}
           {error && <p className="error-msg">{error}</p>}
+          {geoFailed && (
+            <button type="button" className="link-btn" onClick={() => setShowGeoHelp(true)}>
+              📍 위치 권한 켜는 방법 보기
+            </button>
+          )}
 
           <button type="submit" className="btn-add btn-block btn-lg" disabled={submitting}>
             {submitting ? '진행 중…' : '가입하기'}
           </button>
         </div>
       </form>
+
+      {showGeoHelp && <LocationHelp onClose={() => setShowGeoHelp(false)} />}
 
       <p className="auth-switch">
         이미 계정이 있나요? <Link to="/login">로그인</Link>

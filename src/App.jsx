@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import InstallPrompt from './components/InstallPrompt';
 import PushPrompt from './components/PushPrompt';
+import LocationHelp from './components/LocationHelp';
 
 // 홈/로그인만 초기 번들에 두고, 나머지는 지연 로드한다.
 // (특히 강의평·게시판 계열은 korcen, 관리자는 pdfjs 를 끌고 오므로 초기 번들에서 반드시 분리)
@@ -40,10 +41,13 @@ function BlockedScreen({ until }) {
 function GeoVerifyButton({ onDone, label }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [geoFailed, setGeoFailed] = useState(false); // 위치 실패 → 권한 안내 링크 노출
+  const [showGeoHelp, setShowGeoHelp] = useState(false);
   async function go() {
     setBusy(true); setMsg('📍 위치 확인 중…');
     const r = await verifyGeo();
     setBusy(false);
+    setGeoFailed(r === 'NO_LOCATION');
     if (r === 'OK') { setMsg('✅ 인증됨'); onDone?.(); }
     else setMsg(r === 'OUT_OF_AREA' ? '캠퍼스 범위 밖입니다.' : r === 'NO_LOCATION' ? '위치 권한이 필요합니다.' : '인증 실패');
   }
@@ -51,6 +55,12 @@ function GeoVerifyButton({ onDone, label }) {
     <span>
       <button className="btn-add" disabled={busy} onClick={go}>{label || '위치 확인'}</button>
       {msg && <span className="muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{msg}</span>}
+      {geoFailed && (
+        <button type="button" className="link-btn" onClick={() => setShowGeoHelp(true)}>
+          켜는 방법
+        </button>
+      )}
+      {showGeoHelp && <LocationHelp onClose={() => setShowGeoHelp(false)} />}
     </span>
   );
 }
