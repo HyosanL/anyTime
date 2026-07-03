@@ -6,6 +6,7 @@ import { syncPush } from './lib/push';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import InstallPrompt from './components/InstallPrompt';
+import PushPrompt from './components/PushPrompt';
 
 // 홈/로그인만 초기 번들에 두고, 나머지는 지연 로드한다.
 // (특히 강의평·게시판 계열은 korcen, 관리자는 pdfjs 를 끌고 오므로 초기 번들에서 반드시 분리)
@@ -107,6 +108,7 @@ export default function App() {
       <div className="app">
         <PushSync />
         <InstallPrompt />
+        <PushPrompt />
         <GeoBanner />
         <Suspense fallback={<div className="page-center">로딩 중...</div>}>
         <Routes>

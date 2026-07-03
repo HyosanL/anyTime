@@ -6,6 +6,7 @@ import { supabase } from '../supabase';
 import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts } from '../lib/push';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
+import BackButton from '../components/BackButton';
 
 const TIERS = [
   { key: 'bronze', label: '브론즈', min: 0 },
@@ -126,6 +127,7 @@ export default function Profile() {
   return (
     <div className="page">
       <header className="page-header">
+        <BackButton />
         <h2>프로필</h2>
       </header>
 

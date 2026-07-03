@@ -16,8 +16,16 @@ function isStandalone() {
   );
 }
 
+// 삼성 인터넷 여부. UA 에 Chrome/ 도 함께 들어 있으므로 SamsungBrowser 로 판별.
+function isSamsungInternet() {
+  return /SamsungBrowser/i.test(window.navigator.userAgent);
+}
+
 // PWA 설치 안내
 // - Android/Chrome 등: beforeinstallprompt 를 잡아 "설치" 버튼으로 즉시 설치
+// - 삼성 인터넷: beforeinstallprompt 미지원(이벤트가 안 옴) → 설치 버튼이 못 뜬다.
+//   Chrome 으로 열어 설치하는 쪽이 WebAPK(진짜 앱 설치)·푸시 안정성 면에서 낫기도
+//   해서, intent:// 링크로 Chrome 에서 열도록 유도한다.
 // - iOS(Safari): beforeinstallprompt 미지원 → 수동 안내(iOS 는 설치 API 자체가 없음).
 //   iOS 26 실제 경로: ⋯(더보기) → 공유 → (목록 내려서) 홈 화면에 추가 → 추가.
 //   공유 시트는 건너뛸 수 없다. 다만 iOS 26 부터 "웹 앱으로 열기"가 기본 ON 이라
@@ -25,11 +33,13 @@ function isStandalone() {
 export default function InstallPrompt() {
   const [deferred, setDeferred] = useState(null);
   const [showIosGuide, setShowIosGuide] = useState(false);
+  const [showSamsungGuide, setShowSamsungGuide] = useState(false);
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem('installDismissed') === '1'
   );
 
   const ios = isIos();
+  const samsung = !ios && isSamsungInternet();
 
   useEffect(() => {
     function onPrompt(e) {
@@ -49,8 +59,8 @@ export default function InstallPrompt() {
 
   // 이미 설치했거나 사용자가 닫았으면 배너를 띄우지 않는다.
   if (dismissed || isStandalone()) return null;
-  // iOS 가 아니면서 설치 프롬프트도 아직 없으면 띄울 게 없다.
-  if (!ios && !deferred) return null;
+  // iOS·삼성 인터넷이 아니면서 설치 프롬프트도 아직 없으면 띄울 게 없다.
+  if (!ios && !samsung && !deferred) return null;
 
   async function install() {
     if (!deferred) return;
@@ -62,7 +72,16 @@ export default function InstallPrompt() {
   function close() {
     setDismissed(true);
     setShowIosGuide(false);
+    setShowSamsungGuide(false);
     localStorage.setItem('installDismissed', '1');
+  }
+
+  // 삼성 인터넷 → Chrome 으로 현재 페이지 열기(안드로이드 intent 링크).
+  // Chrome 미설치면 Play 스토어의 Chrome 페이지가 열린다.
+  function openInChrome() {
+    const { host, pathname, search } = window.location;
+    window.location.href =
+      `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`;
   }
 
   return (
@@ -74,12 +93,52 @@ export default function InstallPrompt() {
             <button className="install-yes" onClick={() => setShowIosGuide(true)}>
               설치 방법
             </button>
+          ) : samsung ? (
+            <button className="install-yes" onClick={() => setShowSamsungGuide(true)}>
+              설치 방법
+            </button>
           ) : (
             <button className="install-yes" onClick={install}>설치</button>
           )}
           <button className="install-no" onClick={close} aria-label="닫기">✕</button>
         </span>
       </div>
+
+      {showSamsungGuide && (
+        <div
+          className="ios-guide-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowSamsungGuide(false)}
+        >
+          <div className="ios-guide" onClick={(e) => e.stopPropagation()}>
+            <h3>홈 화면에 추가하기</h3>
+            <p className="note" style={{ marginBottom: '0.9rem' }}>
+              삼성 인터넷에서는 설치 버튼이 지원되지 않아요. <b>Chrome</b>으로 설치하면
+              진짜 앱처럼 설치되고 푸시 알림도 더 안정적으로 와요.
+            </p>
+            <button className="install-yes btn-block" onClick={openInChrome}>
+              Chrome으로 열기
+            </button>
+            <ol className="ios-steps" style={{ marginTop: '0.9rem' }}>
+              <li>Chrome에서 애타가 열리면 로그인하세요.</li>
+              <li>
+                화면 아래 <b>설치</b> 배너 또는 메뉴 <b>⋮</b> → <b>“홈 화면에 추가”</b> 를 누르세요.
+              </li>
+            </ol>
+            <p className="note">
+              Chrome이 없다면 삼성 인터넷 메뉴(≡) → <b>현재 페이지 추가</b> → <b>홈 화면</b>으로도
+              추가할 수 있어요.
+            </p>
+            <button
+              className="install-yes ios-guide-close"
+              onClick={() => setShowSamsungGuide(false)}
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
 
       {showIosGuide && (
         <div

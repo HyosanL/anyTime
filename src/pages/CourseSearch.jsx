@@ -5,6 +5,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, buildSections, formatTimes, sectionKey } from '../lib/cache';
 import CorrectionModal from '../components/CorrectionModal';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 // 분반 하나에 대한 '수정 제안' 항목들(시간/강의실/교수/과목명).
 // meta: { periods:number[], professors:[{code,name,department}] } — 양식 빌더에 전달.
@@ -175,6 +176,7 @@ export default function CourseSearch() {
   return (
     <PullToRefresh className="page" onRefresh={() => Promise.all([loadCatalog(true), loadTimetable()])}>
       <header className="page-header row">
+        <BackButton />
         <h2>강의 검색</h2>
       </header>
 

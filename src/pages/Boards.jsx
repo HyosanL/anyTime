@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { listBoards, createBoard, listFavoriteIds, addFavorite, removeFavorite } from '../lib/board';
 import { kvGet, kvSet } from '../lib/cache';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 export default function Boards() {
   const navigate = useNavigate();
@@ -37,6 +38,7 @@ export default function Boards() {
   return (
     <PullToRefresh className="page noscreenshot" onRefresh={() => load(q).catch(() => {})}>
       <header className="page-header">
+        <BackButton />
         <h2>익명게시판</h2>
       </header>
 

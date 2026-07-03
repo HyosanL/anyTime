@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -134,6 +135,7 @@ export default function Reviews() {
   return (
     <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
       <header className="page-header">
+        <BackButton fallback="/search" />
         <h2>{courseName} 강의평</h2>
       </header>
 

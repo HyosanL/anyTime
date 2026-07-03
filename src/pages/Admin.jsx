@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import SyllabusUpload from '../components/SyllabusUpload';
+import BackButton from '../components/BackButton';
 
 // 화면9: 관리자. is_admin 게이트. 작업은 admin-action Edge Function(service-role).
 // 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx).
@@ -332,6 +333,7 @@ export default function Admin() {
   if (!isAdmin) return (
     <div className="page">
       <header className="page-header">
+        <BackButton />
         <h2>관리자</h2>
       </header>
       <div className="empty">
@@ -349,6 +351,7 @@ export default function Admin() {
     return (
       <div className="page admin">
         <header className="page-header">
+          <BackButton />
           <h2>관리자</h2>
         </header>
         {banner}
@@ -376,6 +379,7 @@ export default function Admin() {
     return (
       <div className="page admin">
         <header className="page-header">
+          <BackButton />
           <h2>관리자</h2>
         </header>
         <div className="empty">
@@ -391,6 +395,7 @@ export default function Admin() {
   return (
     <div className="page admin">
       <header className="page-header">
+        <BackButton fallback="/admin" />
         <h2>{TITLE_OF[section]}</h2>
       </header>
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getCatalog } from '../lib/cache';
 import ReviewForm from '../components/ReviewForm';
+import BackButton from '../components/BackButton';
 
 // 강의평 쓰기 전용 화면(족보 보기처럼 새 화면으로 진입). 작성 자격은 서버 RPC가 강제.
 export default function ReviewWrite() {
@@ -34,6 +35,7 @@ export default function ReviewWrite() {
   return (
     <div className="page">
       <header className="page-header">
+        <BackButton fallback={`/reviews/${courseCode}`} />
         <h2>{header.name} 강의평 쓰기</h2>
       </header>
 

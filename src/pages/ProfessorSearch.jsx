@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, buildSections, sectionKey } from '../lib/cache';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 // 교수 검색: 교수명·학과로 찾아 교수 상세(강의평·시간표)로 이동.
 // - 내 확정시간표 담당 교수를 상단에 노출(검색 전에도).
@@ -108,6 +109,7 @@ export default function ProfessorSearch() {
   return (
     <PullToRefresh className="page" onRefresh={() => load(true)}>
       <header className="page-header row">
+        <BackButton />
         <h2>교수 검색</h2>
       </header>
 

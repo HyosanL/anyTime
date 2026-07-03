@@ -6,6 +6,7 @@ import { getReacted, markReacted } from '../lib/reactions';
 import TimetableGrid from '../components/TimetableGrid';
 import CorrectionModal from '../components/CorrectionModal';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -116,6 +117,7 @@ export default function ProfessorDetail() {
   return (
     <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
       <header className="page-header row">
+        <BackButton fallback="/professors" />
         <h2>{profName}</h2>
       </header>
 

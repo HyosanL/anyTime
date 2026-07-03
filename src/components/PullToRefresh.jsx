@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 //  아래로 당겨 새로고침 (터치 전용)
 //  - 문서 스크롤이 맨 위일 때 아래로 당기면 인디케이터가 내려오고,
 //    THRESHOLD 이상 당긴 뒤 놓으면 onRefresh() 완료까지 스피너를 유지한다.
+//  - 콘텐츠(페이지·헤더)는 움직이지 않고 인디케이터 칩만 내려온다
+//    (본문이 범위 밖까지 딸려 움직이는 모션 제거 — 머티리얼 방식).
 //  - 기존 <div className="page"> 자리를 그대로 대체해서 쓴다:
 //      <PullToRefresh className="page" onRefresh={...}>…</PullToRefresh>
 // =====================================================================
@@ -15,21 +17,23 @@ const DAMPING = 0.5;  // 손가락 이동 대비 당김 비율(저항감)
 
 export default function PullToRefresh({ onRefresh, className = '', children }) {
   const ref = useRef(null);
+  const indRef = useRef(null);
   const [phase, setPhase] = useState('idle'); // idle | pull | ready | refreshing
   const cb = useRef(onRefresh);
   useEffect(() => { cb.current = onRefresh; });
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    const ind = indRef.current;
+    if (!el || !ind) return;
     const s = { startX: 0, startY: 0, active: false, pull: 0, refreshing: false, phase: 'idle' };
 
     const setPh = (p) => { if (s.phase !== p) { s.phase = p; setPhase(p); } };
-    // 이동은 리렌더 없이 transform 으로만 (긴 목록에서도 60fps)
+    // 이동은 리렌더 없이 인디케이터 transform 으로만 (콘텐츠는 고정, 60fps)
     const move = (px, animate) => {
       s.pull = px;
-      el.style.transition = animate ? 'transform 0.22s ease' : 'none';
-      el.style.transform = px > 0 ? `translateY(${px}px)` : '';
+      ind.style.transition = animate ? 'transform 0.22s ease' : 'none';
+      ind.style.transform = px > 0 ? `translateY(${px}px)` : '';
     };
     const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
 
@@ -83,7 +87,7 @@ export default function PullToRefresh({ onRefresh, className = '', children }) {
 
   return (
     <div ref={ref} className={`ptr ${className}${phase !== 'idle' ? ` ptr-${phase}` : ''}`}>
-      <div className="ptr-ind" aria-hidden="true">
+      <div ref={indRef} className="ptr-ind" aria-hidden="true">
         <span className="ptr-chip">
           {phase === 'refreshing' ? <span className="ptr-spinner" /> : <span className="ptr-arrow">↓</span>}
         </span>

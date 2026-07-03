@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 import { clearCatalog, kvGet, kvSet } from '../lib/cache';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과' };
@@ -186,6 +187,7 @@ export default function Moderation() {
     return (
       <div className="page">
         <header className="page-header">
+          <BackButton />
           <h2>검열</h2>
         </header>
         <div className="empty">
@@ -203,6 +205,7 @@ export default function Moderation() {
   return (
     <PullToRefresh className="page" onRefresh={load}>
       <header className="page-header">
+        <BackButton />
         <h2>검열</h2>
       </header>
 

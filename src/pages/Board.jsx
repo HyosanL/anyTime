@@ -5,6 +5,7 @@ import { maskProfanity } from '../lib/moderation';
 import { pushEnabled, watchPost } from '../lib/push';
 import { kvGet, kvSet } from '../lib/cache';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 const MAX_IMAGES = 10;
 
@@ -99,6 +100,7 @@ export default function Board() {
   return (
     <PullToRefresh className="page noscreenshot" onRefresh={() => load(page)}>
       <header className="page-header">
+        <BackButton fallback="/boards" />
         <h2>{title}</h2>
         {!isHot && enabled && <button className="link-btn" onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</button>}
       </header>

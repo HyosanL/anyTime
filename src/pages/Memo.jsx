@@ -5,6 +5,7 @@ import { getCatalog, formatTimes } from '../lib/cache';
 import { maskProfanity } from '../lib/moderation';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 // 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
@@ -144,6 +145,7 @@ export default function Memo() {
   return (
     <PullToRefresh className="page" onRefresh={() => loadMemos(true)}>
       <header className="page-header">
+        <BackButton />
         <h2>{header.name} 메모</h2>
       </header>
 

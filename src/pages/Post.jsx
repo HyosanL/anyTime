@@ -7,6 +7,7 @@ import { maskProfanity } from '../lib/moderation';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
 function timeAgo(iso) {
@@ -135,7 +136,7 @@ export default function Post() {
   if (gone) {
     return (
       <div className="page noscreenshot">
-        <header className="page-header"><h2>게시글</h2></header>
+        <header className="page-header"><BackButton fallback="/boards" /><h2>게시글</h2></header>
         <div className="empty">
           <span className="empty-emoji">🗑️</span>
           <span>삭제되었거나 존재하지 않는 게시글입니다.</span>
@@ -151,6 +152,7 @@ export default function Post() {
   return (
     <PullToRefresh className="page noscreenshot" onRefresh={load}>
       <header className="page-header">
+        <BackButton fallback="/boards" />
         <h2>게시글</h2>
       </header>
 

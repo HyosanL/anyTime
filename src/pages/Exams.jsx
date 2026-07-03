@@ -5,6 +5,7 @@ import { getCatalog } from '../lib/cache';
 import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage';
 import ExamForm from '../components/ExamForm';
 import PullToRefresh from '../components/PullToRefresh';
+import BackButton from '../components/BackButton';
 
 // 파일 크기 표기(1.2MB 등)
 function fmtSize(bytes) {
@@ -94,6 +95,7 @@ export default function Exams() {
   return (
     <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
       <header className="page-header">
+        <BackButton fallback="/search" />
         <h2>{courseName} 족보</h2>
       </header>
 

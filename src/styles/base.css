@@ -60,15 +60,19 @@ button { font-family: inherit; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* ---------- 아래로 당겨 새로고침(PullToRefresh) ---------- */
-/* 브라우저 기본 당겨서-새로고침/오버스크롤 글로우를 끄고 커스텀 인디케이터만 쓴다 */
-html, body { overscroll-behavior-y: contain; }
+/* 브라우저 기본 당겨서-새로고침과 오버스크롤 모션(안드로이드 스트레치/글로우,
+   iOS 16+ 러버밴드)을 전부 끈다 → 스크롤 범위 밖으로 본문·헤더가 딸려 움직이지
+   않는다. 새로고침은 커스텀 인디케이터(아래)만 사용. */
+html, body { overscroll-behavior: none; }
 
 .ptr { position: relative; }
-/* 인디케이터는 콘텐츠 위쪽(화면 밖)에 붙어 있다가, 당길 때 함께 내려와 드러난다 */
+/* 인디케이터는 화면 밖(위)에 붙어 있다가, 당길 때 혼자 내려와 드러난다
+   (콘텐츠는 고정). 헤더(z-index 20) 위로 떠야 하므로 z-index 30. */
 .ptr-ind {
   position: absolute; top: -52px; left: 0; right: 0; height: 52px;
   display: flex; align-items: center; justify-content: center;
   pointer-events: none;
+  z-index: 30; will-change: transform;
 }
 .ptr-chip {
   display: inline-flex; align-items: center; justify-content: center;
@@ -114,6 +118,8 @@ html, body { overscroll-behavior-y: contain; }
 }
 .appbar .appbar-left, .page-header > a:first-child, .page-header > button:first-child { justify-self: start; grid-column: 1; }
 .appbar .appbar-right, .page-header > *:last-child:not(h1):not(h2) { justify-self: end; grid-column: 3; }
+/* 헤더 좌측 뒤로가기(스와이프 제스처 보조) */
+.back-btn { width: 34px; height: 34px; margin-left: -0.35rem; color: var(--text); }
 /* 헤더가 .row 형태(기존 마크업)도 위 그리드로 동작하도록 호환 */
 .page-header.row { display: grid; }
 
