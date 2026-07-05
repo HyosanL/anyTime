@@ -51,14 +51,6 @@ function openInChrome() {
     `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`;
 }
 
-// 설치된 애타 앱(WebAPK)으로 현재 페이지 열기 — 패키지를 지정하지 않은 intent 는
-// 이 주소(스코프)를 잡는 앱이 있으면 그 앱(설치된 PWA)을 연다. 미설치면 기본
-// 브라우저가 열릴 뿐이라 무해하다.
-function openInApp() {
-  const { host, pathname, search } = window.location;
-  window.location.href = `intent://${host}${pathname}${search}#Intent;scheme=https;end`;
-}
-
 export default function InstallGate({ children }) {
   const [deferred, setDeferred] = useState(null);
   const [installed, setInstalled] = useState(false);
@@ -79,15 +71,14 @@ export default function InstallGate({ children }) {
     }
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
-    // 이미 설치돼 있으면(Android Chrome, manifest related_applications 매칭)
-    // 게이트 대신 곧바로 앱으로 보낸다. iOS 는 감지·실행 API 가 없어 안내만 가능.
+    // 이미 설치돼 있으면(Android Chrome, manifest related_applications 매칭) 설치
+    // 안내 대신 "앱으로 여는 방법"을 보여준다. 웹에서 WebAPK 를 직접 실행하는 API 는
+    // 없고, 패키지 미지정 intent 도 기본 브라우저로 갈 뿐이라(실측) 안내가 최선.
+    // iOS 는 감지 API 자체가 없다.
     (async () => {
       try {
         const apps = await window.navigator.getInstalledRelatedApps?.();
-        if (apps && apps.length) {
-          setInstalledApp(true);
-          openInApp();
-        }
+        if (apps && apps.length) setInstalledApp(true);
       } catch { /* 미지원 브라우저 — 수동 안내로 대체 */ }
     })();
     return () => {
@@ -126,8 +117,11 @@ export default function InstallGate({ children }) {
         </p>
       ) : installedApp ? (
         <div className="install-gate-steps">
-          <p className="status-msg">앱이 이미 설치되어 있어요!</p>
-          <button className="btn-add btn-lg" onClick={openInApp}>📱 앱에서 열기</button>
+          <p className="status-msg">✅ 앱이 이미 설치되어 있어요!</p>
+          <p className="note">
+            홈 화면의 <b>애타</b> 아이콘으로 열거나, Chrome 메뉴 <b>⋮</b> →{' '}
+            <b>“앱에서 열기”</b> 를 눌러주세요.
+          </p>
         </div>
       ) : ios ? (
         <div className="install-gate-steps">
@@ -160,7 +154,6 @@ export default function InstallGate({ children }) {
             <br />
             (삼성 인터넷으로 설치하려면: 메뉴 <b>≡</b> → <b>현재 페이지 추가</b> → <b>홈 화면</b>)
           </p>
-          <button className="btn-ghost" onClick={openInApp}>이미 설치했다면: 앱에서 열기</button>
         </div>
       ) : isChromeAndroid() ? (
         <div className="install-gate-steps">
@@ -173,7 +166,6 @@ export default function InstallGate({ children }) {
         <div className="install-gate-steps">
           <button className="btn-add" onClick={openInChrome}>Chrome으로 열기</button>
           <p className="note">이 브라우저는 앱 설치를 지원하지 않아요. <b>Chrome</b>에서 설치를 진행해주세요.</p>
-          <button className="btn-ghost" onClick={openInApp}>이미 설치했다면: 앱에서 열기</button>
         </div>
       )}
 

@@ -23,6 +23,29 @@ function PushSettings() {
   const [hot, setHot] = useState(() => hotAlertsOn());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [testMsg, setTestMsg] = useState('');
+
+  // 로컬 테스트 알림 — 실제 푸시와 같은 채널(이 앱)로 표시된다.
+  // 팝업으로 뜨면 기기 설정은 정상 → 실제 알림이 안 뜨는 건 다른 브라우저 구독
+  // (예: 예전에 삼성 인터넷에서 켠 알림)으로 오고 있다는 뜻이다.
+  async function sendTest() {
+    setTestMsg('');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification('🔔 테스트 알림', {
+        body: '이 알림이 화면 위에 팝업으로 떴다면 기기 설정은 정상이에요.',
+        tag: 'push-test',
+        renotify: true,
+        vibrate: [180, 80, 180],
+        icon: '/icons/icon.svg',
+      });
+      setTestMsg(
+        '테스트 알림을 보냈어요. ① 팝업으로 떴다면: 기기 설정 정상 — 실제 알림이 안 뜨면 예전에 다른 브라우저(삼성 인터넷 등)에서 켠 알림 구독이 원인일 수 있으니 그 브라우저의 사이트 알림을 꺼주세요. ② 팝업 없이 알림센터에만 있다면: 이 앱의 알림 채널·팝업 스타일 설정을 다시 확인해주세요.'
+      );
+    } catch {
+      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
+    }
+  }
 
   async function toggle() {
     setBusy(true); setMsg('');
@@ -67,6 +90,10 @@ function PushSettings() {
                 <input type="checkbox" checked={hot} onChange={toggleHot} />
                 🔥 HOT 승격 게시글 알림 받기
               </label>
+              <button className="btn-ghost btn-sm" onClick={sendTest} style={{ marginTop: 8 }}>
+                🔔 테스트 알림 보내기
+              </button>
+              {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
               {/* Android(삼성 등)에서 팝업(헤드업) 여부는 OS 설정이라 코드로 못 올린다.
                   함정: Chrome 으로 설치한 앱(WebAPK)의 알림은 Chrome 채널이 아니라
                   별도 앱 '애타'의 알림 채널로 온다 — Chrome 쪽만 켜면 적용 안 됨. */}
