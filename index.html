@@ -15,16 +15,18 @@
           if (m) m.setAttribute('content', dark ? '#0b0f16' : '#ffffff');
         } catch (e) {}
       })();
-      /* 카카오톡 인앱 브라우저 탈출 — 인앱에서는 PWA 설치·푸시가 안 되므로
-         iOS 는 사파리(kakaotalk://web/openExternal), Android 는 Chrome(intent://)으로
-         자동 전환한다. 외부로 넘긴 뒤 인앱 창은 닫는다(스킴 실패해도 무해). */
+      /* 카카오톡 인앱 브라우저 탈출 — 인앱에서는 PWA 설치·푸시가 안 되므로 밖으로 보낸다.
+         Android 는 패키지를 지정하지 않은 intent:// 를 쓴다: 설치된 애타 앱(WebAPK)이
+         있으면 링크를 잡아 앱이 바로 열리고, 없으면 기본 브라우저가 열린다(설치 게이트가
+         이어받음). iOS 는 사파리(kakaotalk://web/openExternal)로 전환한다.
+         외부로 넘긴 뒤 인앱 창은 닫는다(스킴 실패해도 무해). */
       (function () {
         try {
           var ua = navigator.userAgent;
           if (!/KAKAOTALK/i.test(ua)) return;
           var url = location.href;
           if (/android/i.test(ua)) {
-            location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+            location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;end';
           } else {
             location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
           }

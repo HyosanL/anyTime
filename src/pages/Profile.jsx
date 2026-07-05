@@ -62,10 +62,22 @@ function PushSettings() {
             {on ? '푸시 알림 끄기' : '푸시 알림 켜기'}
           </button>
           {on && (
-            <label className="account-note" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-              <input type="checkbox" checked={hot} onChange={toggleHot} />
-              🔥 HOT 승격 게시글 알림 받기
-            </label>
+            <>
+              <label className="account-note" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                <input type="checkbox" checked={hot} onChange={toggleHot} />
+                🔥 HOT 승격 게시글 알림 받기
+              </label>
+              {/* Android(삼성 등)는 사이트 알림 채널 중요도가 '기본'이라 팝업 없이
+                  알림센터로만 들어가는 경우가 있다 — 중요도는 코드로 못 올려서 안내로 보완 */}
+              {/android/i.test(navigator.userAgent) && (
+                <p className="account-note" style={{ marginTop: 8 }}>
+                  💡 알림이 화면에 <b>팝업으로 안 뜨고</b> 알림센터에만 조용히 쌓이면:
+                  도착한 알림을 <b>길게 눌러</b> 알림 설정에서 <b>‘소리 및 팝업’(중요도 높음)</b>으로
+                  바꿔주세요. 또는 기기 <b>설정 → 알림 → Chrome(또는 애타)</b>에서 이 사이트
+                  알림의 표시 방식을 높여주세요.
+                </p>
+              )}
+            </>
           )}
           {msg && <p className="account-msg">{msg}</p>}
         </>

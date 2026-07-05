@@ -18,6 +18,10 @@ self.addEventListener('push', (event) => {
       tag: `${msg.kind || 'push'}-${msg.post_id || ''}`,   // 같은 글 알림은 1개로 겹침
       renotify: true,
       icon: '/icons/icon.svg',
+      // 진동 패턴 명시(Android 8 미만·일부 기기에서 알림을 '소리·진동' 등급으로 취급).
+      // Android 8+ 의 팝업(헤드업) 여부는 사이트 알림 채널 중요도라 코드로 못 올린다
+      // → 프로필 화면에 사용자 안내 문구로 보완.
+      vibrate: [180, 80, 180],
       data: { path },
     });
   })());
