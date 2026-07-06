@@ -1,8 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
-import { syncPush } from './lib/push';
+import { syncPush, consumePendingNav } from './lib/push';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import InstallGate from './components/InstallGate';
@@ -92,6 +92,28 @@ function PushSync() {
   return null;
 }
 
+// 알림 클릭 딥링크: 앱이 떠 있으면 SW 의 postMessage 로, 콜드스타트면 SW 가 캐시에
+// 남긴 목적지(consumePendingNav)로 해당 글로 이동한다. SW 의 client.navigate()/
+// openWindow(경로)가 플랫폼(WebAPK·iOS PWA)에 따라 경로를 무시하는 문제의 우회로.
+function PushNavigator() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMsg = (e) => {
+      const d = e.data;
+      if (d?.type !== 'PUSH_NAV' || typeof d.path !== 'string' || !d.path.startsWith('/')) return;
+      consumePendingNav();  // 캐시 보험 소비(다음 부팅 때 이중 이동 방지)
+      if (window.location.pathname !== d.path) navigate(d.path);
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    consumePendingNav().then((path) => {
+      if (path && window.location.pathname !== path) navigate(path);
+    });
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, [navigate]);
+  return null;
+}
+
 // 이미 로그인했으면 홈으로 (가입/로그인 화면 가드).
 function PublicOnly({ children }) {
   const { session, loading } = useAuthContext();
@@ -106,6 +128,7 @@ export default function App() {
       <div className="app">
         <InstallGate>
         <PushSync />
+        <PushNavigator />
         <PushPrompt />
         <GeoBanner />
         <Suspense fallback={<div className="page-center">로딩 중...</div>}>

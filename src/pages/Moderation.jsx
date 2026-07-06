@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 import { clearCatalog, kvGet, kvSet } from '../lib/cache';
@@ -24,6 +25,22 @@ async function call(action, payload = {}) {
   return { ok: status === 'OK', status, data };
 }
 
+// 항목 → 실제 콘텐츠 화면 경로(삭제 판단 전 원문·맥락 확인용). 못 만드는 유형은 null.
+function contentPath(it) {
+  switch (it.type) {
+    case 'board_post': return `/board/post/${it.id}`;
+    case 'board_comment': return it.meta?.post_id ? `/board/post/${it.meta.post_id}` : null;
+    case 'review': return `/reviews/${it.course_code}`;
+    case 'exam_archive': return `/exams/${it.course_code}`;
+    case 'class_memo': {
+      const m = it.meta || {};
+      return m.year && m.term && m.section_no != null
+        ? `/memo/${it.course_code}/${m.year}/${m.term}/${m.section_no}` : null;
+    }
+    default: return null;
+  }
+}
+
 // 동일(target/key/field/suggested) 제안을 한 카드로 묶고 ids·count 보관.
 function groupCorrections(list) {
   const m = new Map();
@@ -47,6 +64,7 @@ function Highlighted({ text }) {
 
 // 화면9-2: 실시간 모더레이션 대시보드 — 3탭(게시글·댓글 / 신고 / 수정 제안).
 export default function Moderation() {
+  const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(null);
   const [tab, setTab] = useState('posts'); // 'posts' | 'reports' | 'corr'
   const [items, setItems] = useState([]);       // 게시글·댓글(list_recent)
@@ -267,10 +285,16 @@ export default function Moderation() {
                     </div>
                   </div>
                 ) : (
-                  <p className="mod-text"><Highlighted text={it.text || '(내용 없음)'} /></p>
+                  <p
+                    className={`mod-text${contentPath(it) ? ' mod-text-link' : ''}`}
+                    onClick={() => { const p = contentPath(it); if (p) navigate(p); }}
+                  >
+                    <Highlighted text={it.text || '(내용 없음)'} />
+                  </p>
                 )}
 
                 <div className="mod-actions">
+                  {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
                   <button className="rev-del-btn" onClick={() => setEdit({ type: it.type, id: it.id, text: editableText(it) })}>수정</button>
                   <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
                 </div>
@@ -294,8 +318,14 @@ export default function Moderation() {
                 <span className="tag tag-warn mod-badge">🚨 신고 {it.report_count}건</span>
                 <span className="mod-time">{new Date(it.created_at).toLocaleString('ko-KR')}</span>
               </div>
-              <p className="mod-text"><Highlighted text={it.text || '(내용 없음)'} /></p>
+              <p
+                className={`mod-text${contentPath(it) ? ' mod-text-link' : ''}`}
+                onClick={() => { const p = contentPath(it); if (p) navigate(p); }}
+              >
+                <Highlighted text={it.text || '(내용 없음)'} />
+              </p>
               <div className="mod-actions">
+                {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
                 <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
                 <button className="rev-del-btn" onClick={() => dismissReport(it)}>무시(정상)</button>
               </div>

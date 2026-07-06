@@ -3,6 +3,35 @@
 //    내용 수정 시 vite.config.js importScripts 의 파일명 쿼리(?v=N)를 올려줄 것.
 /* eslint-env serviceworker */
 
+// 앱(window)과 SW 가 공유하는 저장소 — SW 는 localStorage 를 못 읽으므로 Cache API 를 쓴다.
+// · /watch-reasons: { [postId]: 'post'|'comment'|'watch' } — 이 기기가 글을 지켜보는 이유
+//   (src/lib/push.js 가 watch 변경 때마다 미러링). 알림 문구의 "내가 쓴 글" 구분에 사용.
+// · /pending-nav: 알림 클릭 목적지. openWindow 가 경로를 무시하는 플랫폼(iOS PWA 등)
+//   대비 보험 — 앱이 부팅하면서 회수해 이동한다(App.jsx PushNavigator).
+const META_CACHE = 'push-meta';
+
+async function watchReason(postId) {
+  try {
+    const c = await caches.open(META_CACHE);
+    const r = await c.match('/watch-reasons');
+    if (!r) return '';
+    const m = await r.json();
+    return (m && m[postId]) || '';
+  } catch { return ''; }
+}
+
+// 댓글·답글 알림 제목: 게시글 제목을 기준으로 "무슨 글의 무슨 알림"인지 드러낸다.
+//  · 내가 쓴 "제목" 글에 댓글이 달렸어요 / 내가 쓴 "제목" 글의 댓글에 답글이 달렸어요
+//  · 내가 댓글 단 "제목" 글에 … / (수동 벨) "제목" 글에 …
+function commentTitle(kind, reason, title) {
+  const short = title && title.length > 22 ? `${title.slice(0, 22)}…` : title;
+  const t = short ? `"${short}" 글` : '글';
+  const who = reason === 'post' ? '내가 쓴 ' : reason === 'comment' ? '내가 댓글 단 ' : '';
+  return kind === 'reply'
+    ? `💬 ${who}${t}의 댓글에 답글이 달렸어요`
+    : `💬 ${who}${t}에 댓글이 달렸어요`;
+}
+
 self.addEventListener('push', (event) => {
   let msg = {};
   try { msg = event.data ? event.data.json() : {}; } catch { /* 형식 오류 무시 */ }
@@ -13,8 +42,11 @@ self.addEventListener('push', (event) => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (wins.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === path)) return;
     const hot = msg.kind === 'hot';
-    await self.registration.showNotification(hot ? '🔥 인기글이 나왔어요' : '💬 새 댓글이 달렸어요', {
-      body: msg.title ? `"${msg.title}"` : '',
+    const reason = hot ? '' : await watchReason(String(msg.post_id || ''));
+    const title = hot ? '🔥 인기글이 나왔어요' : commentTitle(msg.kind, reason, msg.title);
+    await self.registration.showNotification(title, {
+      // 제목에 글제목이 들어가므로 본문은 HOT(제목 미포함)에만 채운다.
+      body: hot && msg.title ? `"${msg.title}"` : '',
       tag: `${msg.kind || 'push'}-${msg.post_id || ''}`,   // 같은 글 알림은 1개로 겹침
       renotify: true,
       icon: '/icons/icon.svg',
@@ -31,9 +63,18 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const path = (event.notification.data && event.notification.data.path) || '/';
   event.waitUntil((async () => {
+    // 콜드스타트 보험: 목적지를 캐시에 남긴다 — openWindow/navigate 가 경로를
+    // 무시하는 플랫폼에서도 앱이 부팅하며 회수해 이동한다(3분 TTL, 1회성).
+    try {
+      const c = await caches.open(META_CACHE);
+      await c.put('/pending-nav', new Response(JSON.stringify({ path, ts: Date.now() })));
+    } catch { /* 캐시 실패 시 아래 직접 이동에 의존 */ }
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // 앱이 이미 떠 있으면: 포커스 + 앱 내 라우터로 이동(postMessage → PushNavigator).
+    // client.navigate() 는 WebAPK·삼성 인터넷에서 조용히 실패하는 사례가 있어 쓰지 않는다.
     for (const c of wins) {
-      try { await c.focus(); await c.navigate(path); return; } catch { /* 다음 창 시도 */ }
+      try { await c.focus(); } catch { /* 포커스 실패해도 메시지는 보낸다 */ }
+      try { c.postMessage({ type: 'PUSH_NAV', path }); return; } catch { /* 다음 창 시도 */ }
     }
     await self.clients.openWindow(path);
   })());

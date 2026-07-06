@@ -117,7 +117,7 @@ export default function Post() {
     setCText(''); setCPw(''); setReplyTo(null); load();
     // 푸시를 쓰는 기기면 댓글 단 글을 조용히 지켜보기(대댓글 알림)
     if (pushEnabled() && !isWatched(id)) {
-      watchPost(id).then(() => setWatching(true)).catch(() => {});
+      watchPost(id, 'comment').then(() => setWatching(true)).catch(() => {});
     }
   }
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
