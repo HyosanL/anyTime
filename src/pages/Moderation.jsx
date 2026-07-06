@@ -13,7 +13,9 @@ const REASON_LABEL = { threshold: '누적 신고', burst: '단시간 급증(15�
 const POLL_MS = 15000;
 // 파급이 큰 항목(과목명/교수명/학과)은 자동반영 대상이 아니며, 3건↑ 쌓이면 수동 검토 강조.
 const HIGH_RISK = new Set(['course:name', 'professor:name', 'professor:department']);
-const groupKey = (c) => `${c.target}|${JSON.stringify(c.target_key)}|${c.field}|${c.suggested ?? ''}`;
+// 대상 키는 정규화된 단순 속성(professor_code/course_code/year/term/section_no)으로 묶는다.
+const groupKey = (c) =>
+  `${c.target}|${c.professor_code ?? ''}|${c.course_code ?? ''}|${c.year ?? ''}|${c.term ?? ''}|${c.section_no ?? ''}|${c.field}|${c.suggested ?? ''}`;
 
 async function call(action, payload = {}) {
   const { data, error } = await supabase.functions.invoke('admin-action', { body: { action, payload } });

@@ -7,15 +7,14 @@ export async function onRequestPost(context) {
 
   const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: data.token, 'Content-Type': 'application/json' };
 
-  // 1) 파일 key 확보(삭제 전) — 다중첨부(files) + 구버전 단일(file_url)
+  // 1) 파일 key 확보(삭제 전) — 첨부는 exam_file 릴레이션(정규화), embedded select 로 함께 조회
   const rowRes = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/exam_archive?id=eq.${id}&select=file_url,files`, { headers: H });
+    `${env.SUPABASE_URL}/rest/v1/exam_archive?id=eq.${id}&select=id,exam_file(object_key)`, { headers: H });
   const row = (await rowRes.json())?.[0];
   if (!row) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
 
   const keys = new Set();
-  if (Array.isArray(row.files)) for (const f of row.files) { if (f?.key) keys.add(f.key); }
-  if (row.file_url) keys.add(row.file_url);
+  if (Array.isArray(row.exam_file)) for (const f of row.exam_file) { if (f?.object_key) keys.add(f.object_key); }
 
   // 2) 비번 검증 + 행 삭제 + 레벨 -1 (유저 JWT 로 RPC)
   const delRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/delete_exam`, {

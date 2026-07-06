@@ -17,5 +17,10 @@ export async function onRequestPost(context) {
   await env.EXAM_FILES.put(key, file.stream(), {
     httpMetadata: { contentType: file.type },
   });
+  // 저화질 썸네일(선택) — 원본과 같은 key + '.thumb' 로 저장. 화이트리스트 + 크기 상한만 검사.
+  const thumb = form.get('thumb');
+  if (thumb && typeof thumb !== 'string' && OK_IMAGE.test(thumb.type || '') && thumb.size <= 4 * 1024 * 1024) {
+    await env.EXAM_FILES.put(`${key}.thumb`, thumb.stream(), { httpMetadata: { contentType: thumb.type } });
+  }
   return Response.json({ status: 'OK', key });
 }

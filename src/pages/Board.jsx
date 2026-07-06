@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, listPosts, listHot, createPost, uploadBoardImages, PAGE_SIZE, boardEnabled } from '../lib/board';
+import { getBoard, listPosts, listHot, createPost, uploadBoardImages, postImageKeys, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
 import { pushEnabled, watchPost } from '../lib/push';
 import { kvGet, kvSet } from '../lib/cache';
@@ -157,7 +157,7 @@ export default function Board() {
                     <span className="post-line">
                       <span className="post-item-title">{p.title || '(제목 없음)'}</span>
                       {p.hot && <span className="post-flag post-flag-hot">🔥</span>}
-                      {p.image_key && <span className="post-flag">🖼</span>}
+                      {postImageKeys(p).length > 0 && <span className="post-flag">🖼</span>}
                     </span>
                     {snippet && <span className="post-item-preview">{snippet}</span>}
                     <span className="post-item-meta">

@@ -22,14 +22,17 @@ export async function onRequest(context) {
   const referenced = new Set((await refRes.json()) || []);
 
   // 2) R2 'board/' 순회하며 고아(참조X + GRACE 경과) 삭제
+  //    저화질 썸네일은 원본과 같은 key + '.thumb' 규약(DB 미기록)이므로,
+  //    원본 key 가 참조 중이면 그 썸네일도 참조 중으로 간주한다.
   const cutoff = Date.now() - GRACE_MS;
   let listed = 0, deleted = 0, cursor;
   do {
     const page = await env.EXAM_FILES.list({ prefix: 'board/', limit: 1000, cursor });
     for (const obj of page.objects) {
       listed++;
+      const baseKey = obj.key.endsWith('.thumb') ? obj.key.slice(0, -'.thumb'.length) : obj.key;
       const uploadedMs = obj.uploaded ? new Date(obj.uploaded).getTime() : 0;
-      if (!referenced.has(obj.key) && uploadedMs && uploadedMs < cutoff) {
+      if (!referenced.has(obj.key) && !referenced.has(baseKey) && uploadedMs && uploadedMs < cutoff) {
         await env.EXAM_FILES.delete(obj.key);
         deleted++;
       }

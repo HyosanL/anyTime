@@ -46,7 +46,6 @@ export default function ExamForm({ courseCode, onDone }) {
     setSubmitting(true);
     try {
       const uploaded = await uploadExamFiles(courseCode, files); // [{key,name,size,mime}]
-      const first = uploaded[0];
       const { error } = await supabase.rpc('create_exam', {
         p_post_password: password,
         p_course_code: courseCode,
@@ -54,12 +53,8 @@ export default function ExamForm({ courseCode, onDone }) {
         p_src_term: srcTerm ? Number(srcTerm) : null,
         p_title: maskProfanity(title.trim()),
         p_exam_type: examType,
-        p_file_url: first.key,
-        p_file_name: first.name,
-        p_file_size: first.size,
-        p_mime_type: first.mime,
         p_description: maskProfanity(description.trim()) || null,
-        p_files: uploaded,
+        p_files: uploaded,   // 서버가 exam_file 릴레이션으로 정규화 저장
       });
       if (error) {
         setError(error.message || '등록에 실패했습니다.');

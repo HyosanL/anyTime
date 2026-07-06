@@ -191,12 +191,9 @@ Deno.serve(async (req) => {
       case 'delete_post': {
         const table = String(payload.table)
         if (!POST_TABLES.has(table)) return json({ status: 'BAD_REQUEST' }, 400)
-        if (table === 'exam_archive') {
-          const { data: row } = await admin.from('exam_archive').select('file_url').eq('id', payload.id).maybeSingle()
-          if (row?.file_url) await admin.storage.from('exam-files').remove([row.file_url])
-        }
-        // board_post 삭제 시 댓글·이벤트는 FK CASCADE 로 함께 삭제.
-        // R2 이미지는 이 Edge 에서 접근 불가 → 고아 객체는 R2 스윕이 정리(사진 90일 바운드).
+        // board_post 삭제 시 댓글·이벤트·이미지(board_post_image), exam_archive 삭제 시
+        // 첨부(exam_file)는 FK CASCADE 로 함께 삭제. 파일 실체(R2)는 이 Edge 에서 접근 불가 —
+        // 게시판 이미지 고아는 R2 스윕이 정리(사진 90일 바운드), 족보 파일은 사용자 삭제(/api/exam-delete) 경로만 R2 즉시 제거.
         await admin.from(table).delete().eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
@@ -424,7 +421,7 @@ Deno.serve(async (req) => {
       case 'list_corrections': {
         const st = payload.status ? String(payload.status) : 'pending'
         const { data } = await admin.from('correction')
-          .select('id, target, target_key, label, field, suggested, note, status, created_at')
+          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, status, created_at')
           .eq('status', st).order('created_at', { ascending: false }).limit(200)
         return json({ status: 'OK', items: data ?? [] })
       }
@@ -445,7 +442,7 @@ Deno.serve(async (req) => {
       // 자동반영 알림: 사용자 동일 제안 3건↑로 시스템이 반영한 건. 관리자 확인 전까지만 유지.
       case 'list_auto_notices': {
         const { data } = await admin.from('correction')
-          .select('id, target, target_key, label, field, suggested, note, created_at')
+          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, created_at')
           .eq('auto_applied', true)
           .order('created_at', { ascending: false }).limit(200)
         return json({ status: 'OK', items: data ?? [] })

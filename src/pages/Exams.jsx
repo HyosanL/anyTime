@@ -52,7 +52,7 @@ export default function Exams() {
 
     const { data } = await supabase
       .from('exam_archive')
-      .select('*')
+      .select('*, exam_file(seq, object_key, file_name, file_size, mime_type)')
       .eq('course_code', courseCode)
       .order('created_at', { ascending: false });
     setExams(data ?? []);

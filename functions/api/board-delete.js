@@ -8,15 +8,14 @@ export async function onRequestPost(context) {
 
   const H = { apikey: env.SUPABASE_ANON_KEY, Authorization: data.token, 'Content-Type': 'application/json' };
 
-  // 1) 이미지 key 확보(삭제 전) — 다중(image_keys) + 구버전 단일(image_key)
+  // 1) 이미지 key 확보(삭제 전) — 이미지는 board_post_image 릴레이션(정규화), embedded select 로 함께 조회
   const rowRes = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/board_post?id=eq.${id}&select=image_key,image_keys`, { headers: H });
+    `${env.SUPABASE_URL}/rest/v1/board_post?id=eq.${id}&select=id,board_post_image(object_key)`, { headers: H });
   const row = (await rowRes.json())?.[0];
   if (!row) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
 
   const keys = new Set();
-  if (Array.isArray(row.image_keys)) for (const k of row.image_keys) { if (k) keys.add(k); }
-  if (row.image_key) keys.add(row.image_key);
+  if (Array.isArray(row.board_post_image)) for (const i of row.board_post_image) { if (i?.object_key) keys.add(i.object_key); }
 
   // 2) 비번 검증 + 행 삭제(댓글·board_event CASCADE) — 유저 JWT 로 RPC
   const delRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/delete_post`, {
@@ -29,10 +28,11 @@ export async function onRequestPost(context) {
   }
   if ((await delRes.json()) === false) return Response.json({ status: 'NOT_FOUND' }, { status: 404 });
 
-  // 3) R2 이미지 제거 (board/ prefix 만) — 실패해도 스윕이 뒤늦게 정리하므로 치명적이지 않음
+  // 3) R2 이미지 제거 (board/ prefix 만) — 원본 + 저화질 썸네일(key.thumb) 함께.
+  //    실패해도 스윕이 뒤늦게 정리하므로 치명적이지 않음.
   for (const key of keys) {
     if (typeof key === 'string' && key.startsWith('board/')) {
-      try { await env.EXAM_FILES.delete(key); } catch { /* 스윕이 정리 */ }
+      try { await env.EXAM_FILES.delete([key, `${key}.thumb`]); } catch { /* 스윕이 정리 */ }
     }
   }
   return Response.json({ status: 'OK' });
