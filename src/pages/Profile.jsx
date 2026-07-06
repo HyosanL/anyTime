@@ -193,6 +193,26 @@ export default function Profile() {
           <p className="note profile-todo">강의평·수업메모·족보 작성 +1 / 삭제 −1로 레벨이 오릅니다.</p>
         </section>
 
+        <section className="card account-sec anon-sec">
+          <h3 className="account-sec-title">🔒 이 앱의 익명성</h3>
+          <p className="anon-lead">
+            애타는 <b>누가 무엇을 썼는지</b> 앱 자체가 알 수 없도록 설계돼 있습니다.
+            강의평·수업메모·족보·게시글은 작성자 정보 없이 저장됩니다.
+          </p>
+          <ul className="anon-list">
+            <li><b>글에 작성자가 남지 않아요.</b> 게시글·강의평 데이터에는 내용과 시각만 저장되고, 누가 썼는지를 가리키는 정보가 아예 없습니다.</li>
+            <li><b>실명·전화번호를 받지 않아요.</b> 가입은 아이디·비밀번호만으로 이뤄지고 이메일·전화·실명은 수집하지 않습니다.</li>
+            <li><b>관리자도 작성자를 특정할 수 없어요.</b> 데이터를 전부 열람해도 “이 글을 누가 썼는지”는 나오지 않습니다. 신고가 쌓이면 내용만 자동으로 가려질 뿐, 작성자를 역추적하거나 지목하지 않습니다.</li>
+            <li><b>삭제는 글 비밀번호로 해요.</b> 계정 소유로 지우는 게 아니라(그런 연결이 없으니까) 글마다 정한 삭제 비밀번호로 지웁니다.</li>
+          </ul>
+          <p className="anon-caveat">
+            ⚠️ 다만 이건 <b>학교·관리자·다른 생도로부터의 익명성</b>이에요.
+            명예훼손·협박 같은 불법 콘텐츠는 다른 인터넷 서비스와 마찬가지로,
+            법적 절차(수사기관의 IP·통신기록 조회 등)에 따라 추적 대상이 될 수 있습니다.
+            서로 존중하며 이용해주세요.
+          </p>
+        </section>
+
         <section className="card account-sec">
           <h3 className="account-sec-title">화면 테마</h3>
           <p className="account-note">시스템 설정을 따르거나 라이트·다크를 직접 고를 수 있습니다.</p>

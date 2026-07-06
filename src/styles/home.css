@@ -312,6 +312,51 @@
 }
 
 /* ============================================================
+   익명성 안내 (프로필)
+   ============================================================ */
+.anon-lead {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-2);
+  margin: 0.15rem 0 0.8rem;
+}
+.anon-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.anon-list li {
+  position: relative;
+  padding-left: 1.45rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.anon-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: -0.02em;
+  color: var(--accent);
+  font-weight: 800;
+}
+.anon-list b { color: var(--text); font-weight: 650; }
+.anon-caveat {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--warn-weak);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.anon-caveat b { color: var(--text); font-weight: 650; }
+
+/* ============================================================
    시간표 그리드 (TimetableGrid)
    - 셀 배경은 컴포넌트 inline style(데이터 PALETTE) 이 칠한다.
    - 셀 안 텍스트는 항상 밝은 파스텔 위 → var(--on-pastel).
