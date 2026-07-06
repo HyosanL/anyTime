@@ -25,23 +25,20 @@ function PushSettings() {
   const [msg, setMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
 
-  // 로컬 테스트 알림 — 실제 푸시와 같은 채널(이 앱)로 표시된다.
-  // 팝업으로 뜨면 기기 설정은 정상 → 실제 알림이 안 뜨는 건 다른 브라우저 구독
-  // (예: 예전에 삼성 인터넷에서 켠 알림)으로 오고 있다는 뜻이다.
+  // 로컬 테스트 알림 — 알림이 실제로 도착하는지(권한·구독·전송) 확인용.
+  // 헤드업(팝업)으로 뜨는지는 기기 설정 소관이라 코드로 못 바꾸므로 판단하지 않는다.
   async function sendTest() {
     setTestMsg('');
     try {
       const reg = await navigator.serviceWorker.ready;
       await reg.showNotification('🔔 테스트 알림', {
-        body: '이 알림이 화면 위에 팝업으로 떴다면 기기 설정은 정상이에요.',
+        body: '테스트 알림이 도착했어요.',
         tag: 'push-test',
         renotify: true,
         vibrate: [180, 80, 180],
         icon: '/icons/icon.svg',
       });
-      setTestMsg(
-        '테스트 알림을 보냈어요. ① 팝업으로 떴다면: 기기 설정 정상 — 실제 알림이 안 뜨면 예전에 다른 브라우저(삼성 인터넷 등)에서 켠 알림 구독이 원인일 수 있으니 그 브라우저의 사이트 알림을 꺼주세요. ② 팝업 없이 알림센터에만 있다면: 이 앱의 알림 채널·팝업 스타일 설정을 다시 확인해주세요.'
-      );
+      setTestMsg('테스트 알림을 보냈어요.');
     } catch {
       setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
     }
@@ -94,25 +91,6 @@ function PushSettings() {
                 🔔 테스트 알림 보내기
               </button>
               {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
-              {/* Android(삼성 등)에서 팝업(헤드업) 여부는 OS 설정이라 코드로 못 올린다.
-                  함정: Chrome 으로 설치한 앱(WebAPK)의 알림은 Chrome 채널이 아니라
-                  별도 앱 '애타'의 알림 채널로 온다 — Chrome 쪽만 켜면 적용 안 됨. */}
-              {/android/i.test(navigator.userAgent) && (
-                <p className="account-note" style={{ marginTop: 8 }}>
-                  💡 알림이 화면에 <b>팝업으로 안 뜨면</b> 순서대로 확인하세요:
-                  <br />① 삼성 기기 절전 기능이 푸시를 잠금 해제 때까지 붙잡아두는 경우가
-                  가장 흔해요 — <b>설정 → 배터리 → 백그라운드 사용 제한</b>에서
-                  <b>‘절전 예외 앱’에 Chrome(과 애타)을 추가</b>하고,
-                  ‘사용하지 않는 앱 절전’을 꺼주세요. (지연 도착한 알림은 팝업 없이
-                  알림센터로만 들어가요)
-                  <br />② 설치된 앱의 알림은 Chrome이 아니라 <b>‘애타’ 앱</b>으로 와요 —
-                  기기 <b>설정 → 알림 → 애타</b>에서 <b>‘소리 및 팝업’</b>인지 확인.
-                  <br />③ 삼성 기기: <b>설정 → 알림 → 알림 팝업 스타일</b>이 ‘간략히’면
-                  목록에서 <b>애타</b>를 켜거나 <b>‘자세히’</b>로 변경.
-                  <br />④ 화면이 꺼져 있을 때 도착한 알림은 팝업 없이 잠금화면·알림센터로
-                  들어가요(정상 동작).
-                </p>
-              )}
             </>
           )}
           {msg && <p className="account-msg">{msg}</p>}
