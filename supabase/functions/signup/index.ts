@@ -61,11 +61,6 @@ Deno.serve(async (req) => {
   if (gateErr) return json('ERROR', 500, { detail: gateErr.message })
   if (gate !== 'OK') return json(gate as string, 403) // INVALID_CODE | OUT_OF_AREA
 
-  // 1.5) 차단 검사 (아이디)
-  const { data: bUser } = await admin.from('block').select('id')
-    .eq('username', username).gt('blocked_until', new Date().toISOString()).limit(1)
-  if (bUser?.length) return json('BLOCKED', 403)
-
   // 2) 아이디 선점 확인 (합성 이메일 충돌 전에 친절한 메시지)
   const { data: existing } = await admin
     .from('cadet')

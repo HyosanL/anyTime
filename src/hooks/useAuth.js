@@ -27,11 +27,10 @@ function writeCadetCache(c) {
 // cadet 행은 RLS 로 본인 것만 조회된다. 가입 직후엔 Edge Function 이 만들어 둔다.
 //
 // 성능: 세션은 로컬(localStorage)에서 즉시 확인되므로, 세션이 잡히는 즉시 loading 을 해제해
-//       홈(시간표)을 바로 그린다. 프로필/차단/지오 상태는 화면을 막지 않고 백그라운드로 병렬 조회한다.
+//       홈(시간표)을 바로 그린다. 프로필/지오 상태는 화면을 막지 않고 백그라운드로 병렬 조회한다.
 export function useAuth() {
   const [session, setSession] = useState(null);
   const [cadet, setCadet] = useState(() => readCadetCache()); // 캐시로 헤더 즉시(오프라인) 표시
-  const [blockedUntil, setBlockedUntil] = useState(null);
   const [geo, setGeo] = useState({ expired: false, daysLeft: null }); // 지오펜싱 재인증 상태
   const [loading, setLoading] = useState(true);
 
@@ -61,14 +60,12 @@ export function useAuth() {
   }, []);
 
   async function fetchCadet(uid) {
-    // 순차 3왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
-    const [{ data }, { data: blk }, { data: vd }] = await Promise.all([
+    // 순차 왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
+    const [{ data }, { data: vd }] = await Promise.all([
       supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin').eq('id', uid).maybeSingle(),
-      supabase.rpc('get_my_block'),
       supabase.rpc('get_geo_valid_days'),
     ]);
     if (data) { setCadet(data); writeCadetCache(data); } // 오프라인이면 data=null → 캐시 유지
-    setBlockedUntil(blk || null);
     const validDays = vd ?? 90;
     const gv = data?.geo_verified_at;
     if (gv) {
@@ -91,5 +88,5 @@ export function useAuth() {
     writeCadetCache(null);
   }
 
-  return { session, cadet, blockedUntil, geo, loading, refreshCadet, logout };
+  return { session, cadet, geo, loading, refreshCadet, logout };
 }

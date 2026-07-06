@@ -27,17 +27,6 @@ const Board = lazy(() => import('./pages/Board'));
 const Post = lazy(() => import('./pages/Post'));
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
-function BlockedScreen({ until }) {
-  const { logout } = useAuthContext();
-  return (
-    <div className="page-center" style={{ flexDirection: 'column', gap: '1rem', padding: '2rem', textAlign: 'center' }}>
-      <h2>🚫 이용이 제한되었습니다</h2>
-      <p className="muted">{new Date(until).toLocaleString('ko-KR')} 까지 차단됨.<br />관리자에게 문의하세요.</p>
-      <button className="link-btn" onClick={logout}>로그아웃</button>
-    </div>
-  );
-}
-
 function GeoVerifyButton({ onDone, label }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -89,10 +78,9 @@ function GeoBanner() {
 }
 
 function ProtectedRoute({ children }) {
-  const { session, loading, blockedUntil, geo } = useAuthContext();
+  const { session, loading, geo } = useAuthContext();
   if (loading) return <div className="page-center">로딩 중...</div>;
   if (!session) return <Navigate to="/login" replace />;
-  if (blockedUntil) return <BlockedScreen until={blockedUntil} />;
   if (geo?.expired) return <GeoBlockScreen />;
   return children;
 }

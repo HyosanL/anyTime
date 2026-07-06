@@ -414,28 +414,6 @@ Deno.serve(async (req) => {
         }
         return json({ status: 'OK', courses: nC, sections: nS })
       }
-      case 'block_user': {
-        const username = String(payload.username ?? '').trim()
-        const days = Number(payload.days) || 7
-        if (!username) return json({ status: 'BAD_REQUEST' }, 400)
-        const until = new Date(Date.now() + days * 86400000).toISOString()
-        await admin.from('block').insert({
-          username, blocked_until: until, reason: payload.reason ?? null,
-        }).throwOnError()
-        return json({ status: 'OK', until })
-      }
-      case 'unblock': {
-        const username = String(payload.username ?? '').trim()
-        await admin.from('block').delete().eq('username', username)
-        return json({ status: 'OK' })
-      }
-      case 'list_blocks': {
-        const { data } = await admin.from('block')
-          .select('id, username, blocked_until, reason')
-          .gt('blocked_until', new Date().toISOString())
-          .order('blocked_until', { ascending: false })
-        return json({ status: 'OK', blocks: data ?? [] })
-      }
       // ── 정보 수정 제안 ──
       case 'list_corrections': {
         const st = payload.status ? String(payload.status) : 'pending'
