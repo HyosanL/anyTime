@@ -129,6 +129,25 @@ Deno.serve(async (req) => {
         await admin.from('notice').delete().eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
+      // ── 금지어(작성 시 부분 마스킹) ──
+      case 'list_banned_words': {
+        const { data } = await admin.from('banned_word')
+          .select('word, created_at').order('created_at', { ascending: false })
+        return json({ status: 'OK', words: data ?? [] })
+      }
+      case 'add_banned_word': {
+        const word = String(payload.word ?? '').trim()
+        if (!word) return json({ status: 'BAD_REQUEST' }, 400)
+        if (word.length > 40) return json({ status: 'TOO_LONG' }, 400)
+        // 이미 있으면 조용히 성공(중복 무시).
+        await admin.from('banned_word').upsert({ word }, { onConflict: 'word' }).throwOnError()
+        return json({ status: 'OK' })
+      }
+      case 'delete_banned_word': {
+        const word = String(payload.word ?? '')
+        await admin.from('banned_word').delete().eq('word', word).throwOnError()
+        return json({ status: 'OK' })
+      }
       case 'get_signup_code': {
         const { data } = await admin.from('app_setting').select('signup_code').eq('id', 1).maybeSingle()
         return json({ status: 'OK', code: data?.signup_code ?? '' })

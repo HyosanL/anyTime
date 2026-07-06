@@ -3,9 +3,12 @@
 //  - maskProfanity: 욕설 "부분 문자열"만 *로 치환 ("시발교수" -> "**교수").
 //    한국어/초성/숫자삽입/키보드로마자(tlqkf 등) 변칙도 사전에 포함.
 //  - 검출(대시보드): 위 사전 + korcen(신조어 보강).
-//  ※ 단어는 운영하며 MASK_WORDS/NEGATIVE 에 계속 추가하세요.
+//  ※ 상시 금지어는 아래 MASK_WORDS/NEGATIVE, 운영 중 추가하는 금지어는
+//    관리자 화면(관리자 > 금지어)에서 banned_word 테이블로 관리한다(loadBannedWords 로 병합).
 // =====================================================================
 import { check as korcenCheck } from 'korcen';
+import { supabase } from '../supabase';
+import { kvGet, kvSet } from './cache';
 function kcheck(t) { try { return !!t && korcenCheck(t); } catch { return false; } }
 
 // 마스킹 대상(부분 문자열). 길이만큼 *로 치환.
@@ -38,11 +41,46 @@ export const NEGATIVE = [
 ];
 
 const ESC = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// 긴 단어부터 매칭(부분 겹침 시 더 긴 욕설 우선)
-const MASK_RE = new RegExp(
-  `(${[...MASK_WORDS].sort((a, b) => b.length - a.length).map(ESC).join('|')})`, 'gi');
+
+// 관리자 금지어(banned_word). 런타임에 loadBannedWords 로 채워지며 마스킹 정규식에 병합된다.
+let CUSTOM_WORDS = [];
+// 긴 단어부터 매칭(부분 겹침 시 더 긴 욕설 우선). 내장 + 관리자 금지어를 합쳐 컴파일.
+function buildMaskRe() {
+  return new RegExp(
+    `(${[...MASK_WORDS, ...CUSTOM_WORDS].sort((a, b) => b.length - a.length).map(ESC).join('|')})`, 'gi');
+}
+let MASK_RE = buildMaskRe();
 const NEGATIVE_RE = new RegExp(`(${NEGATIVE.map(ESC).join('|')})`, 'gi');
 const MASK_RUN = /\*{2,}/;
+
+const CACHE_KEY = 'banned_words';
+
+// 관리자 금지어를 반영(중복·공백 제거 후 정규식 재컴파일). 관리자 화면 편집 직후에도 호출 가능.
+export function setBannedWords(words) {
+  CUSTOM_WORDS = [...new Set((words || []).map((w) => String(w).trim()).filter(Boolean))];
+  MASK_RE = buildMaskRe();
+}
+
+// 서버(banned_word)에서 금지어를 받아 마스킹에 반영. kv 캐시로 즉시(오프라인 포함) 적용 후 서버로 갱신.
+// 작성 페이지(강의평·게시판·메모 등)가 로드될 때 이 모듈과 함께 자동 실행된다(하단 참조).
+export async function loadBannedWords() {
+  try {
+    const cached = await kvGet(CACHE_KEY);
+    if (Array.isArray(cached)) setBannedWords(cached);
+  } catch { /* 캐시 실패 무시 */ }
+  try {
+    const { data, error } = await supabase.from('banned_word').select('word');
+    if (!error && Array.isArray(data)) {
+      const words = data.map((r) => r.word);
+      setBannedWords(words);
+      kvSet(CACHE_KEY, words);
+    }
+  } catch { /* 오프라인 등: 캐시/내장 목록으로 동작 */ }
+}
+
+// 이 모듈이 로드되는 시점(=작성 화면 진입)에 관리자 금지어를 미리 당겨온다.
+// maskProfanity 는 제출 시 동기 호출되므로, 화면 진입~제출 사이에 로드가 끝나 반영된다.
+loadBannedWords();
 
 // korcen 이 플래그한 토큰에서 "욕설 부분"만 찾아 마스킹(가장 짧은 비속어 substring부터).
 function findBadSpan(w) {
@@ -99,7 +137,7 @@ export function flagText(text) {
 export function highlightParts(text) {
   if (!text) return [];
   const re = new RegExp(
-    `(${[...MASK_WORDS, ...NEGATIVE].sort((a, b) => b.length - a.length).map(ESC).join('|')}|\\*{2,})`, 'gi');
+    `(${[...MASK_WORDS, ...CUSTOM_WORDS, ...NEGATIVE].sort((a, b) => b.length - a.length).map(ESC).join('|')}|\\*{2,})`, 'gi');
   const parts = [];
   let last = 0, m;
   while ((m = re.exec(text))) {

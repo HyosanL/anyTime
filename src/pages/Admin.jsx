@@ -257,6 +257,7 @@ function NewSectionForm({ courseCode, cat, run, defYear, defTerm }) {
 // 허브 항목 정의 (key는 라우팅 section 과 일치). 검열(moderation)은 별도 페이지로 링크하며 최상단.
 const SECTIONS = [
   { key: 'moderation', icon: '🧹', title: '검열', sub: '신고·자동필터 강의평·수정제안 검토', to: '/admin/moderation' },
+  { key: 'banned-words', icon: '🚫', title: '금지어', sub: '작성 시 자동으로 가려질 금지어 추가·삭제' },
   { key: 'notices', icon: '📢', title: '공지사항', sub: '홈 화면 팝업 공지 작성·관리' },
   { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 분반 하나씩 관리' },
   { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
@@ -284,6 +285,8 @@ export default function Admin() {
   const [boardsList, setBoardsList] = useState([]);
   const [notices, setNotices] = useState([]);
   const [ntc, setNtc] = useState({ id: null, title: '', content: '' });
+  const [bannedWords, setBannedWords] = useState([]);
+  const [newWord, setNewWord] = useState('');
 
   // 폼 상태
   const [q, setQ] = useState('');
@@ -302,6 +305,7 @@ export default function Admin() {
     call('get_signup_code').then((r) => r.ok && setCurrentCode(r.data.code ?? ''));
     call('get_app_setting').then((r) => r.ok && setSetting(r.data.setting ?? {}));
     call('list_notices').then((r) => r.ok && setNotices(r.data.items ?? []));
+    call('list_banned_words').then((r) => r.ok && setBannedWords(r.data.words ?? []));
     supabase.from('board').select('id, name').order('last_activity_at', { ascending: false }).then(({ data }) => setBoardsList(data || []));
   }
   useEffect(() => {
@@ -317,6 +321,14 @@ export default function Admin() {
     setMsg(r.ok ? `✅ ${okMsg}` : `⚠️ 실패: ${r.status ?? '오류'}`);
     if (r.ok) loadAll();
     return r;
+  }
+
+  async function addBannedWord() {
+    const w = newWord.trim();
+    if (!w) return;
+    if (w.length > 40) { setMsg('⚠️ 금지어는 40자 이내로 입력하세요.'); return; }
+    const r = await run('add_banned_word', { word: w }, `금지어 '${w}' 추가`);
+    if (r.ok) setNewWord('');
   }
 
   const courses = cat?.course ?? [];
@@ -444,6 +456,29 @@ export default function Admin() {
             ) : (
               <button className="btn-add btn-block" onClick={async () => { if (!ntc.title.trim() || !ntc.content.trim()) return; const r = await run('set_notice', ntc, '공지 등록 (48시간 게시)'); if (r.ok) setNtc({ id: null, title: '', content: '' }); }}>공지 등록 (48시간 게시)</button>
             )}
+          </Card>
+        )}
+
+        {section === 'banned-words' && (
+          <Card icon="🚫" title="금지어" desc="여기에 등록한 단어는 강의평·강의메모·게시글·댓글·족보를 작성할 때 자동으로 *로 가려집니다(단어 일부만 포함돼도 그 부분이 가려짐). 기본 비속어는 이미 내장되어 있어, 새로 문제 되는 단어만 추가하면 됩니다. 대소문자는 구분하지 않으며, 이미 작성된 글에는 소급 적용되지 않습니다.">
+            <label className="field"><span className="field-label">새 금지어</span>
+              <input placeholder="가릴 단어 입력" value={newWord}
+                onChange={(e) => setNewWord(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBannedWord(); } }} />
+            </label>
+            <button className="btn-add btn-block" onClick={addBannedWord}>금지어 추가</button>
+
+            <div className="divider adm-divider" />
+            <div className="section-label adm-sub-label">등록된 금지어 ({bannedWords.length})</div>
+            <div className="adm-tags">
+              {bannedWords.length === 0
+                ? <span className="note">등록된 금지어가 없습니다. 위에서 추가하세요.</span>
+                : bannedWords.map((w) => (
+                  <span key={w.word} className="tag tag-warn">{w.word}
+                    <button className="x" onClick={() => run('delete_banned_word', { word: w.word }, `금지어 '${w.word}' 삭제`)}>×</button>
+                  </span>
+                ))}
+            </div>
           </Card>
         )}
 
