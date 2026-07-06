@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog } from '../lib/cache';
 import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage';
 import ExamForm from '../components/ExamForm';
@@ -30,6 +31,8 @@ const DEL_MSG = {
 // 화면7: 족보 (조회·다운로드는 로그인 사용자 / 작성·삭제는 게시글 비번)
 export default function Exams() {
   const { courseCode } = useParams();
+  const { cadet } = useAuthContext();
+  const isAdmin = !!cadet?.is_admin;
   const [courseName, setCourseName] = useState(courseCode);
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -167,7 +170,7 @@ export default function Exams() {
               )}
 
               <div className="rev-card-bottom exam-card-bottom">
-                {ex.post_password_hash ? (
+                {ex.post_password_hash && !isAdmin ? (
                   delTarget === ex.id ? (
                     <span className="rev-del">
                       <input

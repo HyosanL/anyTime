@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     switch (action) {
       case 'get_app_setting': {
         const { data } = await admin.from('app_setting')
-          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days, board_enabled').eq('id', 1).maybeSingle()
+          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days, board_enabled, hot_threshold, report_delete_count, report_burst_count').eq('id', 1).maybeSingle()
         const setting: Record<string, unknown> = data ?? {}
         // professors_synced_at 은 라이브에 컬럼이 아직 없을 수 있어 별도·방어적으로 조회(없으면 무시).
         const { data: s2 } = await admin.from('app_setting').select('professors_synced_at').eq('id', 1).maybeSingle()
@@ -80,10 +80,19 @@ Deno.serve(async (req) => {
         return json({ status: 'OK' })
       }
       case 'set_app_setting': {
-        const allow = ['geo_valid_days', 'review_min_days', 'radius_m', 'campus_lat', 'campus_lng', 'account_delete_days']
+        const allow = ['geo_valid_days', 'review_min_days', 'radius_m', 'campus_lat', 'campus_lng', 'account_delete_days',
+          'hot_threshold', 'report_delete_count', 'report_burst_count']
         const field = String(payload.field)
         if (!allow.includes(field)) return json({ status: 'BAD_REQUEST' }, 400)
-        await admin.from('app_setting').update({ [field]: payload.value }).eq('id', 1).throwOnError()
+        // 개수·일수 기준값은 1 이상의 정수만 허용(0/음수/소수면 자동화 로직이 깨짐).
+        const intMin1 = ['review_min_days', 'geo_valid_days', 'account_delete_days', 'radius_m',
+          'hot_threshold', 'report_delete_count', 'report_burst_count']
+        let value = payload.value
+        if (intMin1.includes(field)) {
+          value = Math.round(Number(value))
+          if (!Number.isFinite(value) || value < 1) return json({ status: 'BAD_REQUEST' }, 400)
+        }
+        await admin.from('app_setting').update({ [field]: value }).eq('id', 1).throwOnError()
         return json({ status: 'OK' })
       }
       // ── 공지사항 ──

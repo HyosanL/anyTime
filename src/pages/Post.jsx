@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuthContext } from '../contexts/AuthContext';
+import { shareLink, appUrl } from '../lib/share';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
@@ -23,11 +25,11 @@ function timeAgo(iso) {
   return `${d.getMonth() + 1}.${d.getDate()}`;
 }
 
-function CommentDelete({ id, hasPw, onDone }) {
+function CommentDelete({ id, hasPw, isAdmin, onDone }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
-  // 비번 없는 댓글: 확인 후 바로 삭제(누구나)
-  if (!hasPw) {
+  // 비번 없는 댓글 또는 관리자: 확인 후 바로 삭제
+  if (!hasPw || isAdmin) {
     return <button className="rev-del-btn" onClick={async () => {
       if (!confirm('이 댓글을 삭제할까요?')) return;
       const { data, error } = await deleteComment(id, '');
@@ -47,6 +49,8 @@ function CommentDelete({ id, hasPw, onDone }) {
 export default function Post() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { cadet } = useAuthContext();
+  const isAdmin = !!cadet?.is_admin;
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [gone, setGone] = useState(false); // 서버 기준으로 삭제/없는 글
@@ -117,9 +121,11 @@ export default function Post() {
       watchPost(id).then(() => setWatching(true)).catch(() => {});
     }
   }
-  // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글은 확인 후 바로 삭제
+  // 링크 공유: 지원 기기는 공유 시트, 아니면 클립보드 복사.
+  const sharePost = () => shareLink({ title: post.title || '애타 게시글', url: appUrl(`/board/post/${id}`) });
+  // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
   async function onDeleteClick() {
-    if (post.post_password_hash) { setShowDel((v) => !v); return; }
+    if (post.post_password_hash && !isAdmin) { setShowDel((v) => !v); return; }
     if (!confirm('이 게시글을 삭제할까요?')) return;
     const { data, error } = await deletePost(Number(id), '');
     if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
@@ -172,6 +178,7 @@ export default function Post() {
           <button className={`react-pill${watching ? ' is-on' : ''}`} onClick={toggleWatch} title="이 글에 댓글이 달리면 푸시 알림">
             {watching ? '🔔' : '🔕'} 알림
           </button>
+          <button className="react-pill" onClick={sharePost} title="이 글의 링크 공유">🔗 공유</button>
           <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
         {showDel && (
@@ -206,12 +213,12 @@ export default function Post() {
             <p className="comment-body">{c.content}</p>
             <div className="comment-actions">
               <button className="link-btn" onClick={() => setReplyTo(c.id)}>답글</button>
-              <CommentDelete id={c.id} hasPw={!!c.post_password_hash} onDone={load} />
+              <CommentDelete id={c.id} hasPw={!!c.post_password_hash} isAdmin={isAdmin} onDone={load} />
             </div>
             {repliesOf(c.id).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
-                <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.post_password_hash} onDone={load} /></div>
+                <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.post_password_hash} isAdmin={isAdmin} onDone={load} /></div>
               </div>
             ))}
           </li>

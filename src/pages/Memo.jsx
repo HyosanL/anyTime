@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskProfanity } from '../lib/moderation';
 import { getReacted, markReacted } from '../lib/reactions';
@@ -10,6 +11,8 @@ import BackButton from '../components/BackButton';
 // 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
   const { courseCode, year, term, sectionNo } = useParams();
+  const { cadet } = useAuthContext();
+  const isAdmin = !!cadet?.is_admin;
   const y = Number(year);
   const t = Number(term);
   const sn = Number(sectionNo);
@@ -227,7 +230,7 @@ export default function Memo() {
                     {getReacted('memo', m.id).report
                       ? <span className="rev-reported">🚨 신고됨</span>
                       : <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>}
-                    {m.post_password_hash ? (
+                    {m.post_password_hash && !isAdmin ? (
                       delTarget === m.id ? (
                         <span className="rev-del">
                           <input

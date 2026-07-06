@@ -266,6 +266,7 @@ const SECTIONS = [
   { key: 'semesters', icon: '🗓️', title: '학기 · 교시', sub: '현재 학기와 교시 시각 설정' },
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
   { key: 'settings', icon: '⚙️', title: '계정 위치 인증 및 인증 기간', sub: '캠퍼스 위치·반경, 위치 재인증·자격 기간' },
+  { key: 'thresholds', icon: '🎚️', title: '기준값 설정', sub: 'HOT 승격·신고 자동삭제·강의평 작성 자격 기준' },
   { key: 'board', icon: '💬', title: '게시판 관리', sub: '활성화·게시판별/전체 글 삭제' },
   { key: 'admins', icon: '🛡️', title: '관리자', sub: '관리자 권한 부여·취소' },
 ];
@@ -635,9 +636,8 @@ export default function Admin() {
         )}
 
         {section === 'settings' && (
-          <Card icon="⚙️" title="계정 위치 인증 및 인증 기간" desc="강의평 자격·위치 인증·계정 삭제 대기 기간과 캠퍼스 위치·반경을 설정합니다. 항목별로 따로 저장합니다.">
+          <Card icon="⚙️" title="계정 위치 인증 및 인증 기간" desc="위치 인증·계정 삭제 대기 기간과 캠퍼스 위치·반경을 설정합니다. 항목별로 따로 저장합니다. (강의평 작성 자격 일수는 ‘기준값 설정’에서 관리합니다.)">
             {[
-              ['review_min_days', '강의평 작성 자격', '일'],
               ['geo_valid_days', '위치 재인증 유효기간', '일'],
               ['account_delete_days', '만료 후 계정삭제 대기', '일'],
               ['radius_m', '지오펜싱 반경', 'm'],
@@ -650,6 +650,30 @@ export default function Admin() {
                   <input type="number" step="any" value={setting[k] ?? ''} onChange={(e) => setSetting({ ...setting, [k]: e.target.value })} />
                 </label>
                 <button className="btn-add btn-sm adm-setting-save" onClick={() => run('set_app_setting', { field: k, value: Number(setting[k]) }, `${label} 변경`)}>저장</button>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {section === 'thresholds' && (
+          <Card icon="🎚️" title="기준값 설정" desc="자동화 기준을 관리자가 직접 정합니다. 값을 바꾸면 즉시 반영됩니다(이미 쌓인 신고/반응에도 다음 이벤트부터 새 기준 적용). 항목별로 따로 저장하세요.">
+            {[
+              ['hot_threshold', 'HOT 게시판 승격 기준', '개', '30분 안에 좋아요·싫어요·댓글이 이 수 이상 달리면 HOT으로 올라갑니다.'],
+              ['report_delete_count', '신고 누적 자동삭제', '건', '한 글의 누적 신고수가 이 값에 도달하면 자동으로 숨겨집니다(아카이브 후 삭제, 복구 가능). 강의평·강의메모·게시글 공통.'],
+              ['report_burst_count', '신고 급증 자동삭제 (15분)', '건', '15분 안에 신고가 이 수만큼 몰리면 담합·오신고로 보고 자동삭제합니다. 강의평·강의메모·게시글 공통.'],
+              ['review_min_days', '강의평 작성 자격', '일', '해당 강의를 확정 시간표에 이 일수 이상 보유해야 강의평을 쓸 수 있습니다.'],
+            ].map(([k, label, unit, hint]) => (
+              <div className="adm-thr-item" key={k}>
+                <p className="note adm-thr-hint">{hint}</p>
+                <div className="adm-setting-row">
+                  <label className="field adm-setting-field">
+                    <span className="field-label">{label} <span className="adm-unit">({unit})</span></span>
+                    <input type="number" min="1" step="1" value={setting[k] ?? ''}
+                      onChange={(e) => setSetting({ ...setting, [k]: e.target.value })} />
+                  </label>
+                  <button className="btn-add btn-sm adm-setting-save"
+                    onClick={() => { const v = Math.round(Number(setting[k])); if (!Number.isFinite(v) || v < 1) { setMsg('⚠️ 1 이상의 정수를 입력하세요.'); return; } run('set_app_setting', { field: k, value: v }, `${label} 변경`); }}>저장</button>
+                </div>
               </div>
             ))}
           </Card>

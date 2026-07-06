@@ -63,7 +63,7 @@ export function useAuth() {
   async function fetchCadet(uid) {
     // 순차 3왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
     const [{ data }, { data: blk }, { data: vd }] = await Promise.all([
-      supabase.from('cadet').select('id, username, post_count, geo_verified_at').eq('id', uid).maybeSingle(),
+      supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin').eq('id', uid).maybeSingle(),
       supabase.rpc('get_my_block'),
       supabase.rpc('get_geo_valid_days'),
     ]);

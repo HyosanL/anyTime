@@ -315,6 +315,9 @@ code {
   flex: none;
   margin-bottom: 1px;
 }
+.adm-thr-item { margin-bottom: 1.1rem; }
+.adm-thr-item:last-child { margin-bottom: 0; }
+.adm-thr-hint { margin: 0 0 0.4rem; }
 
 /* ====================== 게시판 토글 ====================== */
 .adm-toggle-row {

@@ -122,6 +122,8 @@ html, body { overscroll-behavior: none; }
 .back-btn { width: 34px; height: 34px; margin-left: -0.35rem; color: var(--text); }
 /* 헤더가 .row 형태(기존 마크업)도 위 그리드로 동작하도록 호환 */
 .page-header.row { display: grid; }
+/* 헤더 우측 공유 버튼(그리드 3열에 자동 배치) */
+.header-share { white-space: nowrap; }
 
 /* ---------- 텍스트 유틸 ---------- */
 .muted { color: var(--text-3); }

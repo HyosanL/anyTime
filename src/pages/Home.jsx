@@ -7,6 +7,7 @@ import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
 import { getCatalog, buildMyTimetable, saveTimetableCache, readTimetableCache } from '../lib/cache';
 import { boardEnabled } from '../lib/board';
+import { saveTimetableImage } from '../lib/timetableImage';
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
@@ -184,6 +185,10 @@ export default function Home() {
             <h2 className="card-title">{current ? `${current.year}-${current.term} ` : ''}시간표</h2>
             <div className="home-tt-actions">
               {offline && <span className="cache-tag">오프라인</span>}
+              {(mine.length > 0 || customClasses.length > 0) && (
+                <button className="btn-ghost btn-sm" title="시간표를 이미지로 저장"
+                  onClick={() => saveTimetableImage({ mine, periods, customClasses, title: `${current ? `${current.year}-${current.term} ` : ''}시간표` })}>🖼️ 이미지 저장</button>
+              )}
               <button className="btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>{adding ? '닫기' : '＋ 직접 추가'}</button>
             </div>
           </div>

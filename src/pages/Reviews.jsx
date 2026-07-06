@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog } from '../lib/cache';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import { shareLink, appUrl } from '../lib/share';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -32,6 +34,8 @@ export default function Reviews() {
   const { courseCode } = useParams();
   const [sp] = useSearchParams();
   const profFilter = sp.get('prof') || '';
+  const { cadet } = useAuthContext();
+  const isAdmin = !!cadet?.is_admin;
 
   const [courseName, setCourseName] = useState(courseCode);
   const [professors, setProfessors] = useState([]); // [{code,name}]
@@ -137,6 +141,8 @@ export default function Reviews() {
       <header className="page-header">
         <BackButton fallback="/search" />
         <h2>{courseName} 강의평</h2>
+        <button className="btn-ghost btn-sm header-share"
+          onClick={() => shareLink({ title: `${courseName} 강의 정보`, url: appUrl(`/reviews/${courseCode}`) })}>🔗 공유</button>
       </header>
 
       {/* 집계 (평점·과락률) */}
@@ -209,7 +215,7 @@ export default function Reviews() {
                   ? <span className="rev-reported">🚨 신고됨</span>
                   : <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>}
               </span>
-              {r.post_password_hash ? (
+              {r.post_password_hash && !isAdmin ? (
                 delTarget === r.id ? (
                   <span className="rev-del">
                     <input
