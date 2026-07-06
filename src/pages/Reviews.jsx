@@ -6,7 +6,6 @@ import { getCatalog } from '../lib/cache';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
-import { shareLink, appUrl } from '../lib/share';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -141,8 +140,6 @@ export default function Reviews() {
       <header className="page-header">
         <BackButton fallback="/search" />
         <h2>{courseName} 강의평</h2>
-        <button className="btn-ghost btn-sm header-share"
-          onClick={() => shareLink({ title: `${courseName} 강의 정보`, url: appUrl(`/reviews/${courseCode}`) })}>🔗 공유</button>
       </header>
 
       {/* 집계 (평점·과락률) */}

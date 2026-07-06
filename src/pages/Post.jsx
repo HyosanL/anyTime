@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
-import { shareLink, appUrl } from '../lib/share';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
@@ -121,8 +120,6 @@ export default function Post() {
       watchPost(id).then(() => setWatching(true)).catch(() => {});
     }
   }
-  // 링크 공유: 지원 기기는 공유 시트, 아니면 클립보드 복사.
-  const sharePost = () => shareLink({ title: post.title || '애타 게시글', url: appUrl(`/board/post/${id}`) });
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
   async function onDeleteClick() {
     if (post.post_password_hash && !isAdmin) { setShowDel((v) => !v); return; }
@@ -178,7 +175,6 @@ export default function Post() {
           <button className={`react-pill${watching ? ' is-on' : ''}`} onClick={toggleWatch} title="이 글에 댓글이 달리면 푸시 알림">
             {watching ? '🔔' : '🔕'} 알림
           </button>
-          <button className="react-pill" onClick={sharePost} title="이 글의 링크 공유">🔗 공유</button>
           <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
         {showDel && (

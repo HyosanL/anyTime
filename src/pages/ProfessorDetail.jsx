@@ -7,7 +7,6 @@ import TimetableGrid from '../components/TimetableGrid';
 import CorrectionModal from '../components/CorrectionModal';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
-import { shareLink, appUrl } from '../lib/share';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -120,8 +119,6 @@ export default function ProfessorDetail() {
       <header className="page-header row">
         <BackButton fallback="/professors" />
         <h2>{profName}</h2>
-        <button className="btn-ghost btn-sm header-share"
-          onClick={() => shareLink({ title: `${profName} 교수 정보`, url: appUrl(`/professor/${code}`) })}>🔗 공유</button>
       </header>
 
       {/* 교수 개요 */}
