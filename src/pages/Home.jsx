@@ -215,6 +215,12 @@ export default function Home() {
             <span className="nav-tile-sub">교수별 강의평·시간표</span>
           </Link>
 
+          <Link to="/rooms" className="nav-tile nav-tile-rooms nav-tile-wide">
+            <span className="nav-tile-ic" aria-hidden="true">🚪</span>
+            <span className="nav-tile-title">빈 강의실</span>
+            <span className="nav-tile-sub">요일·교시를 골라 빈 강의실 찾기</span>
+          </Link>
+
           {boardOn ? (
             <Link to="/boards" className="nav-tile nav-tile-accent nav-tile-wide">
               <span className="nav-tile-ic" aria-hidden="true">💬</span>

@@ -14,6 +14,7 @@ import LocationHelp from './components/LocationHelp';
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const CourseSearch = lazy(() => import('./pages/CourseSearch'));
 const ProfessorSearch = lazy(() => import('./pages/ProfessorSearch'));
+const EmptyRooms = lazy(() => import('./pages/EmptyRooms'));
 const ProfessorDetail = lazy(() => import('./pages/ProfessorDetail'));
 const Reviews = lazy(() => import('./pages/Reviews'));
 const ReviewWrite = lazy(() => import('./pages/ReviewWrite'));
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
           <Route path="/professors" element={<ProtectedRoute><ProfessorSearch /></ProtectedRoute>} />
+          <Route path="/rooms" element={<ProtectedRoute><EmptyRooms /></ProtectedRoute>} />
           <Route path="/professor/:code" element={<ProtectedRoute><ProfessorDetail /></ProtectedRoute>} />
           <Route path="/reviews/:courseCode" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
           <Route path="/review-write/:courseCode/:year/:term/:sectionNo" element={<ProtectedRoute><ReviewWrite /></ProtectedRoute>} />

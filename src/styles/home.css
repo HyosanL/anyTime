@@ -167,6 +167,12 @@
   color: var(--warn);
 }
 
+/* rooms(빈 강의실) 변형 — green 토큰 */
+.nav-tile-rooms .nav-tile-ic {
+  background: var(--success-weak);
+  color: var(--success);
+}
+
 /* admin 변형 — 강조 보더 + chip 아이콘 */
 .nav-tile-admin {
   border-color: var(--primary-weak-border);
