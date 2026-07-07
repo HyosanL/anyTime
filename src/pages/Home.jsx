@@ -215,20 +215,20 @@ export default function Home() {
             <span className="nav-tile-sub">교수별 강의평·시간표</span>
           </Link>
 
-          <Link to="/rooms" className="nav-tile nav-tile-rooms nav-tile-wide">
+          <Link to="/rooms" className="nav-tile nav-tile-rooms">
             <span className="nav-tile-ic" aria-hidden="true">🚪</span>
             <span className="nav-tile-title">빈 강의실</span>
-            <span className="nav-tile-sub">요일·교시를 골라 빈 강의실 찾기</span>
+            <span className="nav-tile-sub">요일·교시로 빈 강의실 찾기</span>
           </Link>
 
           {boardOn ? (
-            <Link to="/boards" className="nav-tile nav-tile-accent nav-tile-wide">
+            <Link to="/boards" className="nav-tile nav-tile-accent">
               <span className="nav-tile-ic" aria-hidden="true">💬</span>
               <span className="nav-tile-title">익명게시판</span>
               <span className="nav-tile-sub">자유롭게 이야기 나누기</span>
             </Link>
           ) : (
-            <div className="nav-tile nav-tile-accent nav-tile-wide is-disabled" role="link" aria-disabled="true" title="익명게시판이 비활성화되었습니다">
+            <div className="nav-tile nav-tile-accent is-disabled" role="link" aria-disabled="true" title="익명게시판이 비활성화되었습니다">
               <span className="nav-tile-ic" aria-hidden="true">💬</span>
               <span className="nav-tile-title">익명게시판</span>
               <span className="nav-tile-sub">현재 비활성화됨</span>
