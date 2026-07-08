@@ -70,7 +70,11 @@ export default function Post() {
       if (seq.current === my && !gotFresh && c?.post) { setPost(c.post); setComments(c.comments ?? []); }
     });
     try {
-      const [p, cs] = await Promise.all([getPost(id), listComments(id)]);
+      // 조회수는 기기 세션당 1회만 집계(새로고침·반응/댓글 후 재조회로 부풀지 않게)
+      let countView = false;
+      try { countView = !sessionStorage.getItem(`bb:viewed:${id}`); } catch { /* 프라이버시 모드 등 */ }
+      const [p, cs] = await Promise.all([getPost(id, countView), listComments(id)]);
+      if (p && countView) { try { sessionStorage.setItem(`bb:viewed:${id}`, '1'); } catch { /* noop */ } }
       if (seq.current !== my) return;
       gotFresh = true;
       if (!p) { setGone(true); setPost(null); kvDel(`bb:post:${id}`); return; }
@@ -164,6 +168,7 @@ export default function Post() {
         <div className="post-detail-meta">
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
+          <span className="metric">👁️ {post.view_count ?? 0}</span>
           <span className="metric">💬 {comments.length}</span>
         </div>
         <p className="post-content">{post.content}</p>

@@ -95,7 +95,11 @@ export const addFavorite = (boardId) => supabase.auth.getUser().then(({ data }) 
 export const removeFavorite = (boardId) => supabase.auth.getUser().then(({ data }) =>
   supabase.from('board_favorite').delete().match({ cadet_id: data.user.id, board_id: boardId }));
 export const boardEnabled = () => supabase.rpc('board_enabled').then((r) => r.data !== false);
-export const getPost = (id) => supabase.from('board_post').select(POST_SELECT).eq('id', id).maybeSingle().then((r) => r.data);
+// 게시글 상세: get_post_b RPC(SETOF board_post)라 기존 SELECT 와 동일한 1요청·같은 응답 형태.
+// view=true 면 서버가 조회수 +1 — 호출부(Post 화면)가 기기 세션당 1회만 넘긴다.
+export const getPost = (id, view = false) =>
+  supabase.rpc('get_post_b', { p_id: Number(id), p_view: !!view })
+    .select(POST_SELECT).maybeSingle().then((r) => r.data);
 export const listComments = (postId) =>
   supabase.from('board_comment').select('*').eq('post_id', postId).order('created_at').then((r) => r.data || []);
 export const react = (postId, kind) => supabase.rpc('board_react', { p_post_id: postId, p_kind: kind }).then((r) => r.data);
