@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys, createShare } from '../lib/board';
@@ -62,6 +62,19 @@ export default function Post() {
   const [showDel, setShowDel] = useState(false);
   const [watching, setWatching] = useState(false); // 이 기기가 이 글의 댓글 알림을 받는 중
   const seq = useRef(0);
+
+  // 루트 댓글 + parent별 답글 맵을 한 번에 만든다(댓글마다 전체 배열을 재필터하던 O(n²) 제거).
+  const { roots, repliesByParent } = useMemo(() => {
+    const byParent = new Map();
+    const rootList = [];
+    for (const c of comments) {
+      if (c.parent_id) {
+        const arr = byParent.get(c.parent_id);
+        if (arr) arr.push(c); else byParent.set(c.parent_id, [c]);
+      } else rootList.push(c);
+    }
+    return { roots: rootList, repliesByParent: byParent };
+  }, [comments]);
 
   // 캐시 즉시 표시(SWR) → 서버 응답으로 교체. 서버에서 사라진 글이면 캐시 파기.
   async function load() {
@@ -170,8 +183,6 @@ export default function Post() {
     );
   }
   if (!post) return <div className="page-center">불러오는 중…</div>;
-  const roots = comments.filter((c) => !c.parent_id);
-  const repliesOf = (pid) => comments.filter((c) => c.parent_id === pid);
   const ago = timeAgo(post.created_at);
 
   return (
@@ -236,7 +247,7 @@ export default function Post() {
               <button className="link-btn" onClick={() => setReplyTo(c.id)}>답글</button>
               <CommentDelete id={c.id} hasPw={!!c.post_password_hash} isAdmin={isAdmin} onDone={load} />
             </div>
-            {repliesOf(c.id).map((rc) => (
+            {(repliesByParent.get(c.id) || []).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
                 <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.post_password_hash} isAdmin={isAdmin} onDone={load} /></div>

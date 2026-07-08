@@ -84,7 +84,10 @@ loadBannedWords();
 
 // korcen 이 플래그한 토큰에서 "욕설 부분"만 찾아 마스킹(가장 짧은 비속어 substring부터).
 function findBadSpan(w) {
-  for (let len = 2; len <= w.length; len++) {
+  // 비속어는 길어야 ~12자 → 검사 substring 길이를 제한해 긴 토큰(공백 없는 붙여쓰기)에서
+  // O(n²) 폭주를 막는다. 실제 비속어는 이 범위 안에서 잡히므로 정확도 손실 없음.
+  const maxLen = Math.min(w.length, 12);
+  for (let len = 2; len <= maxLen; len++) {
     for (let i = 0; i + len <= w.length; i++) {
       const s = w.slice(i, i + len);
       if (s.includes('*')) continue;

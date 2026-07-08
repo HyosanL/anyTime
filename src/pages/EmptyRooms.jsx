@@ -71,7 +71,13 @@ export default function EmptyRooms() {
     }
     const days = [...usedDays].sort((a, b) => a - b);
     const allRooms = [...roomSet].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
-    return { current, periods, days, occupied, allRooms };
+    // 칸별 빈 강의실 수는 selected 와 무관 → 여기서 미리 계산(칸 토글마다 전 격자 재계산 방지).
+    const freeByCell = new Map();
+    for (const d of days) for (const p of periods) {
+      const k = cellKey(d, p.no);
+      freeByCell.set(k, allRooms.length - (occupied.get(k)?.size ?? 0));
+    }
+    return { current, periods, days, occupied, allRooms, freeByCell };
   }, [catalog]);
 
   // 선택한 모든 칸에서 비어 있는 강의실 (선택 없음 → null)
@@ -191,7 +197,7 @@ export default function EmptyRooms() {
                         {model.days.map((d) => {
                           const k = cellKey(d, p.no);
                           const on = selected.has(k);
-                          const free = model.allRooms.length - (model.occupied.get(k)?.size ?? 0);
+                          const free = model.freeByCell.get(k) ?? model.allRooms.length;
                           return (
                             <td key={d}>
                               <button

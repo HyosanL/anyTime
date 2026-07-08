@@ -83,8 +83,15 @@ export default function Reviews() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseCode]);
 
-  const shownSummary = profFilter ? summary.filter((s) => s.professor_code === profFilter) : summary;
-  const shownReviews = profFilter ? reviews.filter((r) => r.professor_code === profFilter) : reviews;
+  // profFilter/데이터가 바뀔 때만 필터(삭제 비번 입력 등 무관한 키 입력마다 재필터하지 않도록).
+  const shownSummary = useMemo(
+    () => (profFilter ? summary.filter((s) => s.professor_code === profFilter) : summary),
+    [summary, profFilter]
+  );
+  const shownReviews = useMemo(
+    () => (profFilter ? reviews.filter((r) => r.professor_code === profFilter) : reviews),
+    [reviews, profFilter]
+  );
 
   async function like(id) {
     const { data } = await supabase.rpc('like_review', { p_id: id });

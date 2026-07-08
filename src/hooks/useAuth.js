@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
 import { logout as authLogout } from '../lib/auth';
 
@@ -34,6 +34,26 @@ export function useAuth() {
   const [geo, setGeo] = useState({ expired: false, daysLeft: null }); // 지오펜싱 재인증 상태
   const [loading, setLoading] = useState(true);
 
+  // fetchCadet 은 setter·supabase(모두 안정)만 참조 → 정체성 고정([]).
+  const fetchCadet = useCallback(async (uid) => {
+    // 순차 왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
+    const [{ data }, { data: vd }] = await Promise.all([
+      supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin').eq('id', uid).maybeSingle(),
+      supabase.rpc('get_geo_valid_days'),
+    ]);
+    if (data) { setCadet(data); writeCadetCache(data); } // 오프라인이면 data=null → 캐시 유지
+    const validDays = vd ?? 90;
+    const gv = data?.geo_verified_at;
+    if (gv) {
+      const expiresAt = new Date(gv).getTime() + validDays * 86400000;
+      const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
+      setGeo({ expired: daysLeft <= 0, daysLeft });
+    } else if (data) {
+      setGeo({ expired: false, daysLeft: validDays });
+    }
+    // data 가 null(오프라인)이면 geo 는 기본값 유지 → 오프라인 사용자를 잠그지 않는다.
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -57,36 +77,22 @@ export function useAuth() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchCadet]);
 
-  async function fetchCadet(uid) {
-    // 순차 왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
-    const [{ data }, { data: vd }] = await Promise.all([
-      supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin').eq('id', uid).maybeSingle(),
-      supabase.rpc('get_geo_valid_days'),
-    ]);
-    if (data) { setCadet(data); writeCadetCache(data); } // 오프라인이면 data=null → 캐시 유지
-    const validDays = vd ?? 90;
-    const gv = data?.geo_verified_at;
-    if (gv) {
-      const expiresAt = new Date(gv).getTime() + validDays * 86400000;
-      const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
-      setGeo({ expired: daysLeft <= 0, daysLeft });
-    } else if (data) {
-      setGeo({ expired: false, daysLeft: validDays });
-    }
-    // data 가 null(오프라인)이면 geo 는 기본값 유지 → 오프라인 사용자를 잠그지 않는다.
-  }
-
-  async function refreshCadet() {
+  const refreshCadet = useCallback(async () => {
     if (session) await fetchCadet(session.user.id);
-  }
+  }, [session, fetchCadet]);
 
-  async function logout() {
+  const logout = useCallback(async () => {
     await authLogout();
     setCadet(null);
     writeCadetCache(null);
-  }
+  }, []);
 
-  return { session, cadet, geo, loading, refreshCadet, logout };
+  // 값 정체성을 데이터가 바뀔 때만 갱신 → 배경 geo/cadet 갱신 한 번에 모든 컨텍스트
+  // 소비자(현재 페이지 전체)가 리렌더되던 것을 막는다.
+  return useMemo(
+    () => ({ session, cadet, geo, loading, refreshCadet, logout }),
+    [session, cadet, geo, loading, refreshCadet, logout]
+  );
 }

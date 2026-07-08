@@ -3,6 +3,18 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        // 자주 바뀌는 앱 코드와 거의 안 바뀌는 벤더를 분리 → 재배포 시 벤더 청크는 캐시 재사용
+        // (재방문 사용자의 다운로드량 감소). 초기 총량은 비슷하되 캐시 효율이 오른다.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({

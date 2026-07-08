@@ -28,18 +28,24 @@ function getDB() {
 async function readCache() {
   const db = await getDB();
   const out = {};
-  for (const t of TABLES) out[t] = (await db.get(STORE, t)) ?? [];
-  out[SYNCED_KEY] = (await db.get(STORE, SYNCED_KEY)) ?? 0;
+  // 7개 키를 병렬로 읽는다(직렬 await → 1회).
+  const [rows, synced] = await Promise.all([
+    Promise.all(TABLES.map((t) => db.get(STORE, t))),
+    db.get(STORE, SYNCED_KEY),
+  ]);
+  TABLES.forEach((t, i) => { out[t] = rows[i] ?? []; });
+  out[SYNCED_KEY] = synced ?? 0;
   return out;
 }
 
 async function fetchFromServer() {
+  // 6개 카탈로그 테이블을 병렬로 받는다(직렬 왕복 6회 → 1회 배치). 하나라도 실패하면 throw.
+  const responses = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
   const result = {};
-  for (const t of TABLES) {
-    const { data, error } = await supabase.from(t).select('*');
-    if (error) throw error;
-    result[t] = data ?? [];
-  }
+  TABLES.forEach((t, i) => {
+    if (responses[i].error) throw responses[i].error;
+    result[t] = responses[i].data ?? [];
+  });
   return result;
 }
 

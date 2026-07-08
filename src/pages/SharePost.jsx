@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getSharedPost, boardImageObjectUrl, shareImageObjectUrl } from '../lib/board';
@@ -78,6 +78,18 @@ export default function SharePost() {
     setCopied(true);
   }
 
+  // 루트 댓글 + parent별 답글 맵(댓글마다 전체 배열을 재필터하던 O(n²) 제거). data 로딩 전엔 빈 값.
+  const { roots, repliesByParent } = useMemo(() => {
+    const list = data?.comments ?? [];
+    const byParent = new Map();
+    const rootList = [];
+    for (const c of list) {
+      if (c.parent_id) { const a = byParent.get(c.parent_id); if (a) a.push(c); else byParent.set(c.parent_id, [c]); }
+      else rootList.push(c);
+    }
+    return { roots: rootList, repliesByParent: byParent };
+  }, [data]);
+
   const head = (
     <header className="share-topbar">
       <img src="/icons/icon.svg" className="share-logo" alt="" />
@@ -106,8 +118,6 @@ export default function SharePost() {
 
   const { post, comments = [], images = [], board } = data;
   const keys = [...images].sort((a, b) => (a.seq || 0) - (b.seq || 0)).map((i) => i.object_key);
-  const roots = comments.filter((c) => !c.parent_id);
-  const repliesOf = (pid) => comments.filter((c) => c.parent_id === pid);
   const ago = timeAgo(post.created_at);
 
   return (
@@ -158,7 +168,7 @@ export default function SharePost() {
           <li key={c.id} className="comment">
             <p className="comment-body">{c.content}</p>
             <div className="comment-actions"><span className="share-comment-time">{timeAgo(c.created_at)}</span></div>
-            {repliesOf(c.id).map((rc) => (
+            {(repliesByParent.get(c.id) || []).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
               </div>

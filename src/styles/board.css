@@ -183,6 +183,13 @@
   font-size: 0.72rem; font-weight: 700; line-height: 1.55;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* HOT 목록의 출처 칩은 버튼 — 탭하면 그 게시판으로 이동(상세/공유의 span 칩은 그대로 비활성). */
+button.post-board-chip {
+  font-family: inherit; cursor: pointer;
+  transition: filter 0.15s ease, transform 0.06s ease;
+}
+button.post-board-chip:active { transform: scale(0.94); }
+@media (hover: hover) { button.post-board-chip:hover { filter: brightness(0.95); } }
 
 /* 본문 미리보기 1줄(흐림, 말줄임) */
 .post-item-preview {

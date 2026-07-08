@@ -30,8 +30,12 @@ export default function ProfessorSearch() {
     } catch {
       setError('교수 목록을 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
     }
-    // 내 확정시간표 → 담당 교수 코드(현재 학기 분반 기준)
-    const { data: tt } = await supabase.from('timetable').select('*');
+    // 내 확정시간표(담당 교수 코드용)와 강의평 집계는 서로 독립 → 병렬 1왕복.
+    // timetable 은 sectionKey 에 필요한 컬럼만 투영(과다 조회 방지).
+    const [{ data: tt }, { data }] = await Promise.all([
+      supabase.from('timetable').select('course_code, year, term, section_no'),
+      supabase.from('professor_rating').select('professor_code, review_count, avg_overall'),
+    ]);
     if (tt && sections.length) {
       const regKeys = new Set(tt.map(sectionKey));
       const codes = new Set();
@@ -39,9 +43,6 @@ export default function ProfessorSearch() {
       setMyProfCodes([...codes]);
     }
     // 강의평 집계(있으면 검색 결과에 별점·후기수 표시)
-    const { data } = await supabase
-      .from('professor_rating')
-      .select('professor_code, review_count, avg_overall');
     if (data) setRatings(Object.fromEntries(data.map((r) => [r.professor_code, r])));
     setLoading(false);
   }

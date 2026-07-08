@@ -21,6 +21,13 @@ async function invokeSync(mode) {
   return { ok: data?.status === 'OK', status: data?.status ?? 'ERROR', data: data ?? {} };
 }
 
+// 카탈로그(professor/semester/course/period/section/section_time) 테이블을 바꾸는 액션들.
+// 이 액션이 성공했을 때만 로컬 카탈로그 캐시를 강제로 다시 받는다(그 외 액션은 캐시 유지).
+const CATALOG_ACTIONS = new Set([
+  'set_period', 'delete_catalog', 'set_section', 'set_section_time',
+  'set_course', 'add_course', 'set_professor', 'add_professor', 'set_semester',
+]);
+
 const fmtDateTime = (iso) => {
   if (!iso) return '없음';
   try { return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }); }
@@ -299,8 +306,8 @@ export default function Admin() {
   const [pq, setPq] = useState('');
   const [sem, setSem] = useState({ year: 2026, term: 1 });
 
-  async function loadAll() {
-    setCat(await getCatalog({ force: true }).catch(() => null));
+  // 카탈로그가 아닌 관리 데이터(관리자·가입코드·설정·공지·금지어·게시판 목록)만 새로고침.
+  function loadMeta() {
     call('list_admins').then((r) => r.ok && setAdmins(r.data.admins ?? []));
     call('get_signup_code').then((r) => r.ok && setCurrentCode(r.data.code ?? ''));
     call('get_app_setting').then((r) => r.ok && setSetting(r.data.setting ?? {}));
@@ -308,6 +315,14 @@ export default function Admin() {
     call('list_banned_words').then((r) => r.ok && setBannedWords(r.data.words ?? []));
     supabase.from('board').select('id, name').order('last_activity_at', { ascending: false }).then(({ data }) => setBoardsList(data || []));
   }
+  async function loadCatalog(force = false) {
+    setCat(await getCatalog({ force }).catch(() => null));
+  }
+  // 진입: 카탈로그는 캐시 우선(즉시). 매번 6테이블을 강제 재다운로드하지 않는다.
+  function loadAll() { loadCatalog(false); loadMeta(); }
+  // 카탈로그를 바꾸는 적용(편람 반영·교수 동기화)이 끝나면 최신 카탈로그를 강제로 다시 받는다.
+  function reloadWithCatalog() { loadMeta(); loadCatalog(true); }
+
   useEffect(() => {
     supabase.rpc('is_admin').then(({ data }) => { setIsAdmin(!!data); if (data) loadAll(); });
   }, []);
@@ -319,7 +334,12 @@ export default function Admin() {
     setMsg('');
     const r = await call(action, payload);
     setMsg(r.ok ? `✅ ${okMsg}` : `⚠️ 실패: ${r.status ?? '오류'}`);
-    if (r.ok) loadAll();
+    if (r.ok) {
+      loadMeta();
+      // 카탈로그를 바꾼 액션만 카탈로그 강제 재조회 — 그 외(금지어·공지·설정 등)는
+      // 캐시를 유지해 불필요한 6테이블 재다운로드를 없앤다.
+      if (CATALOG_ACTIONS.has(action)) loadCatalog(true);
+    }
     return r;
   }
 
@@ -558,7 +578,7 @@ export default function Admin() {
               mode="ai"
               defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
               defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
-              onApplied={loadAll}
+              onApplied={reloadWithCatalog}
             />
           </Card>
         )}
@@ -569,7 +589,7 @@ export default function Admin() {
               mode="csv"
               defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
               defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
-              onApplied={loadAll}
+              onApplied={reloadWithCatalog}
             />
           </Card>
         )}
@@ -623,7 +643,7 @@ export default function Admin() {
         )}
 
         {section === 'professors-sync' && (
-          <ProfessorSyncCard syncedAt={setting.professors_synced_at} onApplied={loadAll} />
+          <ProfessorSyncCard syncedAt={setting.professors_synced_at} onApplied={reloadWithCatalog} />
         )}
 
         {section === 'semesters' && (

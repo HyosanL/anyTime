@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
@@ -64,21 +64,18 @@ export default function Home() {
   const uid = session?.user?.id;
   const count = cadet?.post_count ?? 0;
   const tier = badgeOf(count);
+  // 관리자 여부는 이미 cadet 프로필에 실려 온다(useAuth) — 별도 is_admin RPC 왕복 불필요.
+  const isAdmin = !!cadet?.is_admin;
 
   const [current, setCurrent] = useState(null);
   const [mine, setMine] = useState([]);
   const [periods, setPeriods] = useState([]);
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   const [customClasses, setCustomClasses] = useState([]);
   const [adding, setAdding] = useState(false);
   const [boardOn, setBoardOn] = useState(true);
-
-  useEffect(() => {
-    supabase.rpc('is_admin').then(({ data }) => setIsAdmin(!!data));
-  }, [session?.user?.id]);
 
   useEffect(() => {
     boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
@@ -134,12 +131,12 @@ export default function Home() {
     return () => { active = false; };
   }, [uid]);
 
-  async function reloadCustom() {
+  const reloadCustom = useCallback(async () => {
     if (!uid || !current) return;
     try { setCustomClasses(await listCustomClasses(uid, current.year, current.term)); } catch { /* ignore */ }
-  }
+  }, [uid, current]);
 
-  async function handleAddCustom(entry) {
+  const handleAddCustom = useCallback(async (entry) => {
     if (!uid) return { error: '로그인이 필요합니다.' };
     if (!current) return { error: '현재 학기가 설정되지 않아 추가할 수 없습니다.' };
     try {
@@ -154,12 +151,12 @@ export default function Home() {
           : '추가에 실패했습니다. 잠시 후 다시 시도하세요.',
       };
     }
-  }
+  }, [uid, current, reloadCustom]);
 
   // iOS 공유 핸드오프: 공유 화면(사파리)이 복사해 둔 글 주소를 붙여넣어 그 글로 이동.
   // iOS 는 사파리↔홈화면앱 저장소 분리 + 앱 실행 API 부재라 Android(pending-nav)처럼
   // 자동 전달이 불가능한 유일한 플랫폼 — 클립보드가 두 세계를 잇는 유일한 통로다.
-  async function openCopiedLink() {
+  const openCopiedLink = useCallback(async () => {
     let text = '';
     try { text = await navigator.clipboard.readText(); } catch {
       alert('클립보드를 읽지 못했어요. 공유 화면에서 [앱에서 이어보기]를 다시 눌러주세요.');
@@ -171,9 +168,9 @@ export default function Home() {
       return;
     }
     navigate(`/${m[1]}`);
-  }
+  }, [navigate]);
 
-  async function handleDeleteCustom(id, title) {
+  const handleDeleteCustom = useCallback(async (id, title) => {
     if (!uid) return;
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
     try {
@@ -182,7 +179,7 @@ export default function Home() {
     } catch {
       alert('삭제에 실패했습니다. 잠시 후 다시 시도하세요.');
     }
-  }
+  }, [uid, reloadCustom]);
 
   return (
     <div className="page home">

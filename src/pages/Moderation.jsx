@@ -117,16 +117,26 @@ export default function Moderation() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) return undefined;
     // 캐시된 마지막 스냅샷 즉시 표시 → edge function 응답으로 교체
     kvGet('mod:snapshot').then((c) => {
       if (freshRef.current || !c) return;
       setItems(c.items ?? []); setCorrs(c.corrs ?? []); setReported(c.reported ?? []);
       setAutos(c.autos ?? []); setDeleted(c.deleted ?? []); setReviewedAt(c.reviewedAt ?? null);
     });
+
+    // 화면이 보일 때만 15초 폴링. 백그라운드 탭/앱에서는 5개 edge function 호출을 멈춘다.
+    const startPoll = () => { if (!timer.current) timer.current = setInterval(load, POLL_MS); };
+    const stopPoll = () => { clearInterval(timer.current); timer.current = null; };
+    const onVis = () => {
+      if (document.hidden) stopPoll();
+      else { load(); startPoll(); } // 다시 보이면 즉시 1회 갱신 후 폴링 재개
+    };
+
     load();
-    timer.current = setInterval(load, POLL_MS);
-    return () => clearInterval(timer.current);
+    if (!document.hidden) startPoll();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stopPoll(); document.removeEventListener('visibilitychange', onVis); };
   }, [isAdmin, load]);
 
   // '모두 확인 처리': 지금까지의 글을 대시보드에서 숨김(데이터는 유지). 이후 새 글만 표시.

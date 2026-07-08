@@ -107,10 +107,13 @@ export const createPost = (boardId, title, content, password, imageKeys) =>
 // 즐겨찾기 / 활성화
 export const listFavoriteIds = () =>
   supabase.from('board_favorite').select('board_id').then((r) => (r.data || []).map((x) => x.board_id));
-export const addFavorite = (boardId) => supabase.auth.getUser().then(({ data }) =>
-  supabase.from('board_favorite').insert({ cadet_id: data.user.id, board_id: boardId }));
-export const removeFavorite = (boardId) => supabase.auth.getUser().then(({ data }) =>
-  supabase.from('board_favorite').delete().match({ cadet_id: data.user.id, board_id: boardId }));
+// getUser()는 Auth 서버에 토큰을 재검증하는 네트워크 왕복 → 별 탭마다 지연. 세션은 로컬(getSession)에서 즉시 얻는다.
+export const addFavorite = (boardId) => supabase.auth.getSession().then(({ data }) =>
+  supabase.from('board_favorite').insert({ cadet_id: data.session.user.id, board_id: boardId }));
+export const removeFavorite = (boardId) => supabase.auth.getSession().then(({ data }) =>
+  supabase.from('board_favorite').delete().match({ cadet_id: data.session.user.id, board_id: boardId }));
+// 게시판 활성 여부(관리자 긴급 차단 스위치) — 즉시 반영돼야 하므로 세션 캐시하지 않는다.
+// 진입마다의 재요청은 호출부(Board 는 마운트당 1회 [] 이펙트)에서 이미 최소화돼 있다.
 export const boardEnabled = () => supabase.rpc('board_enabled').then((r) => r.data !== false);
 // 게시글 상세: get_post_b RPC(SETOF board_post)라 기존 SELECT 와 동일한 1요청·같은 응답 형태.
 // view=true 면 서버가 조회수 +1 — 호출부(Post 화면)가 기기 세션당 1회만 넘긴다.

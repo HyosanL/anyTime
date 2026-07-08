@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getBoard, listPosts, listHot, createPost, uploadBoardImages, postImageKeys, PAGE_SIZE, boardEnabled } from '../lib/board';
 import { maskProfanity } from '../lib/moderation';
 import { pushEnabled, watchPost } from '../lib/push';
@@ -25,6 +25,7 @@ function timeAgo(iso) {
 
 export default function Board() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const isHot = id === 'hot';
   const [title, setTitle] = useState(isHot ? '🔥 HOT' : '게시판');
   const [posts, setPosts] = useState(null); // null = 아직 캐시/서버 어느 쪽도 안 옴
@@ -74,8 +75,13 @@ export default function Board() {
       }
     } catch { /* 오프라인 등: 캐시 유지 */ }
   }
-  useEffect(() => { setPage(0); load(0); boardEnabled().then(setEnabled); /* eslint-disable-next-line */ }, [id]);
-  useEffect(() => { load(page); /* eslint-disable-next-line */ }, [page]);
+  // id 가 바뀌면 렌더 중에 page 를 0 으로 되돌린다(React 권장 derived-state 패턴).
+  // 예전엔 [id] 이펙트와 [page] 이펙트가 각각 load(0) 을 호출해 게시판 진입/이동마다
+  // 같은 목록을 2번 요청했다 — 단일 [id,page] 이펙트로 통합해 중복 제거.
+  const [prevId, setPrevId] = useState(id);
+  if (id !== prevId) { setPrevId(id); setPage(0); }
+  useEffect(() => { boardEnabled().then(setEnabled); }, []); // 전역 플래그 — 게시판 이동마다 재요청 불필요
+  useEffect(() => { load(page); /* eslint-disable-next-line */ }, [id, page]);
 
   async function submit(e) {
     e.preventDefault(); setErr('');
@@ -155,8 +161,16 @@ export default function Board() {
                 <li key={p.id}>
                   <Link to={`/board/post/${p.id}`} className="post-item">
                     <span className="post-line">
-                      {/* HOT 목록은 여러 게시판이 섞이므로 원 게시판을 앞에 병기한다. */}
-                      {isHot && p.board?.name && <span className="post-board-chip">{p.board.name}</span>}
+                      {/* HOT 목록은 여러 게시판이 섞이므로 원 게시판을 앞에 병기한다.
+                          칩을 누르면 글 대신 그 게시판으로 이동(바깥 Link 기본동작 차단). */}
+                      {isHot && p.board?.name && (
+                        <button
+                          type="button"
+                          className="post-board-chip"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/board/${p.board_id}`); }}
+                          title={`${p.board.name} 게시판으로 이동`}
+                        >{p.board.name}</button>
+                      )}
                       <span className="post-item-title">{p.title || '(제목 없음)'}</span>
                       {p.hot && <span className="post-flag post-flag-hot">🔥</span>}
                       {postImageKeys(p).length > 0 && <span className="post-flag">🖼</span>}
