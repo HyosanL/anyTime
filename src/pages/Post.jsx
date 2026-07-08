@@ -195,7 +195,14 @@ export default function Post() {
       <article className="post-detail">
         {post.title && <h3 className="post-title-detail">{post.title}</h3>}
         <div className="post-detail-meta">
-          {post.board?.name && <span className="post-board-chip">{post.board.name}</span>}
+          {post.board?.name && (
+            <button
+              type="button"
+              className="post-board-chip"
+              onClick={() => navigate(`/board/${post.board_id}`)}
+              title={`${post.board.name} 게시판으로 이동`}
+            >{post.board.name}</button>
+          )}
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
           <span className="metric">👀 {post.view_count ?? 0}</span>
