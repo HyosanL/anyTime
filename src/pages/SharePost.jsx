@@ -122,7 +122,7 @@ export default function SharePost() {
       {iosBrowser && (
         <p className="share-banner">
           {copied ? (
-            <>✅ 복사했어요! <b>애타</b> 앱을 열고 홈 화면의 <b>📋 붙여넣어 열기</b>를 누르면 이 글로 이동해요.</>
+            <>✅ 복사했어요! <b>애타</b> 앱을 열고 홈 화면 <b>오른쪽 위 📋</b> 를 누르면 이 글로 이동해요.</>
           ) : (
             <>📲 애타 앱이 있다면 <button type="button" className="link-btn share-copy-btn" onClick={copyForApp}>앱에서 이어보기</button> — 글 주소를 복사해 앱에서 바로 열 수 있어요.</>
           )}

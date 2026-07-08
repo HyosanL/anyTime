@@ -193,6 +193,9 @@ export default function Home() {
           <Badge tier={tier} level={count} size={22} />
         </Link>
         <div className="home-header-actions">
+          {/* iOS 전용 공유 핸드오프 진입점 — 클립보드는 몰래 확인이 불가(읽기=시스템 팝업)라
+              조건부 표시가 안 되므로, 아이콘 하나로 존재감을 최소화해 상시 배치한다. */}
+          {isIos() && <button className="link-btn" onClick={openCopiedLink} title="공유받은 글 붙여넣어 열기" aria-label="공유받은 글 붙여넣어 열기">📋</button>}
           {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link">🧹 검열</Link>}
           <button className="link-btn" onClick={logout}>로그아웃</button>
         </div>
@@ -220,12 +223,6 @@ export default function Home() {
             )}
           </div>
         </section>
-
-        {isIos() && (
-          <button type="button" className="btn-ghost btn-sm home-paste-open" onClick={openCopiedLink}>
-            📋 붙여넣어 열기 — 공유받은 글
-          </button>
-        )}
 
         <nav className="home-nav">
           <Link to="/search" className="nav-tile">

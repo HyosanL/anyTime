@@ -46,9 +46,8 @@
 
 .share-comment-time { font-size: 0.75rem; color: var(--text-3); }
 
-/* iOS 핸드오프 — 공유 화면의 [앱에서 이어보기] 인라인 버튼 + 홈의 [붙여넣어 열기] */
+/* iOS 핸드오프 — 공유 화면의 [앱에서 이어보기] 인라인 버튼 */
 .share-copy-btn { font-weight: 700; }
-.home-paste-open { align-self: flex-start; }
 
 .share-empty { margin-top: 48px; }
 
