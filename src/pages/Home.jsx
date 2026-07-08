@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
+import { isIos } from '../components/InstallGate';
 import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
@@ -59,6 +60,7 @@ function CustomClassForm({ onAdd }) {
 // 홈(화면3): 본인 뱃지 + 확정시간표(시각 기준, 캐시 우선 즉시 표시) + 직접 추가 + 네비.
 export default function Home() {
   const { cadet, session, logout } = useAuthContext();
+  const navigate = useNavigate();
   const uid = session?.user?.id;
   const count = cadet?.post_count ?? 0;
   const tier = badgeOf(count);
@@ -154,6 +156,23 @@ export default function Home() {
     }
   }
 
+  // iOS 공유 핸드오프: 공유 화면(사파리)이 복사해 둔 글 주소를 붙여넣어 그 글로 이동.
+  // iOS 는 사파리↔홈화면앱 저장소 분리 + 앱 실행 API 부재라 Android(pending-nav)처럼
+  // 자동 전달이 불가능한 유일한 플랫폼 — 클립보드가 두 세계를 잇는 유일한 통로다.
+  async function openCopiedLink() {
+    let text = '';
+    try { text = await navigator.clipboard.readText(); } catch {
+      alert('클립보드를 읽지 못했어요. 공유 화면에서 [앱에서 이어보기]를 다시 눌러주세요.');
+      return;
+    }
+    const m = String(text).match(/\/(board\/post\/\d+|s\/[0-9a-fA-F-]{36})/);
+    if (!m) {
+      alert('복사된 애타 글 주소가 없어요.\n공유 링크 화면에서 [앱에서 이어보기]를 먼저 눌러주세요.');
+      return;
+    }
+    navigate(`/${m[1]}`);
+  }
+
   async function handleDeleteCustom(id, title) {
     if (!uid) return;
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
@@ -201,6 +220,12 @@ export default function Home() {
             )}
           </div>
         </section>
+
+        {isIos() && (
+          <button type="button" className="btn-ghost btn-sm home-paste-open" onClick={openCopiedLink}>
+            📋 붙여넣어 열기 — 공유받은 글
+          </button>
+        )}
 
         <nav className="home-nav">
           <Link to="/search" className="nav-tile">

@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getSharedPost, boardImageObjectUrl, shareImageObjectUrl } from '../lib/board';
 import { stashPendingNav } from '../lib/push';
-import { isMobile, isStandalone } from '../components/InstallGate';
+import { appUrl } from '../lib/share';
+import { isIos, isMobile, isStandalone } from '../components/InstallGate';
 import BoardImage from '../components/BoardImage';
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜 (Post.jsx 와 동일한 파일 로컬 유틸)
@@ -37,6 +38,7 @@ export default function SharePost() {
   const [state, setState] = useState('loading'); // loading | gone | disabled | view
   const [data, setData] = useState(null);
   const [banner, setBanner] = useState(false); // 회원 + 모바일 브라우저: "앱에서 이어보기" 안내
+  const [copied, setCopied] = useState(false); // iOS 핸드오프: 글 주소 복사 완료
 
   useEffect(() => {
     if (loading) return undefined;
@@ -67,9 +69,18 @@ export default function SharePost() {
   // — 비회원 열람이 차단돼도 회원에겐 이미지가 계속 보이게 하기 위함.
   const imgLoader = session ? boardImageObjectUrl : (k, o) => shareImageObjectUrl(token, k, o);
 
+  // iOS 핸드오프: 사파리↔홈화면앱 저장소 분리 + 앱 실행 API 부재라 자동 전달(pending-nav)이
+  // 불가능한 유일한 플랫폼. 글 주소를 복사해 두면 앱 홈의 [붙여넣어 열기]가 이동시켜 준다.
+  const iosBrowser = isIos() && !isStandalone();
+  async function copyForApp() {
+    const link = appUrl(`/board/post/${data.post_id}`);
+    try { await navigator.clipboard.writeText(link); } catch { prompt('아래 주소를 복사해 애타 앱의 [붙여넣어 열기]에 붙여넣으세요', link); }
+    setCopied(true);
+  }
+
   const head = (
     <header className="share-topbar">
-      <span className="onboarding-logo share-logo">애</span>
+      <img src="/icons/icon.svg" className="share-logo" alt="" />
       <b>애타</b>
       <span className="share-topbar-sub">공군사관학교 생도 커뮤니티</span>
       <Link to="/login" className="btn-add btn-sm share-start">시작하기</Link>
@@ -108,13 +119,22 @@ export default function SharePost() {
           (Chrome 메뉴 <b>⋮</b> → <b>앱에서 열기</b>)
         </p>
       )}
+      {iosBrowser && (
+        <p className="share-banner">
+          {copied ? (
+            <>✅ 복사했어요! <b>애타</b> 앱을 열고 홈 화면의 <b>📋 붙여넣어 열기</b>를 누르면 이 글로 이동해요.</>
+          ) : (
+            <>📲 애타 앱이 있다면 <button type="button" className="link-btn share-copy-btn" onClick={copyForApp}>앱에서 이어보기</button> — 글 주소를 복사해 앱에서 바로 열 수 있어요.</>
+          )}
+        </p>
+      )}
 
       <article className="post-detail">
         {post.title && <h3 className="post-title-detail">{post.title}</h3>}
         <div className="post-detail-meta">
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
-          <span className="metric">👁️ {post.view_count ?? 0}</span>
+          <span className="metric">👀 {post.view_count ?? 0}</span>
           <span className="metric">💬 {comments.length}</span>
         </div>
         <p className="post-content">{post.content}</p>

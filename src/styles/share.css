@@ -20,12 +20,13 @@
 .share-topbar-sub { font-size: 0.78rem; color: var(--text-3); }
 .share-topbar .share-start { margin-left: auto; flex-shrink: 0; }
 
-/* onboarding-logo 를 상단바 크기로 축소 */
+/* 실제 앱 아이콘(icon.svg)을 상단바 크기로 — 카톡 미리보기와 같은 로고로 통일 */
 .share-logo {
   width: 30px;
   height: 30px;
-  font-size: 0.95rem;
   border-radius: var(--r-sm);
+  display: block;
+  flex-shrink: 0;
 }
 
 /* 회원 + 모바일 브라우저: 앱에서 이어보기 안내 */
@@ -44,6 +45,10 @@
 .share-react-static { margin-top: 10px; }
 
 .share-comment-time { font-size: 0.75rem; color: var(--text-3); }
+
+/* iOS 핸드오프 — 공유 화면의 [앱에서 이어보기] 인라인 버튼 + 홈의 [붙여넣어 열기] */
+.share-copy-btn { font-weight: 700; }
+.home-paste-open { align-self: flex-start; }
 
 .share-empty { margin-top: 48px; }
 

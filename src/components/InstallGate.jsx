@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 // =====================================================================
 
 // iOS(아이폰/아이패드) 여부. iPadOS 13+ 는 데스크톱 사파리로 위장하므로 터치로 보정.
-function isIos() {
+export function isIos() {
   const ua = window.navigator.userAgent;
   const iOSDevice = /iphone|ipad|ipod/i.test(ua);
   const iPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;

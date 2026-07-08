@@ -12,12 +12,14 @@ export async function shareLink({ title, text, url }) {
       // 그 외 실패는 아래 복사로 폴백
     }
   }
+  // 폴백은 문구+링크를 함께 복사 — 붙여넣기만 해도 무슨 링크인지 맥락이 남게.
+  const payload = text ? `${text}\n${url}` : url;
   try {
-    await navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(payload);
     alert('링크를 복사했어요. 붙여넣어 공유하세요.');
     return 'copied';
   } catch {
-    prompt('아래 링크를 복사해 공유하세요', url);
+    prompt('아래 내용을 복사해 공유하세요', payload);
     return 'prompt';
   }
 }

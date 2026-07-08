@@ -162,7 +162,7 @@ export default function Board() {
                     {snippet && <span className="post-item-preview">{snippet}</span>}
                     <span className="post-item-meta">
                       {ago && <span className="post-meta-time">{ago}</span>}
-                      <span className="metric">👁️ {p.view_count ?? 0}</span>
+                      <span className="metric">👀 {p.view_count ?? 0}</span>
                       <span className="metric">💬 {p.comment_count}</span>
                       <span className="metric">👍 {p.like_count}</span>
                       {p.dislike_count > 0 && <span className="metric">👎 {p.dislike_count}</span>}

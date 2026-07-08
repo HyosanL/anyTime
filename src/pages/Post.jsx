@@ -127,11 +127,17 @@ export default function Post() {
   }
   // 🔗 공유: 글당 고정 토큰(/s/{token})을 발급받아 OS 공유 시트(폴백: 클립보드)로.
   // 링크는 비회원도 읽기 전용으로 열람 가능(관리자 토글로 차단 가능), 글 삭제 시 무효.
+  // 메시지에는 맥락 문구를 함께 실어 받는 쪽에서 "이게 뭐야"가 되지 않게 한다.
   async function sharePost() {
     try {
       const t = await createShare(Number(id));
       if (!t) throw new Error('NO_TOKEN');
-      await shareLink({ title: post.title || '애타 게시글', url: appUrl(`/s/${t}`) });
+      const short = post.title && post.title.length > 24 ? `${post.title.slice(0, 24)}…` : post.title;
+      await shareLink({
+        title: '애타 - AnyTime',
+        text: short ? `애타 익명게시판의 "${short}" 글이에요.` : '애타 익명게시판에서 공유된 글이에요.',
+        url: appUrl(`/s/${t}`),
+      });
     } catch { alert('공유 링크를 만들지 못했습니다. 잠시 후 다시 시도해주세요.'); }
   }
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
@@ -178,7 +184,7 @@ export default function Post() {
         <div className="post-detail-meta">
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
-          <span className="metric">👁️ {post.view_count ?? 0}</span>
+          <span className="metric">👀 {post.view_count ?? 0}</span>
           <span className="metric">💬 {comments.length}</span>
         </div>
         <p className="post-content">{post.content}</p>
