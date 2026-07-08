@@ -155,6 +155,8 @@ export default function Board() {
                 <li key={p.id}>
                   <Link to={`/board/post/${p.id}`} className="post-item">
                     <span className="post-line">
+                      {/* HOT 목록은 여러 게시판이 섞이므로 원 게시판을 앞에 병기한다. */}
+                      {isHot && p.board?.name && <span className="post-board-chip">{p.board.name}</span>}
                       <span className="post-item-title">{p.title || '(제목 없음)'}</span>
                       {p.hot && <span className="post-flag post-flag-hot">🔥</span>}
                       {postImageKeys(p).length > 0 && <span className="post-flag">🖼</span>}

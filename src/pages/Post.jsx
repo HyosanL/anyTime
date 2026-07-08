@@ -133,9 +133,11 @@ export default function Post() {
       const t = await createShare(Number(id));
       if (!t) throw new Error('NO_TOKEN');
       const short = post.title && post.title.length > 24 ? `${post.title.slice(0, 24)}…` : post.title;
+      // 어느 게시판의 어느 글인지 함께 실어 준다 — "애타 익명게시판 [우주공학과]의 "이찬" 글이에요."
+      const where = post.board?.name ? `익명게시판 [${post.board.name}]` : '익명게시판';
       await shareLink({
         title: '애타 - AnyTime',
-        text: short ? `애타 익명게시판의 "${short}" 글이에요.` : '애타 익명게시판에서 공유된 글이에요.',
+        text: short ? `애타 ${where}의 "${short}" 글이에요.` : `애타 ${where}에서 공유된 글이에요.`,
         url: appUrl(`/s/${t}`),
       });
     } catch { alert('공유 링크를 만들지 못했습니다. 잠시 후 다시 시도해주세요.'); }
@@ -182,6 +184,7 @@ export default function Post() {
       <article className="post-detail">
         {post.title && <h3 className="post-title-detail">{post.title}</h3>}
         <div className="post-detail-meta">
+          {post.board?.name && <span className="post-board-chip">{post.board.name}</span>}
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
           <span className="metric">👀 {post.view_count ?? 0}</span>

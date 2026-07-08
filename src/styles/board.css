@@ -173,6 +173,17 @@
 .post-flag { flex: none; font-size: 0.82rem; line-height: 1; }
 .post-flag-hot { color: var(--warn); }
 
+/* 출처 게시판 칩 — HOT 목록·상세에서 "어느 게시판에서 온 글"인지 병기(예: [우주공학과]) */
+.post-board-chip {
+  flex: none; max-width: 45%;
+  padding: 0.05rem 0.4rem;
+  background: var(--primary-weak); color: var(--primary);
+  border: 1px solid var(--primary-weak-border);
+  border-radius: var(--r-sm);
+  font-size: 0.72rem; font-weight: 700; line-height: 1.55;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* 본문 미리보기 1줄(흐림, 말줄임) */
 .post-item-preview {
   font-size: 0.84rem; color: var(--text-3); line-height: 1.4;

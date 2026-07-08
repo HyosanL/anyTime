@@ -104,7 +104,7 @@ export default function SharePost() {
     );
   }
 
-  const { post, comments = [], images = [] } = data;
+  const { post, comments = [], images = [], board } = data;
   const keys = [...images].sort((a, b) => (a.seq || 0) - (b.seq || 0)).map((i) => i.object_key);
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (pid) => comments.filter((c) => c.parent_id === pid);
@@ -132,6 +132,7 @@ export default function SharePost() {
       <article className="post-detail">
         {post.title && <h3 className="post-title-detail">{post.title}</h3>}
         <div className="post-detail-meta">
+          {board && <span className="post-board-chip">{board}</span>}
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
           <span className="metric">👀 {post.view_count ?? 0}</span>

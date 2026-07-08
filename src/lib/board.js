@@ -87,12 +87,15 @@ export const createBoard = (name) => supabase.rpc('create_board', { p_name: name
 export const getBoard = (id) => supabase.from('board').select('*').eq('id', id).maybeSingle().then((r) => r.data);
 export const PAGE_SIZE = 15;
 const POST_SELECT = '*, board_post_image(seq, object_key)';
+// HOT 목록·상세는 원 게시판 이름을 함께 붙인다(여러 게시판이 섞이므로 출처 표시용).
+// board_post.board_id → board(FK) 임베드. authenticated 는 read_board 정책으로 board 읽기 가능.
+const POST_SELECT_B = '*, board_post_image(seq, object_key), board(name)';
 export const listPosts = (boardId, page = 0) =>
   supabase.from('board_post').select(POST_SELECT).eq('board_id', boardId)
     .order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
     .then((r) => r.data || []);
 export const listHot = (page = 0) =>
-  supabase.from('board_post').select(POST_SELECT).eq('hot', true)
+  supabase.from('board_post').select(POST_SELECT_B).eq('hot', true)
     .order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
     .then((r) => r.data || []);
 export const createPost = (boardId, title, content, password, imageKeys) =>
@@ -113,7 +116,7 @@ export const boardEnabled = () => supabase.rpc('board_enabled').then((r) => r.da
 // view=true 면 서버가 조회수 +1 — 호출부(Post 화면)가 기기 세션당 1회만 넘긴다.
 export const getPost = (id, view = false) =>
   supabase.rpc('get_post_b', { p_id: Number(id), p_view: !!view })
-    .select(POST_SELECT).maybeSingle().then((r) => r.data);
+    .select(POST_SELECT_B).maybeSingle().then((r) => r.data);
 export const listComments = (postId) =>
   supabase.from('board_comment').select('*').eq('post_id', postId).order('created_at').then((r) => r.data || []);
 export const react = (postId, kind) => supabase.rpc('board_react', { p_post_id: postId, p_kind: kind }).then((r) => r.data);

@@ -8,10 +8,14 @@ const WATCHED_KEY = 'push:watched';   // { [postId]: reason } — 벨 토글 UI 
                                       // reason: 'post'(내가 쓴 글)|'comment'(내가 댓글 단 글)|'watch'(수동 벨)
                                       // 구버전 값 1 은 'watch' 로 취급.
 const HOT_KEY = 'push:hot';           // '0' = HOT 방송 끔(기본 켬)
+const DND_KEY = 'push:dnd';           // 방해금지 시간(디바이스 시간 기준). { on, start, end }
 
 // SW 와 공유하는 저장소(SW 는 localStorage 접근 불가 → Cache API 로 미러).
 // push-sw.js 의 META_CACHE 와 키가 맞아야 한다.
 const META_CACHE = 'push-meta';
+
+// 방해금지 기본값 — 요청대로 기본 켬(22:30~08:00). push-sw.js 의 DND_DEFAULT 와 일치시킬 것.
+export const DND_DEFAULT = { on: true, start: '22:30', end: '08:00' };
 
 export function pushSupported() {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -64,6 +68,7 @@ export async function enablePush() {
     const sub = (await reg.pushManager.getSubscription()) || (await subscribe(reg));
     await registerToServer(sub);
     localStorage.setItem(ENABLED_KEY, '1');
+    mirrorDnd(getDnd());   // 켜자마자 방해금지 설정을 SW(Cache)로 내려둔다
     return 'ON';
   } catch {
     return 'ERROR';
@@ -87,6 +92,7 @@ export async function disablePush() {
 export async function syncPush() {
   if (!pushEnabled()) return;
   mirrorReasons(watchedMap());   // 구버전에서 넘어온 기기도 이유 맵을 SW 쪽에 채워둔다
+  mirrorDnd(getDnd());           // 방해금지 설정도 SW(Cache)로 미러 — 조용한 알림 판정에 사용
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = (await reg.pushManager.getSubscription()) || (await subscribe(reg));
@@ -165,4 +171,38 @@ export async function setHotAlerts(on) {
   const sub = await getSubscription();
   if (!sub) return;
   await supabase.rpc('push_set_hot', { p_endpoint: sub.endpoint, p_on: !!on });
+}
+
+// ── 방해금지 시간(디바이스 시간 기준, 기기별 설정) ────────────────────
+// 서버는 관여하지 않는다 — 창 판정·조용한 알림 처리는 전부 이 기기의 SW 가 한다
+// (익명성 유지: 서버에 시간대·수면패턴 같은 정보를 남기지 않는다). SW 는 localStorage
+// 를 못 읽으므로 Cache API(META_CACHE '/dnd-config')로 미러해 push 핸들러가 읽는다.
+export function getDnd() {
+  try {
+    const v = JSON.parse(localStorage.getItem(DND_KEY));
+    if (v && typeof v === 'object') return { ...DND_DEFAULT, ...v };
+  } catch { /* 파싱 실패 → 기본값 */ }
+  return { ...DND_DEFAULT };
+}
+async function mirrorDnd(cfg) {
+  try {
+    const c = await caches.open(META_CACHE);
+    await c.put('/dnd-config', new Response(JSON.stringify(cfg)));
+  } catch { /* 미러 실패 시 SW 는 자체 기본값(기본 켬)으로 폴백 — 무시 */ }
+}
+export async function setDnd(patch) {
+  const next = { ...getDnd(), ...patch };
+  try { localStorage.setItem(DND_KEY, JSON.stringify(next)); } catch { /* 무시 */ }
+  await mirrorDnd(next);
+  return next;
+}
+
+// 실기기 테스트: 실제 서버 발송 없이 SW 의 showPush 를 그대로 태워 알림을 띄운다.
+// 방해금지 무음 판정과 클릭 딥링크(data.path)가 실제 푸시와 동일하게 검증된다.
+// msg 예: { kind:'hot', title:'…', board:'…', path:'/board/hot' }
+export async function sendTestPush(msg) {
+  const reg = await navigator.serviceWorker.ready;
+  const sw = reg.active || navigator.serviceWorker.controller;
+  if (!sw) throw new Error('SW_NOT_READY');
+  sw.postMessage({ type: 'TEST_PUSH', msg });
 }

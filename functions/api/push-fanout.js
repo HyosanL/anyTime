@@ -11,22 +11,23 @@ export async function onRequestPost(context) {
   const { request, env } = context;
   let body;
   try { body = await request.json(); } catch { return json({ status: 'BAD_REQUEST' }, 400); }
-  const { kind, post_id, title, targets } = body || {};
+  const { kind, post_id, title, board, targets } = body || {};
   if (!Array.isArray(targets) || targets.length === 0) return json({ status: 'OK', sent: 0 });
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return json({ status: 'NO_VAPID' }, 500);
 
   // 발송은 응답과 분리해 백그라운드로 — pg_net 타임아웃(5s)과 무관하게 완주한다.
-  context.waitUntil(fanout(env, { kind, post_id, title }, targets.slice(0, MAX_TARGETS)));
+  context.waitUntil(fanout(env, { kind, post_id, title, board }, targets.slice(0, MAX_TARGETS)));
   return json({ status: 'ACCEPTED', targets: Math.min(targets.length, MAX_TARGETS) });
 }
 
-async function fanout(env, { kind, post_id, title }, targets) {
+async function fanout(env, { kind, post_id, title, board }, targets) {
   const vapid = {
     subject: env.VAPID_SUBJECT || 'mailto:hyosanl0211@gmail.com',
     publicKey: env.VAPID_PUBLIC_KEY,
     privateKey: env.VAPID_PRIVATE_KEY,
   };
-  const data = { kind, post_id, title };
+  // board 는 HOT 알림에서 "어느 게시판" 표시에 쓰인다(댓글 알림엔 없음 → undefined 로 빠짐).
+  const data = { kind, post_id, title, board };
   // topic: 같은 글의 미전달 알림은 최신 1건으로 대체(오프라인 기기 폭주 방지).
   // 댓글은 즉시성(urgency=high — 도즈 모드 관통), HOT 은 일반 우선순위.
   const opts = kind === 'hot'

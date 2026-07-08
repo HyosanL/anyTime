@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
 import { supabase } from '../supabase';
-import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts } from '../lib/push';
+import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendTestPush } from '../lib/push';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
 import BackButton from '../components/BackButton';
@@ -21,9 +21,41 @@ function PushSettings() {
   const supported = pushSupported();
   const [on, setOn] = useState(() => pushEnabled());
   const [hot, setHot] = useState(() => hotAlertsOn());
+  const [dnd, setDndState] = useState(() => getDnd());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
+
+  // 방해금지 설정 변경 — 로컬 저장 + SW(Cache) 미러(설정 반영은 다음 알림부터).
+  function updateDnd(patch) {
+    const next = { ...dnd, ...patch };
+    setDndState(next);
+    setDnd(next).catch(() => {});
+  }
+
+  // 분(0~1439, 음수/초과 자동 순환) → 'HH:MM'
+  function hhmmFromMin(m) {
+    const x = ((m % 1440) + 1440) % 1440;
+    return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+  }
+
+  // 실기기 테스트: 지금 시각을 포함하도록 방해금지 창을 임시 조정한 뒤(입력칸도 즉시 반영),
+  // 실제 푸시와 같은 SW 경로로 테스트 알림을 띄운다 → 무음으로 와야 정상.
+  // setDnd 를 await 해 Cache 미러 완료 후 발송(레이스 없음). 창은 눈에 보이니 뒤에 직접 되돌리면 된다.
+  async function testQuietNow() {
+    setTestMsg('');
+    const now = new Date();
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const win = { on: true, start: hhmmFromMin(cur - 1), end: hhmmFromMin(cur + 60) };
+    setDndState(win);
+    try {
+      await setDnd(win);   // 로컬+Cache 미러 완료 보장
+      await sendTestPush({ kind: 'hot', title: '방해금지 조용히 테스트', board: '테스트', path: '/board/hot' });
+      setTestMsg(`방해금지 창을 ${win.start}~${win.end} 로 임시 조정하고 무음 테스트 알림을 보냈어요. 소리·진동 없이 오면 정상이고, 알림을 탭하면 HOT 게시판으로 이동합니다. (테스트 후 위 시간은 원하는 값으로 되돌려 주세요.)`);
+    } catch {
+      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
+    }
+  }
 
   // 로컬 테스트 알림 — 알림이 실제로 도착하는지(권한·구독·전송) 확인용.
   // 헤드업(팝업)으로 뜨는지는 기기 설정 소관이라 코드로 못 바꾸므로 판단하지 않는다.
@@ -87,9 +119,36 @@ function PushSettings() {
                 <input type="checkbox" checked={hot} onChange={toggleHot} />
                 🔥 HOT 승격 게시글 알림 받기
               </label>
-              <button className="btn-ghost btn-sm" onClick={sendTest} style={{ marginTop: 8 }}>
-                🔔 테스트 알림 보내기
-              </button>
+
+              <label className="account-note" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                <input type="checkbox" checked={dnd.on} onChange={(e) => updateDnd({ on: e.target.checked })} />
+                🌙 방해금지 시간 (이 시간엔 소리·진동 없이 조용히)
+              </label>
+              {dnd.on && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, marginLeft: 22 }}>
+                  <label className="account-note" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    시작 <input type="time" value={dnd.start} onChange={(e) => updateDnd({ start: e.target.value })} />
+                  </label>
+                  <label className="account-note" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    종료 <input type="time" value={dnd.end} onChange={(e) => updateDnd({ end: e.target.value })} />
+                  </label>
+                </div>
+              )}
+              {dnd.on && (
+                <p className="account-note" style={{ marginTop: 6 }}>
+                  이 시간대(디바이스 시간 기준)엔 알림이 소리·진동 없이 알림센터로만 조용히 도착해요.
+                  확실히 무음을 원하면 기기의 방해 금지 모드도 함께 켜두시는 걸 권해요.
+                </p>
+              )}
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                <button className="btn-ghost btn-sm" onClick={sendTest}>
+                  🔔 테스트 알림 보내기
+                </button>
+                <button className="btn-ghost btn-sm" onClick={testQuietNow}>
+                  🌙 지금 방해금지로 무음 테스트
+                </button>
+              </div>
               {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
             </>
           )}
