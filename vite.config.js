@@ -38,7 +38,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // 관리자 전용 무거운 청크(편람 PDF 파서 pdfjs 등)는 프리캐시에서 제외.
         // 대다수(시간표 확인용)의 설치를 가볍게 유지 — 해당 페이지는 접속 시 그때 로드된다.
-        globIgnores: ['**/syllabus-*.js', '**/pdf.worker*', '**/Admin-*.js'],
+        // og.png 는 링크 미리보기 크롤러용(카톡 등) — 앱은 안 쓰므로 프리캐시 제외.
+        globIgnores: ['**/syllabus-*.js', '**/pdf.worker*', '**/Admin-*.js', '**/og.png'],
         // 오프라인: 어떤 경로로 새로고침해도 앱 셸(index.html)을 캐시에서 반환
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/, /supabase/],

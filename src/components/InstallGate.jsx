@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 // =====================================================================
 //  PWA 설치 게이트 — 모바일에서는 홈 화면 앱(standalone)으로만 사용 가능.
@@ -19,7 +20,7 @@ function isIos() {
 }
 
 // 이미 홈 화면 앱(standalone)으로 실행 중인가.
-function isStandalone() {
+export function isStandalone() {
   return (
     window.navigator.standalone === true ||
     window.matchMedia('(display-mode: standalone)').matches
@@ -31,7 +32,7 @@ function isSamsungInternet() {
   return /SamsungBrowser/i.test(window.navigator.userAgent);
 }
 
-function isMobile() {
+export function isMobile() {
   return isIos() || /android/i.test(window.navigator.userAgent);
 }
 
@@ -56,8 +57,13 @@ export default function InstallGate({ children }) {
   const [installed, setInstalled] = useState(false);
   const [installedApp, setInstalledApp] = useState(false); // 이미 설치된 WebAPK 감지됨
 
-  // 설치 여부는 세션 동안 불변(standalone 은 실행 방식) → 마운트 시 1회 판정.
-  const gated = !import.meta.env.DEV && isMobile() && !isStandalone();
+  // 설치 여부는 세션 동안 불변(standalone 은 실행 방식). 단 공유 링크(/s/*)는 게이트
+  // 예외 — 비회원이 브라우저에서 읽는 화면이므로 막으면 공유 자체가 무효가 된다
+  // (지난 공유 기능이 이 게이트에 막혀 회수된 전례: 0e001f7). 공유 화면을 벗어나
+  // 앱 내부 경로로 이동하면 경로 재평가로 게이트가 다시 걸린다.
+  const { pathname } = useLocation();
+  const gated = !import.meta.env.DEV && isMobile() && !isStandalone()
+    && !pathname.startsWith('/s/');
 
   useEffect(() => {
     if (!gated) return;

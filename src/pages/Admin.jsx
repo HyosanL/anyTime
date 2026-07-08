@@ -268,7 +268,7 @@ const SECTIONS = [
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
   { key: 'settings', icon: '⚙️', title: '계정 위치 인증 및 인증 기간', sub: '캠퍼스 위치·반경, 위치 재인증·자격 기간' },
   { key: 'thresholds', icon: '🎚️', title: '기준값 설정', sub: 'HOT 승격·신고 자동삭제·강의평 작성 자격 기준' },
-  { key: 'board', icon: '💬', title: '게시판 관리', sub: '활성화·게시판별/전체 글 삭제' },
+  { key: 'board', icon: '💬', title: '게시판 관리', sub: '활성화·비회원 공유 열람·게시판별/전체 글 삭제' },
   { key: 'admins', icon: '🛡️', title: '관리자', sub: '관리자 권한 부여·취소' },
 ];
 const TITLE_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title]));
@@ -723,6 +723,18 @@ export default function Admin() {
               </div>
               <button className="btn-ghost btn-sm" onClick={() => run('set_board_enabled', { value: !(setting.board_enabled !== false) }, '게시판 활성화 변경')}>
                 {setting.board_enabled === false ? '활성화' : '비활성화'}
+              </button>
+            </div>
+
+            {/* 공유 링크(/s/…)를 받은 비로그인 사용자가 그 글을 읽을 수 있는지. 차단해도 링크
+                생성·공유와 회원의 링크 접속(앱 글 화면으로 이동)은 계속 동작한다. */}
+            <div className="adm-toggle-row">
+              <div className="adm-toggle-body">
+                <span className="adm-toggle-label">비회원 공유 열람</span>
+                <span className={`tag ${setting.share_enabled === false ? 'tag-warn' : 'tag-success'}`}>{setting.share_enabled === false ? '차단' : '허용'}</span>
+              </div>
+              <button className="btn-ghost btn-sm" onClick={() => run('set_share_enabled', { value: !(setting.share_enabled !== false) }, '비회원 공유 열람 변경')}>
+                {setting.share_enabled === false ? '허용' : '차단'}
               </button>
             </div>
 

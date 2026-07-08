@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { boardImageObjectUrl } from '../lib/board';
 
 // 원본을 전체화면 오버레이로. 열릴 때만 원본을 로드(에그레스 절감). ESC·배경 탭으로 닫기.
-function ImageLightbox({ imageKey, onClose }) {
+function ImageLightbox({ imageKey, onClose, loader = boardImageObjectUrl }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let active = true; let made;
-    boardImageObjectUrl(imageKey).then((u) => {
+    loader(imageKey).then((u) => {
       if (active) { setUrl(u); made = u; } else if (u) URL.revokeObjectURL(u);
     });
     return () => { active = false; if (made) URL.revokeObjectURL(made); };
-  }, [imageKey]);
+  }, [imageKey, loader]);
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -35,16 +35,17 @@ function ImageLightbox({ imageKey, onClose }) {
 }
 
 // 게시판 이미지: 평소엔 저화질 썸네일, 탭하면 원본을 크게. 인증 blob 표시(다운로드 X).
-export default function BoardImage({ imageKey, className }) {
+// loader 로 로드 경로를 바꿀 수 있다(기본: 인증 /api/board-image, 공유 화면: 토큰 /api/share-image).
+export default function BoardImage({ imageKey, className, loader = boardImageObjectUrl }) {
   const [thumb, setThumb] = useState(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let active = true; let made;
-    boardImageObjectUrl(imageKey, { thumb: true }).then((u) => {
+    loader(imageKey, { thumb: true }).then((u) => {
       if (active) { setThumb(u); made = u; } else if (u) URL.revokeObjectURL(u);
     });
     return () => { active = false; if (made) URL.revokeObjectURL(made); };
-  }, [imageKey]);
+  }, [imageKey, loader]);
   if (!thumb) return <div className="board-img-ph">이미지…</div>;
   return (
     <>
@@ -58,7 +59,7 @@ export default function BoardImage({ imageKey, className }) {
         />
         <span className="board-img-zoom" aria-hidden="true">⤢ 원본</span>
       </button>
-      {open && <ImageLightbox imageKey={imageKey} onClose={() => setOpen(false)} />}
+      {open && <ImageLightbox imageKey={imageKey} onClose={() => setOpen(false)} loader={loader} />}
     </>
   );
 }

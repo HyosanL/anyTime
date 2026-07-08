@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     switch (action) {
       case 'get_app_setting': {
         const { data } = await admin.from('app_setting')
-          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days, board_enabled, hot_threshold, report_delete_count, report_burst_count').eq('id', 1).maybeSingle()
+          .select('campus_lat, campus_lng, radius_m, review_min_days, geo_valid_days, account_delete_days, board_enabled, share_enabled, hot_threshold, report_delete_count, report_burst_count').eq('id', 1).maybeSingle()
         const setting: Record<string, unknown> = data ?? {}
         // professors_synced_at 은 라이브에 컬럼이 아직 없을 수 있어 별도·방어적으로 조회(없으면 무시).
         const { data: s2 } = await admin.from('app_setting').select('professors_synced_at').eq('id', 1).maybeSingle()
@@ -69,6 +69,11 @@ Deno.serve(async (req) => {
       }
       case 'set_board_enabled': {
         await admin.from('app_setting').update({ board_enabled: !!payload.value }).eq('id', 1).throwOnError()
+        return json({ status: 'OK' })
+      }
+      // 공유 링크 비회원 열람 허용/차단 (회원 링크는 항상 동작)
+      case 'set_share_enabled': {
+        await admin.from('app_setting').update({ share_enabled: !!payload.value }).eq('id', 1).throwOnError()
         return json({ status: 'OK' })
       }
       case 'delete_board': {

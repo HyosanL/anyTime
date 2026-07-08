@@ -56,6 +56,10 @@ export async function onRequest(context) {
     return unauth();
   }
 
+  // 공유 링크 이미지(비회원 열람용): 접근 검증은 핸들러가 share_image_ok RPC 로 수행
+  // (토큰이 가리키는 글의 이미지 + 관리자 허용 상태일 때만 스트리밍).
+  if (path === '/api/share-image') return next();
+
   const auth = request.headers.get('Authorization') || '';
   if (!auth.startsWith('Bearer ')) return unauth();
   const token = auth.slice(7);

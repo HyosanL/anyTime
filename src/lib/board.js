@@ -65,6 +65,20 @@ export async function boardImageObjectUrl(key, { thumb = false } = {}) {
   return URL.createObjectURL(await res.blob());
 }
 
+// 공유 화면(비회원)용 이미지 로드 — 인증 헤더 대신 공유 토큰으로 /api/share-image 를 탄다.
+// 썸네일 우선 + 404 시 원본 폴백은 위 boardImageObjectUrl 과 동일한 규약.
+export async function shareImageObjectUrl(token, key, { thumb = false } = {}) {
+  const url = (k) => `/api/share-image?share=${encodeURIComponent(token)}&key=${encodeURIComponent(k)}`;
+  if (thumb) {
+    const t = await fetch(url(key + '.thumb'));
+    if (t.ok) return URL.createObjectURL(await t.blob());
+    if (t.status !== 404) return null; // 진짜 오류(차단·토큰 불일치 등)면 폴백 없이 종료
+  }
+  const res = await fetch(url(key));
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}
+
 // 데이터 (읽기는 RLS, 쓰기는 RPC)
 export const listBoards = (q) =>
   supabase.from('board').select('*').ilike('name', `%${q || ''}%`)
@@ -119,3 +133,15 @@ export const deletePost = async (id, password) => {
   return { data: null, error: new Error(body.status || 'ERROR') };
 };
 export const deleteComment = (id, password) => supabase.rpc('delete_comment_b', { p_id: id, p_password: password });
+
+// ── 공유 링크 ─────────────────────────────────────────────────────────
+// 공유 토큰 발급(회원 전용, 글당 1개 고정 — 재호출 시 기존 토큰 반환)
+export const createShare = (postId) =>
+  supabase.rpc('create_share', { p_post: Number(postId) }).then((r) => {
+    if (r.error) throw r.error;
+    return r.data;
+  });
+// 공유 글 읽기(비회원 가능). view=true 면 서버가 비회원 열람만 조회수 +1(기기 세션당 1회는 호출부가 보장).
+// 반환: { data: { post_id, post, images, comments } | { disabled: true } | null, error }
+export const getSharedPost = (token, view = false) =>
+  supabase.rpc('get_shared_post', { p_token: token, p_view: !!view });
