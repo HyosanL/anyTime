@@ -159,11 +159,25 @@ export default function Moderation() {
     if (r.ok) { setEdit(null); load(); }
   }
 
-  // ── 신고: 무시(정상 처리) ──
+  // ── 신고: 무시(정상 처리) — 신고 수 초기화(담합·오신고 폭주 리셋용) ──
   async function dismissReport(it) {
     if (!confirm('이 신고를 무시(정상 처리)할까요? 신고 수가 초기화됩니다.')) return;
     const r = await call('dismiss_report', { table: it.type, id: it.id });
     if (r.ok) setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
+  }
+
+  // ── 신고: 확인처리 — 검토했고 삭제할 정돈 아니라 넘어감. 신고 수는 그대로 두고 목록에서만 감춤.
+  //    (이후 신고가 더 쌓이면 다시 나타난다. 검열 '모두 확인 처리'와 동일 개념 — 누적은 보존)
+  async function ackReport(it) {
+    const r = await call('ack_report', { table: it.type, id: it.id });
+    if (r.ok) setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
+    else alert('확인 처리 실패: ' + (r.status ?? '오류'));
+  }
+  async function ackAllReports() {
+    if (!reported.length) return;
+    if (!confirm(`신고 누적 ${reported.length}건을 모두 확인 처리할까요?\n(신고 수는 유지되고 목록에서만 감춰집니다. 이후 신고가 더 쌓이면 다시 표시됩니다.)`)) return;
+    for (const it of reported) await call('ack_report', { table: it.type, id: it.id });
+    setReported([]);
   }
 
   // ── 삭제됨(신고 누적 자동삭제 아카이브): 복구 / 확인 ──
@@ -306,7 +320,12 @@ export default function Moderation() {
 
       {/* ② 신고 */}
       {tab === 'reports' && (
-        <ul className="mod-list">
+        <>
+          <div className="mod-tab-bar">
+            <span className="mod-count">신고 누적 {reported.length}건</span>
+            {reported.length > 0 && <button className="link-btn" onClick={ackAllReports}>모두 확인 처리</button>}
+          </div>
+          <ul className="mod-list">
           {reported.length === 0 && (
             <li className="empty"><span className="empty-emoji">🚨</span><p>신고 누적 중인 글이 없습니다.</p></li>
           )}
@@ -326,12 +345,14 @@ export default function Moderation() {
               </p>
               <div className="mod-actions">
                 {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
+                <button className="btn-add btn-sm" onClick={() => ackReport(it)}>확인</button>
                 <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
                 <button className="rev-del-btn" onClick={() => dismissReport(it)}>무시(정상)</button>
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
 
       {/* ③ 수정 제안 */}

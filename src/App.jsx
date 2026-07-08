@@ -100,17 +100,27 @@ function PushNavigator() {
   const navigate = useNavigate();
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
+    const go = (path) => {
+      if (path && window.location.pathname !== path) navigate(path);
+    };
     const onMsg = (e) => {
       const d = e.data;
       if (d?.type !== 'PUSH_NAV' || typeof d.path !== 'string' || !d.path.startsWith('/')) return;
       consumePendingNav();  // 캐시 보험 소비(다음 부팅 때 이중 이동 방지)
-      if (window.location.pathname !== d.path) navigate(d.path);
+      go(d.path);
+    };
+    // 백그라운드에 있던 앱이 알림 탭으로 다시 앞으로 나올 때: postMessage 가 유실됐어도
+    // SW 가 남긴 목적지를 회수해 이동한다(가장 흔한 실패 경로의 안전망 — 콜드/웜 모두 커버).
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') consumePendingNav().then(go);
     };
     navigator.serviceWorker.addEventListener('message', onMsg);
-    consumePendingNav().then((path) => {
-      if (path && window.location.pathname !== path) navigate(path);
-    });
-    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+    document.addEventListener('visibilitychange', onVisible);
+    consumePendingNav().then(go);  // 콜드스타트(openWindow 가 경로를 무시한 경우)
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onMsg);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [navigate]);
   return null;
 }

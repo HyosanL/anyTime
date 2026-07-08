@@ -72,9 +72,14 @@ self.addEventListener('notificationclick', (event) => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     // 앱이 이미 떠 있으면: 포커스 + 앱 내 라우터로 이동(postMessage → PushNavigator).
     // client.navigate() 는 WebAPK·삼성 인터넷에서 조용히 실패하는 사례가 있어 쓰지 않는다.
+    // 포커스가 실패하는 창(동결·죽은 클라이언트)은 건너뛰고 openWindow 로 새로 연다 —
+    // 새 문서가 위 pending-nav 를 회수해 이동한다(그래서 focus 와 postMessage 를 한 try 로 묶는다).
     for (const c of wins) {
-      try { await c.focus(); } catch { /* 포커스 실패해도 메시지는 보낸다 */ }
-      try { c.postMessage({ type: 'PUSH_NAV', path }); return; } catch { /* 다음 창 시도 */ }
+      try {
+        await c.focus();
+        c.postMessage({ type: 'PUSH_NAV', path });
+        return;
+      } catch { /* 이 창은 포커스 불가 — 다음 창/openWindow 로 폴백 */ }
     }
     await self.clients.openWindow(path);
   })());

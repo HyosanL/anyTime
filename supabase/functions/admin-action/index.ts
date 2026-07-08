@@ -454,30 +454,37 @@ Deno.serve(async (req) => {
       // 신고 가능한 대상: review / class_memo / board_post (board_comment 는 신고 미지원).
       case 'list_reported': {
         const [rev, memo, bpost] = await Promise.all([
-          admin.from('review').select('id,course_code,prof_comment,course_comment,report_count,created_at')
+          admin.from('review').select('id,course_code,prof_comment,course_comment,report_count,report_reviewed_count,created_at')
             .gt('report_count', 0).order('report_count', { ascending: false }).limit(200),
-          admin.from('class_memo').select('id,course_code,year,term,section_no,content,report_count,created_at')
+          admin.from('class_memo').select('id,course_code,year,term,section_no,content,report_count,report_reviewed_count,created_at')
             .gt('report_count', 0).order('report_count', { ascending: false }).limit(200),
-          admin.from('board_post').select('id,board_id,title,content,report_count,created_at')
+          admin.from('board_post').select('id,board_id,title,content,report_count,report_reviewed_count,created_at')
             .gt('report_count', 0).order('report_count', { ascending: false }).limit(200),
         ])
+        // '확인처리'(ack_report)한 글은 그 시점 신고수까지 검토완료 → 그 뒤로 신고가 더 쌓인 것만 노출.
+        // (col-대-col 비교는 PostgREST 로 못 걸어서 JS 로 필터 — 목록 최대 200건이라 부담 없음)
+        const unreviewed = (r: { report_count?: number; report_reviewed_count?: number }) =>
+          (r.report_count ?? 0) > (r.report_reviewed_count ?? 0)
+        const revRows = (rev.data ?? []).filter(unreviewed)
+        const memoRows = (memo.data ?? []).filter(unreviewed)
+        const bpostRows = (bpost.data ?? []).filter(unreviewed)
         // 게시판명 라벨(맥락)
-        const boardIds = new Set((bpost.data ?? []).map((p) => p.board_id))
+        const boardIds = new Set(bpostRows.map((p) => p.board_id))
         const boardMap = new Map()
         if (boardIds.size) {
           const { data: bs } = await admin.from('board').select('id,name').in('id', [...boardIds])
           for (const b of (bs ?? [])) boardMap.set(b.id, b.name)
         }
         const items = [
-          ...(rev.data ?? []).map((r) => ({
+          ...revRows.map((r) => ({
             type: 'review', id: r.id, course_code: r.course_code, created_at: r.created_at,
             report_count: r.report_count, text: [r.prof_comment, r.course_comment].filter(Boolean).join(' / '), meta: {},
           })),
-          ...(memo.data ?? []).map((m) => ({
+          ...memoRows.map((m) => ({
             type: 'class_memo', id: m.id, course_code: m.course_code, created_at: m.created_at,
             report_count: m.report_count, text: m.content, meta: { year: m.year, term: m.term, section_no: m.section_no },
           })),
-          ...(bpost.data ?? []).map((p) => ({
+          ...bpostRows.map((p) => ({
             type: 'board_post', id: p.id, course_code: boardMap.get(p.board_id) ?? '게시판', created_at: p.created_at,
             report_count: p.report_count, text: [p.title, p.content].filter(Boolean).join(' — '), meta: {},
           })),
@@ -485,6 +492,7 @@ Deno.serve(async (req) => {
         return json({ status: 'OK', items })
       }
       // 신고 무시(정상 처리): 신고 이벤트 삭제 + report_count 초기화. 글은 유지.
+      // 누적을 '없애는' 쪽 — 담합/오신고 폭주를 리셋할 때. (검토만 하고 넘어가려면 ack_report 사용)
       case 'dismiss_report': {
         const table = String(payload.table)
         const id = payload.id
@@ -495,7 +503,20 @@ Deno.serve(async (req) => {
         } else if (table === 'board_post') {
           await admin.from('board_event').delete().eq('post_id', id).eq('kind', 'report')
         } else return json({ status: 'BAD_REQUEST' }, 400)
-        await admin.from(table).update({ report_count: 0 }).eq('id', id).throwOnError()
+        // report_reviewed_count 도 0 으로 되돌린다 — 안 그러면 이후 새 신고가 옛 검토수까지 가려짐.
+        await admin.from(table).update({ report_count: 0, report_reviewed_count: 0 }).eq('id', id).throwOnError()
+        return json({ status: 'OK' })
+      }
+      // 신고 확인처리: 신고 내용을 검토했고 삭제할 정도는 아니라 넘어감. 신고수·이벤트는 그대로 두고
+      // report_reviewed_count = 현재 report_count 로 올려 목록에서만 감춘다(누적 보존).
+      // 이후 신고가 더 쌓이면(report_count 증가) 다시 신고탭에 나타난다. — 검열 '확인처리'와 동일 개념.
+      case 'ack_report': {
+        const table = String(payload.table)
+        if (!['review', 'class_memo', 'board_post'].includes(table)) return json({ status: 'BAD_REQUEST' }, 400)
+        // report_reviewed_count := report_count (열-대-열 대입은 PostgREST 불가 → 현재값 읽어 반영).
+        const { data: row } = await admin.from(table).select('report_count').eq('id', payload.id).maybeSingle()
+        if (!row) return json({ status: 'NOT_FOUND' }, 404)
+        await admin.from(table).update({ report_reviewed_count: row.report_count }).eq('id', payload.id).throwOnError()
         return json({ status: 'OK' })
       }
       // ── 삭제됨(신고 누적 자동삭제 아카이브) ──
