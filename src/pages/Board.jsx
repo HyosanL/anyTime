@@ -29,8 +29,13 @@ export default function Board() {
   const isHot = id === 'hot';
   const [title, setTitle] = useState(isHot ? '🔥 HOT' : '게시판');
   const [posts, setPosts] = useState(null); // null = 아직 캐시/서버 어느 쪽도 안 옴
-  const [page, setPage] = useState(0);
-  const seq = useRef(0); // 게시판/페이지 전환 시 늦게 온 응답이 덮어쓰지 않도록
+  const [loadingMore, setLoadingMore] = useState(false); // 첫/추가 로딩 진행 중
+  const [hasMore, setHasMore] = useState(true);          // 더 불러올 과거 글이 있는지
+  const seq = useRef(0);            // 게시판 전환 시 늦게 온 응답이 덮어쓰지 않도록
+  const pageRef = useRef(0);        // 마지막으로 로드한 페이지
+  const loadingRef = useRef(false); // 동시 로드 방지(옵서버 연타 차단)
+  const hasMoreRef = useRef(true);  // 옵서버 클로저에서 최신값 참조
+  const sentinelRef = useRef(null); // 하단 감지용 센티넬
   const [writing, setWriting] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [pTitle, setPTitle] = useState('');
@@ -54,34 +59,72 @@ export default function Board() {
   }
   const removeFile = (i) => setFiles((prev) => prev.filter((_, idx) => idx !== i));
 
-  // 캐시 즉시 표시(SWR) → 서버 응답으로 교체·캐시 갱신. 오프라인이면 캐시 유지.
-  async function load(p) {
+  const fetchPage = (p) => (isHot ? listHot(p) : listPosts(id, p));
+
+  // 첫 페이지: 캐시 즉시 표시(SWR) → 서버 응답으로 교체. 게시판 진입·새로고침 시.
+  async function loadFirst() {
     const my = ++seq.current;
+    loadingRef.current = true; setLoadingMore(true);
     let gotFresh = false;
-    const postsKey = isHot ? `bb:hot:${p}` : `bb:posts:${id}:${p}`;
-    kvGet(postsKey).then((c) => { if (seq.current === my && !gotFresh && c) setPosts(c); });
+    const key0 = isHot ? 'bb:hot:0' : `bb:posts:${id}:0`;
+    kvGet(key0).then((c) => { if (seq.current === my && !gotFresh && c) setPosts(c); });
     if (!isHot) kvGet(`bb:board:${id}`).then((b) => { if (seq.current === my && !gotFresh && b) setTitle(b.name || '게시판'); });
     try {
-      if (isHot) {
-        const rows = await listHot(p);
-        if (seq.current !== my) return;
-        gotFresh = true; setTitle('🔥 HOT'); setPosts(rows);
-        kvSet(postsKey, rows);
-      } else {
-        const [b, rows] = await Promise.all([getBoard(id), listPosts(id, p)]);
-        if (seq.current !== my) return;
-        gotFresh = true; setTitle(b?.name || '게시판'); setPosts(rows);
-        kvSet(postsKey, rows); if (b) kvSet(`bb:board:${id}`, b);
-      }
+      let rows;
+      let b = null;
+      if (isHot) rows = await listHot(0);
+      else { const res = await Promise.all([getBoard(id), listPosts(id, 0)]); b = res[0]; rows = res[1]; }
+      if (seq.current !== my) return;
+      gotFresh = true;
+      if (isHot) setTitle('🔥 HOT');
+      else { setTitle(b?.name || '게시판'); if (b) kvSet(`bb:board:${id}`, b); }
+      setPosts(rows);
+      pageRef.current = 0;
+      const more = rows.length >= PAGE_SIZE;
+      hasMoreRef.current = more; setHasMore(more);
+      kvSet(key0, rows);
     } catch { /* 오프라인 등: 캐시 유지 */ }
+    finally { if (seq.current === my) { loadingRef.current = false; setLoadingMore(false); } }
   }
-  // id 가 바뀌면 렌더 중에 page 를 0 으로 되돌린다(React 권장 derived-state 패턴).
-  // 예전엔 [id] 이펙트와 [page] 이펙트가 각각 load(0) 을 호출해 게시판 진입/이동마다
-  // 같은 목록을 2번 요청했다 — 단일 [id,page] 이펙트로 통합해 중복 제거.
-  const [prevId, setPrevId] = useState(id);
-  if (id !== prevId) { setPrevId(id); setPage(0); }
-  useEffect(() => { boardEnabled().then(setEnabled); }, []); // 전역 플래그 — 게시판 이동마다 재요청 불필요
-  useEffect(() => { load(page); /* eslint-disable-next-line */ }, [id, page]);
+
+  // 다음 페이지: 스크롤이 하단에 닿으면 과거 글을 PAGE_SIZE개씩 이어붙인다.
+  async function loadMore() {
+    if (loadingRef.current || !hasMoreRef.current) return;
+    const my = seq.current; // 같은 게시판인지 확인용(증가시키지 않음)
+    loadingRef.current = true; setLoadingMore(true);
+    const next = pageRef.current + 1;
+    try {
+      const rows = await fetchPage(next);
+      if (seq.current !== my) return; // 그새 게시판이 바뀜 → 버림
+      pageRef.current = next;
+      setPosts((prev) => [...(prev ?? []), ...rows]);
+      const more = rows.length >= PAGE_SIZE;
+      hasMoreRef.current = more; setHasMore(more);
+    } catch { /* 네트워크 실패: 로딩만 풀고 다음 스크롤에서 재시도 */ }
+    finally { if (seq.current === my) { loadingRef.current = false; setLoadingMore(false); } }
+  }
+
+  useEffect(() => { boardEnabled().then(setEnabled); }, []); // 전역 플래그 — 마운트당 1회
+
+  // 게시판 진입/변경: 상태 초기화 후 첫 페이지부터.
+  useEffect(() => {
+    setPosts(null); pageRef.current = 0; hasMoreRef.current = true; setHasMore(true);
+    loadFirst();
+    // eslint-disable-next-line
+  }, [id]);
+
+  // 하단 센티넬이 뷰포트(600px 이내)에 들어오면 다음 페이지 로드. posts 가 늘 때마다 재관찰해
+  // 화면이 길어 센티넬이 계속 보이는 경우에도 이어서 채운다(hasMore=false 면 센티넬이 사라져 자연 종료).
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) loadMore();
+    }, { rootMargin: '600px' });
+    io.observe(el);
+    return () => io.disconnect();
+    // eslint-disable-next-line
+  }, [posts, hasMore, id]);
 
   async function submit(e) {
     e.preventDefault(); setErr('');
@@ -96,7 +139,7 @@ export default function Board() {
       // 서버는 "watch 한 기기"만 알 뿐 작성자는 저장하지 않는다.
       if (newId && pushEnabled()) watchPost(newId, 'post').catch(() => {});
       setPTitle(''); setContent(''); setPassword(''); setFiles([]); setWriting(false);
-      if (page === 0) load(0); else setPage(0);
+      loadFirst(); // 새 글이 맨 위에 보이도록 첫 페이지부터 다시
     } catch (e2) { setErr(e2.message || '작성 실패'); }
     setBusy(false);
   }
@@ -104,7 +147,7 @@ export default function Board() {
   const preview = (s) => { const t = (s || '').replace(/\s+/g, ' ').trim(); return t.length > 60 ? t.slice(0, 60) + '…' : t; };
 
   return (
-    <PullToRefresh className="page noscreenshot" onRefresh={() => load(page)}>
+    <PullToRefresh className="page noscreenshot" onRefresh={loadFirst}>
       <header className="page-header">
         <BackButton fallback="/boards" />
         <h2>{title}</h2>
@@ -189,11 +232,11 @@ export default function Board() {
             })}
           </ul>
 
-          <div className="pager">
-            <button className="btn-ghost btn-sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← 최신</button>
-            <span className="pager-now">{page + 1}페이지</span>
-            <button className="btn-ghost btn-sm" disabled={(posts?.length ?? 0) < PAGE_SIZE} onClick={() => setPage((p) => p + 1)}>이전 글 →</button>
-          </div>
+          {/* 무한 스크롤: 하단 센티넬이 보이면 과거 글을 PAGE_SIZE개씩 이어 로딩(에타식). */}
+          {posts === null && <p className="muted center">불러오는 중…</p>}
+          {hasMore && posts && posts.length > 0 && <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" />}
+          {loadingMore && posts && posts.length > 0 && <p className="muted center board-more-loading">불러오는 중…</p>}
+          {!hasMore && posts && posts.length > 0 && <p className="muted center board-more-end">모든 글을 불러왔어요</p>}
         </>
       )}
     </PullToRefresh>

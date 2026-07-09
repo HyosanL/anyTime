@@ -191,6 +191,9 @@ button.post-board-chip {
 button.post-board-chip:active { transform: scale(0.94); }
 @media (hover: hover) { button.post-board-chip:hover { filter: brightness(0.95); } }
 
+/* 무한 스크롤 하단 로딩/끝 표시 */
+.board-more-loading, .board-more-end { padding: 0.9rem 0 1.4rem; font-size: 0.8rem; }
+
 /* 본문 미리보기 1줄(흐림, 말줄임) */
 .post-item-preview {
   font-size: 0.84rem; color: var(--text-3); line-height: 1.4;
