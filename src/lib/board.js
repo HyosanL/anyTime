@@ -80,9 +80,14 @@ export async function shareImageObjectUrl(token, key, { thumb = false } = {}) {
 }
 
 // 데이터 (읽기는 RLS, 쓰기는 RPC)
+// 게시판 목록은 활동량(게시글 수) 많은 순. board_post(count) 임베드로 게시판별 글 수를
+// 서버에서 집계(전체 글 행을 받지 않음). 같은 수면 최근 활동순(서버 정렬 → JS 안정정렬로 유지).
 export const listBoards = (q) =>
-  supabase.from('board').select('*').ilike('name', `%${q || ''}%`)
-    .order('last_activity_at', { ascending: false }).limit(100).then((r) => r.data || []);
+  supabase.from('board').select('*, board_post(count)').ilike('name', `%${q || ''}%`)
+    .order('last_activity_at', { ascending: false }).limit(100)
+    .then((r) => (r.data || [])
+      .map((b) => ({ ...b, post_count: b.board_post?.[0]?.count ?? 0 }))
+      .sort((a, b) => b.post_count - a.post_count));
 export const createBoard = (name) => supabase.rpc('create_board', { p_name: name }).then((r) => r.data);
 export const getBoard = (id) => supabase.from('board').select('*').eq('id', id).maybeSingle().then((r) => r.data);
 export const PAGE_SIZE = 15;
