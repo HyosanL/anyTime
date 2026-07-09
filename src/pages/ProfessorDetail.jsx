@@ -141,6 +141,7 @@ export default function ProfessorDetail() {
           options={[
             { label: '교수명', target: 'professor', targetKey: { code }, field: 'name', current: profName },
             { label: '학과', target: 'professor', targetKey: { code }, field: 'department', current: prof?.department || '', placeholder: '예: 항공우주공학과' },
+            { label: '연구실 위치', target: 'professor', targetKey: { code }, field: 'office', current: prof?.office || '', placeholder: '예: 단재관 334호' },
           ]}
           onClose={() => setCorr(false)}
         />
