@@ -126,6 +126,7 @@ export default function ProfessorDetail() {
         <div className="prof-head-main">
           <p className="prof-head-name">{profName}</p>
           <p className="prof-head-dept">{prof?.department || '학과 미정'}</p>
+          {prof?.office && <p className="prof-head-office">📍 {prof.office}</p>}
         </div>
         <div className="prof-head-rating">
           <Stars value={overall} />

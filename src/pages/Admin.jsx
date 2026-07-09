@@ -73,7 +73,7 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
     setBusy('');
     if (r.ok) {
       setResult(r.data); setPreview(null);
-      setMsg(`✅ 반영 완료 — 추가 ${r.data.added} · 학과변경 ${r.data.updated} · 유지 ${r.data.unchanged}`);
+      setMsg(`✅ 반영 완료 — 추가 ${r.data.added} · 학과변경 ${r.data.updated} · 연구실 ${r.data.officeUpdated ?? 0} · 유지 ${r.data.unchanged}`);
       onApplied?.();
     } else setMsg(r.status === 'NO_DATA'
       ? '⚠️ 명단을 가져오지 못해 반영하지 않았습니다.'
@@ -96,7 +96,7 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
         {p && (
           <button className="btn-add" disabled={!!busy}
             onClick={doApply} title="추가/학과변경 반영">
-            {busy === 'apply' ? '반영 중…' : `반영하기 (추가 ${p.add.length}·변경 ${p.deptChanges.length})`}
+            {busy === 'apply' ? '반영 중…' : `반영하기 (추가 ${p.add.length}·학과 ${p.deptChanges.length}·연구실 ${p.officeChanges?.length ?? 0})`}
           </button>
         )}
       </div>
@@ -105,7 +105,7 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
       {p && (
         <div className="adm-expand">
           <p className="note">학과 {p.scanned.departments}개 · 교수 {p.scanned.professors}명 확인.
-            {' '}추가 <b>{p.add.length}</b> · 학과변경 <b>{p.deptChanges.length}</b> · 유지 {p.unchanged}
+            {' '}추가 <b>{p.add.length}</b> · 학과변경 <b>{p.deptChanges.length}</b> · 연구실 <b>{p.officeChanges?.length ?? 0}</b> · 유지 {p.unchanged}
             {p.ambiguous.length > 0 && <> · 동명이인 보류 {p.ambiguous.length}</>}
             {p.orphans.length > 0 && <> · 홈페이지에 없음 {p.orphans.length}</>}
           </p>
@@ -121,6 +121,13 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
             <div className="section-label adm-sub-label">학과 변경 ({p.deptChanges.length})</div>
             <div className="adm-tags">
               {p.deptChanges.map((c, i) => <span key={i} className="tag tag-primary">{c.name}: {c.from || '—'} → {c.to}</span>)}
+            </div>
+          </>}
+
+          {p.officeChanges?.length > 0 && <>
+            <div className="section-label adm-sub-label">연구실 변경 ({p.officeChanges.length})</div>
+            <div className="adm-tags">
+              {p.officeChanges.map((c, i) => <span key={i} className="tag tag-primary">{c.name}: {c.from || '—'} → {c.to}</span>)}
             </div>
           </>}
 
@@ -145,7 +152,7 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
       )}
 
       {result && (
-        <p className="note">반영 결과 — 추가 {result.added} · 학과변경 {result.updated} · 유지 {result.unchanged}
+        <p className="note">반영 결과 — 추가 {result.added} · 학과변경 {result.updated} · 연구실 {result.officeUpdated ?? 0} · 유지 {result.unchanged}
           {result.orphans > 0 && ` · 홈페이지에 없음 ${result.orphans}(유지)`}
           {result.ambiguous > 0 && ` · 동명이인 보류 ${result.ambiguous}`}
         </p>

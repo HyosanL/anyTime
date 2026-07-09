@@ -101,6 +101,7 @@ export default function ProfessorSearch() {
               <span className="dot">★ {Number(p.avg_overall).toFixed(1)}</span>
             )}
           </p>
+          {p.office && <p className="section-sub prof-office-sub">📍 {p.office}</p>}
         </div>
         <span className="row-chevron">›</span>
       </Link>

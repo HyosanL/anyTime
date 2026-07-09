@@ -600,6 +600,16 @@
   color: var(--text-3);
   margin-top: 0.2rem;
 }
+.prof-head-office {
+  font-size: 0.83rem;
+  color: var(--text-2);
+  margin-top: 0.2rem;
+}
+/* 검색 카드 내 연구실 위치(학과 아래 한 줄) */
+.prof-office-sub {
+  margin-top: 0.1rem;
+  color: var(--text-2);
+}
 .prof-head-rating {
   display: flex;
   flex-direction: column;

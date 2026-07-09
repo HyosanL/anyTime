@@ -190,30 +190,40 @@ async function scrapeAll(): Promise<{ profs: Prof[]; departments: string[]; erro
   return { profs, departments: [...leaves.values()], errors }
 }
 
+type DbProf = { code: string; name: string; department: string | null; office: string | null }
+
 // 크롤 결과 ↔ DB professor 비교(이름 기준 매칭)
-function diff(scraped: Prof[], dbRows: { code: string; name: string; department: string | null }[]) {
-  const byName = new Map<string, { code: string; name: string; department: string | null }[]>()
+function diff(scraped: Prof[], dbRows: DbProf[]) {
+  const byName = new Map<string, DbProf[]>()
   for (const r of dbRows) {
     const arr = byName.get(r.name) ?? []
     arr.push(r); byName.set(r.name, arr)
   }
   const add: Prof[] = []
   const deptChanges: { code: string; name: string; from: string | null; to: string }[] = []
+  const officeChanges: { code: string; name: string; from: string | null; to: string | null }[] = []
   const ambiguous: { name: string; dept: string }[] = []   // 동명이인 → 자동 변경 보류
   let unchanged = 0
   for (const p of scraped) {
     const rows = byName.get(p.name) ?? []
-    if (rows.length === 0) add.push(p)
-    else if (rows.length === 1) {
-      if ((rows[0].department ?? '') === p.dept) unchanged++
-      else deptChanges.push({ code: rows[0].code, name: p.name, from: rows[0].department, to: p.dept })
-    } else ambiguous.push({ name: p.name, dept: p.dept })
+    if (rows.length === 0) { add.push(p); continue }
+    if (rows.length > 1) { ambiguous.push({ name: p.name, dept: p.dept }); continue }  // 동명이인 보류
+    const r = rows[0]
+    let changed = false
+    if ((r.department ?? '') !== p.dept) {
+      deptChanges.push({ code: r.code, name: p.name, from: r.department, to: p.dept }); changed = true
+    }
+    // 연구실은 신규 채움(기존 NULL→값) 및 이전도 자동 반영. 사이트에서 못 읽어 빈값이면 건드리지 않음.
+    if (p.office && (r.office ?? '') !== p.office) {
+      officeChanges.push({ code: r.code, name: p.name, from: r.office, to: p.office }); changed = true
+    }
+    if (!changed) unchanged++
   }
   const scrapedNames = new Set(scraped.map((p) => p.name))
   const orphans = dbRows                                    // DB엔 있으나 사이트엔 없음(삭제 안 함, 안내만)
     .filter((r) => !scrapedNames.has(r.name))
     .map((r) => ({ code: r.code, name: r.name, department: r.department }))
-  return { add, deptChanges, ambiguous, orphans, unchanged }
+  return { add, deptChanges, officeChanges, ambiguous, orphans, unchanged }
 }
 
 Deno.serve(async (req) => {
@@ -254,7 +264,7 @@ Deno.serve(async (req) => {
       return json({ status: 'NO_DATA', detail: '교수 명단을 가져오지 못했습니다.', errors }, 502)
     }
 
-    const { data: dbRows } = await admin.from('professor').select('code, name, department')
+    const { data: dbRows } = await admin.from('professor').select('code, name, department, office')
     const d = diff(profs, dbRows ?? [])
 
     if (mode === 'preview') {
@@ -262,8 +272,9 @@ Deno.serve(async (req) => {
         status: 'OK', mode,
         scanned: { departments: departments.length, professors: profs.length },
         departments,
-        add: d.add.map((p) => ({ name: p.name, department: p.dept })),
+        add: d.add.map((p) => ({ name: p.name, department: p.dept, office: p.office })),
         deptChanges: d.deptChanges,
+        officeChanges: d.officeChanges,
         ambiguous: d.ambiguous,
         orphans: d.orphans,
         unchanged: d.unchanged,
@@ -271,11 +282,13 @@ Deno.serve(async (req) => {
       })
     }
 
-    // ── 반영(apply): 추가 + 학과 변경만. 삭제/보류(동명이인·orphan)는 손대지 않음. ──
+    // ── 반영(apply): 추가 + 학과/연구실 변경만. 삭제/보류(동명이인·orphan)는 손대지 않음. ──
     let added = 0
     for (const p of d.add) {
       const { data: code } = await admin.rpc('gen_professor_code')
-      await admin.from('professor').insert({ code, name: p.name, department: p.dept }).throwOnError()
+      await admin.from('professor')
+        .insert({ code, name: p.name, department: p.dept, office: p.office })
+        .throwOnError()
       added++
     }
     let updated = 0
@@ -283,13 +296,18 @@ Deno.serve(async (req) => {
       await admin.from('professor').update({ department: c.to }).eq('code', c.code).throwOnError()
       updated++
     }
+    let officeUpdated = 0
+    for (const c of d.officeChanges) {
+      await admin.from('professor').update({ office: c.to }).eq('code', c.code).throwOnError()
+      officeUpdated++
+    }
     const syncedAt = new Date().toISOString()
     await admin.from('app_setting').update({ professors_synced_at: syncedAt }).eq('id', 1)
 
     return json({
       status: 'OK', mode,
       scanned: { departments: departments.length, professors: profs.length },
-      added, updated, unchanged: d.unchanged,
+      added, updated, officeUpdated, unchanged: d.unchanged,
       ambiguous: d.ambiguous.length, orphans: d.orphans.length,
       syncedAt, errors,
     })
