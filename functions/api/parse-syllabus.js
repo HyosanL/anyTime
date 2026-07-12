@@ -124,6 +124,18 @@ function extractRows(s) {
   return null;
 }
 
+// 업스트림(Gemini) 실패는 502 가 아니라 500 으로 올린다.
+// Cloudflare 는 오리진이 502·504 를 반환하면 응답 본문을 자기 브랜드 에러 페이지(HTML)로
+// 갈아치운다(Origin Error Page Pass-thru 는 Enterprise 전용). 그래서 502 로 보내면
+// 아래 detail 이 통째로 버려지고 브라우저에는 "AI 파싱 실패 (HTTP 502)" 만 남아
+// 정작 필요한 사유(키 무효·쿼터·결제 미활성)를 볼 수 없다. 500 은 그대로 통과한다.
+// 브라우저뿐 아니라 Workers 로그(`wrangler pages deployment tail`)에도 남긴다 —
+// 관리자가 화면을 안 보고 있을 때 터진 실패를 나중에 추적할 수 있어야 한다.
+const fail = (detail) => {
+  console.error('[parse-syllabus]', detail);
+  return Response.json({ status: 'ERROR', detail }, { status: 500 });
+};
+
 export async function onRequestPost(context) {
   const { request, env, data } = context;
 
@@ -167,7 +179,7 @@ export async function onRequestPost(context) {
       }),
     });
   } catch (e) {
-    return Response.json({ status: 'ERROR', detail: `Gemini 호출 실패: ${e?.message || e}` }, { status: 502 });
+    return fail(`Gemini 호출 실패: ${e?.message || e}`);
   }
 
   const raw = await res.text();
@@ -175,21 +187,18 @@ export async function onRequestPost(context) {
     // Gemini 의 사유(모델명 오류·키 무효·결제 미활성·쿼터 등)를 그대로 올려보내 진단 가능하게 한다.
     let detail = raw.slice(0, 400);
     try { detail = JSON.parse(raw)?.error?.message || detail; } catch { /* 원문 유지 */ }
-    return Response.json({ status: 'ERROR', detail: `Gemini ${res.status}: ${detail}` }, { status: 502 });
+    return fail(`Gemini ${res.status}: ${detail}`);
   }
 
   let json;
   try { json = JSON.parse(raw); } catch {
-    return Response.json({ status: 'ERROR', detail: 'Gemini 응답이 JSON이 아닙니다.' }, { status: 502 });
+    return fail('Gemini 응답이 JSON이 아닙니다.');
   }
 
   const rows = extractRows(outputText(json));
   if (!rows) {
     // 응답 형태가 예상과 다르면 조용히 0건으로 넘기지 말고 원문 일부를 보여준다.
-    return Response.json(
-      { status: 'ERROR', detail: `Gemini 응답에서 rows를 찾지 못했습니다: ${JSON.stringify(json).slice(0, 300)}` },
-      { status: 502 },
-    );
+    return fail(`Gemini 응답에서 rows를 찾지 못했습니다: ${JSON.stringify(json).slice(0, 300)}`);
   }
   return Response.json({ status: 'OK', rows });
 }
