@@ -5,14 +5,14 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { supabase } from '../supabase';
+import { parseGridsOnPage, toItems, universalBlocks, crossCheck } from './grid';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const DAY_KO = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 };
 
-// ---------- PDF → 페이지별 텍스트 ----------
-async function pageToText(page) {
-  const tc = await page.getTextContent();
+// ---------- PDF → 페이지별 텍스트 + 주간 격자 ----------
+function pageToText(tc) {
   const lines = {};
   for (const it of tc.items) {
     if (!it.str) continue;
@@ -27,15 +27,20 @@ async function pageToText(page) {
     .join('\n');
 }
 
-export async function extractPdfPages(file) {
+// 페이지 텍스트(AI 로 보낼 것)와 주간 격자(좌표로 직접 읽는 것)를 한 번의 순회로 모은다.
+// 격자는 AI 를 부르지 않는다 — 전 생도 공통 비수업 시간과 교차검증의 근거가 공짜로 나온다.
+export async function extractPdf(file) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const pages = [];
+  const grids = [];
   for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    pages.push(await pageToText(page)); // eslint-disable-line no-await-in-loop
+    const page = await pdf.getPage(i);            // eslint-disable-line no-await-in-loop
+    const tc = await page.getTextContent();       // eslint-disable-line no-await-in-loop
+    pages.push(pageToText(tc));
+    grids.push(...parseGridsOnPage(toItems(tc))); // 격자가 아니면 아무것도 안 나온다
   }
-  return pages;
+  return { pages, grids };
 }
 
 // ---------- Gemini 파싱 호출 ----------
@@ -175,7 +180,7 @@ function groupTimes(slots) {
 
 // ---------- 메인: PDF → rows + periods ----------
 export async function parseSyllabus(file, { onProgress, noCache = false } = {}) {
-  const pages = await extractPdfPages(file);
+  const { pages, grids } = await extractPdf(file);
   const coursePages = pages.filter((p) => p.includes('담당교수'));
   const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
   const token = await authHeader();
@@ -205,7 +210,7 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
   });
 
   return {
-    rows: dedupeSections(perPage.flat()), periods, errors,
+    rows: dedupeSections(perPage.flat()), periods, errors, grids,
     pageCount: pages.length, coursePages: coursePages.length,
     model, cachedPages, // 관리자 화면에서 "몇 장이 공짜(캐시)였는지" 보여주기 위함
   };
@@ -454,7 +459,7 @@ function assignSectionNos(planned, pool, codeOfProf) {
 
 // ---------- 대조(reconcile): 기존 catalog와 비교 ----------
 // catalog: { course[], professor[], section[], section_time[] }
-export function reconcile(rows, periods, catalog, year, term) {
+export function reconcile(rows, periods, catalog, year, term, grids = []) {
   const courses = catalog?.course ?? [];
   const profs = catalog?.professor ?? [];
   const sections = catalog?.section ?? [];
@@ -548,11 +553,17 @@ export function reconcile(rows, periods, catalog, year, term) {
   const conflicts = findProfConflicts({ courses: courseList });
 
   // 전 생도 공통 비수업 시간 — 이 편람에서 '어떤 분반도 열리지 않는' 요일×교시.
-  // 시각은 이렇게 자동으로 나오고, 관리자는 이름(생도대시간·군사훈련…)만 붙인다.
+  // 이름(생도대·군사훈련·공통연구…)은 주간 격자에서 그대로 읽어 온다(AI 호출 0회).
   const periodNos = (periods.length ? periods.map((p) => p.no) : (catalog.period ?? []).map((p) => p.no))
     .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
-  const commonBlocks = deriveCommonBlocks(courseList, periodNos, catalog, year, term);
+  const gridBlocks = universalBlocks(grids);
+  const commonBlocks = deriveCommonBlocks(courseList, periodNos, catalog, year, term, gridBlocks);
+
+  // 세부내용 표 ↔ 주간 격자 대조. 표가 격자에 없는 '요일'을 주장하면 표가 틀린 것이다
+  // (2026-2 신호및시스템 1분반: 표 '월1 월2 목1' / 격자 '화1 화2 목1').
+  // 격자를 못 읽었거나(양식 변경) 격자가 그 과목을 다 적지 않았으면 조용히 건너뛴다.
+  const grid = crossCheck(rows, grids);
 
   return {
     year, term,
@@ -561,8 +572,10 @@ export function reconcile(rows, periods, catalog, year, term) {
     courses: courseList,
     conflicts,                   // 같은 교수·같은 교시 — 파싱 오류 신호. 적용은 막지 않고 보여만 준다.
     stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
-    commonBlocks,                // [{ day, start, end, label }] — 이름은 관리자가 채운다
+    commonBlocks,                // [{ day, start, end, label }] — 이름은 격자에서 자동, 관리자가 고칠 수 있다
     periodNos,
+    grid,                        // { checked, mismatches, coverage } — 격자 대조 결과
+    gridCount: grids.length,
     stats: {
       courses: courseList.length,
       newCourses: courseList.filter((c) => c.code == null).length,
@@ -573,6 +586,7 @@ export function reconcile(rows, periods, catalog, year, term) {
       staleSections: stale.length,
       conflicts: conflicts.length,
       commonBlocks: commonBlocks.length,
+      gridWarnings: grid.mismatches.length,
     },
   };
 }
@@ -583,7 +597,7 @@ export function reconcile(rows, periods, catalog, year, term) {
 // 시간표 마법사가 이 시간을 '빈 시간(공강교시)'으로 세지 않는 근거가 된다 — 원래 수업이
 // 없는 시간이므로. 시각은 이렇게 자동으로 나오고, 이름만 관리자가 붙인다.
 // 이미 붙여 둔 이름(catalog.common_block)이 있으면 그대로 이어받는다(재적용해도 안 지워짐).
-export function deriveCommonBlocks(courseList, periodNos, catalog, year, term) {
+export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, gridBlocks = []) {
   if (!periodNos.length) return [];
   const used = new Set();
   for (const c of courseList) {
@@ -596,8 +610,13 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term) {
   }
   if (!used.size) return [];   // 파싱 결과가 비면 유도하지 않는다(전 시간이 '비수업'이 되어 버린다)
 
-  // 이미 저장된 이름 — 교시 단위로 펼쳐 두고 새 블록에 이어 붙인다.
+  // 이름은 두 곳에서 온다. 교시 단위로 펼쳐 두고 새 블록에 이어 붙인다.
+  //   ① 주간 격자(생도대·군사훈련·공통연구…) — 편람이 직접 말해 주는 이름. AI 호출 0회.
+  //   ② 이미 저장된 common_block — 관리자가 손으로 고친 것이니 격자보다 우선한다.
   const prev = {};
+  for (const b of gridBlocks) {
+    for (let p = b.start; p <= b.end; p++) prev[`${b.day}-${p}`] = b.label;
+  }
   for (const b of catalog.common_block ?? []) {
     if (b.year !== year || b.term !== term) continue;
     for (let p = b.start_period; p <= b.end_period; p++) prev[`${b.day_of_week}-${p}`] = b.label;

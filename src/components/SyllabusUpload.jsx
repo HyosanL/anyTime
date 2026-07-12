@@ -4,6 +4,13 @@ import { getCatalog } from '../lib/cache';
 const DAY = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 const fmtTimes = (blocks) =>
   (blocks || []).map((b) => `${DAY[b.day]}${b.start}${b.end > b.start ? `-${b.end}` : ''}`).join(' ') || '시간미정';
+// 격자 대조용 "요일-교시" 키 목록 → "월1 월2 목1"
+const fmtSlots = (keys) =>
+  (keys || [])
+    .map((k) => k.split('-').map(Number))
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    .map(([d, p]) => `${DAY[d]}${p}`)
+    .join(' ');
 
 function downloadCsv(name, text) {
   const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' });
@@ -54,17 +61,19 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       let rows;
       let periods = [];
       let errors = [];
+      let grids = [];   // 주간 격자(좌표로 직접 읽음 — AI 호출 0회)
       if (isCsv) {
         const text = paste.trim() ? paste : await file.text();
         ({ rows, periods } = lib.parseCsvRows(text));
       } else {
         let model; let cachedPages; let coursePages;
-        ({ rows, periods, errors = [], model, cachedPages, coursePages } = await lib.parseSyllabus(file, {
+        ({ rows, periods, errors = [], grids = [], model, cachedPages, coursePages } = await lib.parseSyllabus(file, {
           noCache,
           onProgress: (d, t) => setProgress({ label: 'AI 분석 중…', done: d, total: t }),
         }));
         const billed = coursePages - cachedPages;
-        setCost(`${model} · ${coursePages}장 중 ${cachedPages}장은 캐시(무과금), ${billed}장 호출`);
+        setCost(`${model} · ${coursePages}장 중 ${cachedPages}장은 캐시(무과금), ${billed}장 호출`
+          + (grids.length ? ` · 주간 격자 ${grids.length}장은 AI 없이 직접 읽음(무과금)` : ''));
       }
       if (!rows.length) {
         // 서버가 실패해서 비었다면 PDF 형식 탓으로 오인시키지 말고 실제 사유를 보여준다.
@@ -75,7 +84,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       }
       // 일부 페이지만 실패한 경우: 결과는 보여주되 누락 가능성을 경고한다.
       if (errors.length) setErr(`일부 페이지 분석 실패(${errors.length}건) — 과목이 누락됐을 수 있습니다: ${errors[0]}`);
-      setPlan(lib.reconcile(rows, periods, catalog || {}, Number(year), Number(term)));
+      setPlan(lib.reconcile(rows, periods, catalog || {}, Number(year), Number(term), grids));
     } catch (e) {
       setErr('분석 실패: ' + (e?.message || e));
     } finally {
@@ -240,7 +249,36 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
             {conflicts.length > 0 && <span className="tag tag-warn">시간 충돌 {conflicts.length}</span>}
             {plan.stats.commonBlocks > 0 && <span className="tag">비수업 시간 {plan.stats.commonBlocks}</span>}
+            {plan.stats.gridWarnings > 0 && <span className="tag tag-warn">격자와 어긋남 {plan.stats.gridWarnings}</span>}
           </div>
+
+          {/* 세부내용 표 ↔ 주간 격자 대조. 편람의 표 자체가 틀리는 일이 있다 —
+              2026-2 신호및시스템 1분반은 표가 '월1 월2 목1', 격자가 '화1 화2 목1' 이었다.
+              AI 는 표를 충실히 옮길 뿐이라 이건 격자로만 잡힌다(AI 호출 0회). */}
+          {plan.grid?.mismatches?.length > 0 && (
+            <div className="syl-conflicts">
+              <div className="section-label adm-sub-label">
+                ⚠️ 주간 격자와 어긋나는 분반 ({plan.grid.mismatches.length})
+              </div>
+              <p className="note">
+                편람의 <b>세부내용 표</b>가 말하는 요일이 같은 편람의 <b>주간 격자</b>에 없습니다.
+                이런 경우 <b>표가 틀린 것</b>입니다(격자가 정답). 아래를 확인하고 CSV로 바로잡아 올리세요.
+                {' '}격자를 못 읽는 편람(양식이 다른 해)에서는 이 대조를 건너뜁니다.
+              </p>
+              <div className="syl-list">
+                {plan.grid.mismatches.map((m) => (
+                  <div className="syl-conflict" key={`${m.course}-${m.sectionNo}`}>
+                    <b>{m.course} {m.sectionNo}분반</b>
+                    <div className="muted">
+                      표: {fmtSlots(m.table)} · 격자: {fmtSlots(m.grid)}
+                      {' — 격자에 없는 요일: '}
+                      <b>{m.badDays.map((d) => DAY[d]).join(', ')}</b>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {conflicts.length > 0 && (
             <div className="syl-conflicts">
