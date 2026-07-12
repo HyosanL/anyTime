@@ -214,8 +214,11 @@ export function generateCombos({ courses, blocked, periodNos, noClass = new Set(
   // 1) 기피 시간과 겹치는 묶음을 먼저 걷어낸다.
   const prepared = courses.map((c) => {
     const all = (c.options ?? []).map((g) => ({ g, mask: timeMask(g.times) }));
-    const options = all.filter(({ mask }) => isEmptyMask(mask) || !overlaps(mask, bm));
-    return { code: c.code, name: c.name, options, blockedOut: all.length - options.length };
+    const keep = (x) => isEmptyMask(x.mask) || !overlaps(x.mask, bm);
+    const options = all.filter(keep);
+    // 사람이 세는 단위는 '분반'이다 — 빠진 시간 묶음이 아니라 빠진 분반 수를 알려준다.
+    const dropped = all.filter((x) => !keep(x)).reduce((n, x) => n + x.g.sections.length, 0);
+    return { code: c.code, name: c.name, options, blockedOut: dropped };
   });
 
   const blockedOut = prepared.filter((c) => c.blockedOut > 0)

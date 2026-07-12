@@ -564,8 +564,8 @@ export default function Wizard() {
                     <div>
                       <p className="wz-find-name">{c.name}</p>
                       <p className="wz-find-sub">
-                        {c.code} · 시간 {c.groups.length}가지
-                        {c.sections.length > c.groups.length && ` · 분반 ${c.sections.length}개`}
+                        {c.code} · 분반 {c.sections.length}개
+                        {c.sections.length > c.groups.length && ` (시간 ${c.groups.length}가지)`}
                       </p>
                     </div>
                     <button className="btn-add btn-sm" onClick={() => addCourse(c)}>＋ 담기</button>
@@ -587,7 +587,7 @@ export default function Wizard() {
                 <li key={it.course.code} className="wz-picked-row">
                   <div>
                     <p className="wz-find-name">{it.course.name}</p>
-                    <p className="wz-find-sub">{it.course.code} · 시간 {it.course.groups.length}가지</p>
+                    <p className="wz-find-sub">{it.course.code} · 분반 {it.course.sections.length}개</p>
                   </div>
                   <button className="btn-remove btn-sm" onClick={() => dropCourse(it.course.code)}>제거</button>
                 </li>
@@ -619,14 +619,16 @@ export default function Wizard() {
           <ul className="wz-courses">
             {items.map((it) => {
               const all = it.course.groups;
-              const n = it.options.length;
+              const n = it.options.length;                                  // 켠 시간 묶음 수
+              const allSecs = it.course.sections.length;                    // 이 과목의 분반 총수
+              const onSecs = it.options.reduce((k, g) => k + g.sections.length, 0);   // 켠 분반 수
               return (
                 <li key={it.course.code} className={`wz-course${n === 0 ? ' is-bad' : ''}`}>
                   <div className="wz-course-head">
                     <span className="wz-dot" style={{ background: colorOf(it.course.code) }} aria-hidden="true" />
                     <span className="wz-course-name">{it.course.name}</span>
-                    <span className={`wz-count${n > 0 && n < all.length ? ' is-narrow' : ''}`}>
-                      시간 {all.length}가지 중 {n}가지
+                    <span className={`wz-count${onSecs < allSecs ? ' is-narrow' : ''}`}>
+                      분반 {allSecs}개 중 {onSecs}개
                     </span>
                     <span className="wz-course-ops">
                       <button className="link-btn" onClick={() => setAllGroups(it.course.code, true)}>모두</button>
@@ -638,16 +640,20 @@ export default function Wizard() {
                     {all.map((g) => {
                       const on = !it.offKeys.has(g.key);
                       const many = g.sections.length > 1;
+                      // 분반 번호가 먼저다 — 사람은 '몇 분반'으로 강의를 고른다.
+                      // 같은 시간에 교수만 다르면 그 분반들을 함께 적는다(1·2·3분반).
+                      const nos = g.sections.map((s) => s.section_no).join('·');
                       return (
                         <li key={g.key}>
                           <label className={`wz-sec${on ? ' is-on' : ''}`}>
                             <input type="checkbox" checked={on} onChange={() => toggleGroup(it.course.code, g.key)} />
-                            <span className="wz-sec-time">{formatTimes(g.times)}</span>
+                            <span className="wz-sec-no">{nos}분반</span>
                             <span className="wz-sec-prof">
                               {many
                                 ? `교수 ${g.sections.length}명`
-                                : `${g.sections[0].section_no}분반 · ${g.sections[0].professor_name ?? '교수 미정'}`}
+                                : (g.sections[0].professor_name ?? '교수 미정')}
                             </span>
+                            <span className="wz-sec-time">{formatTimes(g.times)}</span>
                           </label>
 
                           {/* 같은 시간에 교수가 여럿이면, 못 듣는 교수를 여기서 끈다.
@@ -676,9 +682,11 @@ export default function Wizard() {
                     })}
                   </ul>
 
-                  {n === 0 && <p className="wz-warn">시간을 하나 이상 켜거나, 이 과목을 빼세요.</p>}
-                  {n > 0 && n < all.length && (
-                    <p className="wz-note">이 과목은 켠 {n}가지 시간만 사용합니다.</p>
+                  {n === 0 && <p className="wz-warn">분반을 하나 이상 켜거나, 이 과목을 빼세요.</p>}
+                  {onSecs > 0 && onSecs < allSecs && (
+                    <p className="wz-note">
+                      이 과목은 {it.options.flatMap((g) => g.sections.map((s) => s.section_no)).sort((a, b) => a - b).join('·')}분반만 사용합니다.
+                    </p>
                   )}
                 </li>
               );
@@ -802,7 +810,7 @@ export default function Wizard() {
 
               {result.blockedOut.length > 0 && (
                 <p className="wz-note">
-                  기피 시간 때문에 제외된 시간: {result.blockedOut.map((b) => `${b.name} ${b.n}가지`).join(', ')}
+                  기피 시간 때문에 제외된 분반: {result.blockedOut.map((b) => `${b.name} ${b.n}개`).join(', ')}
                 </p>
               )}
               {slots && slots.existing >= MAX_PER_SEM && slots.empty.length === 0 && (
