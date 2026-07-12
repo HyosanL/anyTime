@@ -497,6 +497,13 @@ export function reconcile(rows, periods, catalog, year, term) {
 
   const conflicts = findProfConflicts({ courses: courseList });
 
+  // 전 생도 공통 비수업 시간 — 이 편람에서 '어떤 분반도 열리지 않는' 요일×교시.
+  // 시각은 이렇게 자동으로 나오고, 관리자는 이름(생도대시간·군사훈련…)만 붙인다.
+  const periodNos = (periods.length ? periods.map((p) => p.no) : (catalog.period ?? []).map((p) => p.no))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  const commonBlocks = deriveCommonBlocks(courseList, periodNos, catalog, year, term);
+
   return {
     year, term,
     periods, includePeriods: periods.length > 0,
@@ -504,6 +511,8 @@ export function reconcile(rows, periods, catalog, year, term) {
     courses: courseList,
     conflicts,                   // 같은 교수·같은 교시 — 파싱 오류 신호. 적용은 막지 않고 보여만 준다.
     stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
+    commonBlocks,                // [{ day, start, end, label }] — 이름은 관리자가 채운다
+    periodNos,
     stats: {
       courses: courseList.length,
       newCourses: courseList.filter((c) => c.code == null).length,
@@ -513,8 +522,50 @@ export function reconcile(rows, periods, catalog, year, term) {
       reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
       staleSections: stale.length,
       conflicts: conflicts.length,
+      commonBlocks: commonBlocks.length,
     },
   };
+}
+
+// ---------- 전 생도 공통 비수업 시간 ----------
+// 편람에서 '어떤 분반도 열리지 않는' 요일×교시 = 생도대시간·군사훈련·자율선택형교과 …
+// (2026-2 편람 기준: 화3·4, 화7·8, 목7·8, 금5~8 이 통째로 비어 있다)
+// 시간표 마법사가 이 시간을 '빈 시간(공강교시)'으로 세지 않는 근거가 된다 — 원래 수업이
+// 없는 시간이므로. 시각은 이렇게 자동으로 나오고, 이름만 관리자가 붙인다.
+// 이미 붙여 둔 이름(catalog.common_block)이 있으면 그대로 이어받는다(재적용해도 안 지워짐).
+export function deriveCommonBlocks(courseList, periodNos, catalog, year, term) {
+  if (!periodNos.length) return [];
+  const used = new Set();
+  for (const c of courseList) {
+    if (c.include === false) continue;
+    for (const s of c.sections ?? []) {
+      for (const b of s.times ?? []) {
+        for (let p = b.start; p <= b.end; p++) used.add(`${b.day}-${p}`);
+      }
+    }
+  }
+  if (!used.size) return [];   // 파싱 결과가 비면 유도하지 않는다(전 시간이 '비수업'이 되어 버린다)
+
+  // 이미 저장된 이름 — 교시 단위로 펼쳐 두고 새 블록에 이어 붙인다.
+  const prev = {};
+  for (const b of catalog.common_block ?? []) {
+    if (b.year !== year || b.term !== term) continue;
+    for (let p = b.start_period; p <= b.end_period; p++) prev[`${b.day_of_week}-${p}`] = b.label;
+  }
+
+  const out = [];
+  for (let d = 1; d <= 5; d++) {          // 평일만 — 주말은 원래 수업이 없다
+    let run = null;
+    periodNos.forEach((p, i) => {
+      if (used.has(`${d}-${p}`)) { run = null; return; }
+      const label = prev[`${d}-${p}`] ?? '';
+      // 이어진 칸이라도 이름이 다르면 다른 블록으로 끊는다(생도대시간 ↔ 군사훈련).
+      if (run && run.lastIdx === i - 1 && run.label === label) { run.end = p; run.lastIdx = i; return; }
+      run = { day: d, start: p, end: p, label, lastIdx: i };
+      out.push(run);
+    });
+  }
+  return out.map(({ day, start, end, label }) => ({ day, start, end, label }));
 }
 
 // ---------- 검토: 같은 교수, 같은 시간 ----------
@@ -607,5 +658,13 @@ export async function applyPlan(plan, { onProgress } = {}) {
       removed = { sections: r.removed || 0, entries: r.entries || 0 };
     }
   }
-  return { courses: totalC, sections: totalS, removed };
+
+  // 4) 전 생도 공통 비수업 시간의 이름(생도대시간·군사훈련…). 이름을 붙인 것만 저장한다.
+  //    그 학기 것을 통째로 교체하므로 재적용해도 중복되지 않는다.
+  const blocks = (plan.commonBlocks ?? []).filter((b) => String(b.label ?? '').trim());
+  const named = await callAdmin('apply_common_blocks', {
+    year: plan.year, term: plan.term, blocks,
+  });
+
+  return { courses: totalC, sections: totalS, removed, blocks: named?.blocks ?? 0 };
 }

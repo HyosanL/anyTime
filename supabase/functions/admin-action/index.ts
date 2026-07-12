@@ -378,11 +378,31 @@ Deno.serve(async (req) => {
       }
       case 'delete_catalog': {
         const table = String(payload.table)
-        if (!['professor', 'course', 'semester', 'period', 'section', 'section_time'].includes(table)) {
+        if (!['professor', 'course', 'semester', 'period', 'section', 'section_time', 'common_block'].includes(table)) {
           return json({ status: 'BAD_REQUEST' }, 400)
         }
         await admin.from(table).delete().match(payload.key as Record<string, unknown>).throwOnError()
         return json({ status: 'OK' })
+      }
+      // 전 생도 공통 비수업 시간(생도대시간·군사훈련…)의 '이름'을 그 학기 통째로 교체한다.
+      // 시각(요일·교시)은 편람에서 자동 유도되므로 여기서는 이름만 싣는다.
+      // section_time 과 같은 교체 의미(그 학기 것을 지우고 새로 넣는다) — 재적용이 멱등.
+      case 'apply_common_blocks': {
+        const year = payload.year
+        const term = payload.term
+        await ensureSemester(admin, year, term)
+        await admin.from('common_block').delete().match({ year, term }).throwOnError()
+        const rows = ((payload.blocks as any[]) ?? [])
+          .filter((b) => b?.day && b?.start && String(b.label ?? '').trim())
+          .map((b) => ({
+            year, term,
+            day_of_week: b.day,
+            start_period: b.start,
+            end_period: b.end ?? b.start,
+            label: String(b.label).trim().slice(0, 20),
+          }))
+        if (rows.length) await admin.from('common_block').insert(rows).throwOnError()
+        return json({ status: 'OK', blocks: rows.length })
       }
       // AI 강의 일괄등록 1단계: 교수 생성/수정 + 교시. 교수 이름→코드 맵 반환.
       case 'apply_syllabus_meta': {

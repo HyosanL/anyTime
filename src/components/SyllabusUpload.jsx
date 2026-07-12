@@ -92,7 +92,8 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       const cleaned = r.removed
         ? ` 편람에 없던 기존 분반 ${r.removed.sections}개 삭제${r.removed.entries ? ` (생도 시간표 ${r.removed.entries}건에서 함께 제거됨)` : ''}.`
         : '';
-      setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.${cleaned}`);
+      const named = r.blocks ? ` 비수업 시간 이름 ${r.blocks}개 저장.` : '';
+      setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.${cleaned}${named}`);
       setPlan(null); setFile(null); setPaste('');
       onApplied?.();
     } catch (e) {
@@ -125,6 +126,13 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   }
   function setCourseInclude(i, v) {
     patchPlan((p) => { const arr = [...p.courses]; arr[i] = { ...arr[i], include: v }; p.courses = arr; });
+  }
+  function setBlockLabel(i, v) {
+    patchPlan((p) => {
+      const arr = [...p.commonBlocks];
+      arr[i] = { ...arr[i], label: v };
+      p.commonBlocks = arr;
+    });
   }
 
   const canAnalyze = isCsv ? (!!paste.trim() || !!file) : !!file;
@@ -213,6 +221,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
             {conflicts.length > 0 && <span className="tag tag-warn">시간 충돌 {conflicts.length}</span>}
+            {plan.stats.commonBlocks > 0 && <span className="tag">비수업 시간 {plan.stats.commonBlocks}</span>}
           </div>
 
           {conflicts.length > 0 && (
@@ -241,6 +250,46 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
               <input type="checkbox" checked={plan.includePeriods} onChange={(e) => patchPlan((p) => { p.includePeriods = e.target.checked; })} />
               교시 시각 {plan.periods.length}개도 갱신 ({plan.periods.map((p) => `${p.no}:${p.start}`).join(', ')})
             </label>
+          )}
+
+          {/* 전 생도 공통 비수업 시간 — 이 편람에서 어떤 분반도 열리지 않는 요일·교시.
+              시각은 자동으로 나오고, 관리자는 이름만 붙인다(생도대시간·군사훈련·자율선택형교과). */}
+          {plan.commonBlocks?.length > 0 && (
+            <div className="syl-blocks">
+              <div className="section-label adm-sub-label">
+                전 생도 비수업 시간 ({plan.commonBlocks.length}) — 이름 붙이기
+              </div>
+              <p className="note">
+                이 편람에서 <b>어떤 분반도 열리지 않는</b> 시간입니다(생도대시간·군사훈련·자율선택형교과 등).
+                이름을 붙이면 <b>시간표 마법사 격자에 그대로 뜨고</b>, 마법사가 이 시간을
+                <b> 빈 시간(공강)으로 세지 않습니다</b>. 비워 두면 이름 없이 ‘수업 없는 시간’으로만 보입니다
+                (계산은 이름과 무관하게 됩니다).
+              </p>
+              <div className="syl-list">
+                {plan.commonBlocks.map((b, i) => (
+                  <div className="syl-block" key={`${b.day}-${b.start}`}>
+                    <span className="syl-block-when">
+                      {DAY[b.day]} {b.start}{b.end > b.start ? `~${b.end}` : ''}교시
+                    </span>
+                    <input
+                      className="syl-block-label"
+                      list="syl-block-names"
+                      maxLength={20}
+                      placeholder="이름 (비워도 됨)"
+                      value={b.label}
+                      onChange={(e) => setBlockLabel(i, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+              <datalist id="syl-block-names">
+                <option value="생도대시간" />
+                <option value="군사훈련" />
+                <option value="자율선택형교과" />
+                <option value="전 생도 연구시간" />
+                <option value="체육" />
+              </datalist>
+            </div>
           )}
 
           <div className="section-label adm-sub-label">교수 ({plan.professors.length}) — 매칭 확인</div>

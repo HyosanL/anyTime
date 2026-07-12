@@ -15,11 +15,12 @@ const SYNCED_KEY = '_syncedAt';
 const SCHEMA_KEY = '_schema';
 // 캐시된 행의 모양이 바뀌면 올린다 → 옛 캐시를 무시하고 서버에서 다시 받는다.
 //   2: section.id(대체키) 추가 — 시간표가 분반을 id 로 참조(2026-07-12)
-const SCHEMA_VERSION = 2;
+//   3: common_block(전 생도 비수업 시간 이름) 추가 — 시간표 마법사(2026-07-13)
+const SCHEMA_VERSION = 3;
 const STALE_MS = 24 * 60 * 60 * 1000; // 24시간 (강의 데이터는 학기당 거의 불변 → egress 절감. 관리자 수정 시 당겨서 새로고침으로 즉시 반영)
 
 // 캐시할 카탈로그 테이블 (공용 읽기 전용 데이터)
-const TABLES = ['professor', 'semester', 'course', 'period', 'section', 'section_time'];
+const TABLES = ['professor', 'semester', 'course', 'period', 'common_block', 'section', 'section_time'];
 
 function getDB() {
   return openDB(DB_NAME, DB_VERSION, {
@@ -54,6 +55,7 @@ const ORDER_KEYS = {
   semester: ['year', 'term'],
   course: ['code'],
   period: ['no'],
+  common_block: ['year', 'term', 'day_of_week', 'start_period'],
   section: ['id'],
   section_time: ['course_code', 'year', 'term', 'section_no', 'day_of_week', 'start_period'],
 };

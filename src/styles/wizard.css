@@ -136,12 +136,37 @@
 .wz-sec-prof { color: var(--text-2); flex: none; }
 .wz-sec-time { margin-left: auto; color: var(--text-3); font-size: 0.76rem; text-align: right; }
 
+/* 같은 시간 안의 교수(분반)들 — 못 듣는 교수를 여기서 끈다 */
+.wz-profs {
+  list-style: none;
+  margin: 0.25rem 0 0.35rem 1.6rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.wz-prof {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.wz-prof.is-on { border-color: var(--primary-weak-border); background: var(--primary-weak); color: var(--text-2); }
+.wz-prof input { accent-color: var(--primary); }
+
 .wz-note {
   margin: 0.4rem 0 0;
   font-size: 0.76rem;
   color: var(--text-3);
   line-height: 1.4;
 }
+.wz-noclass-note { margin-bottom: 0.5rem; }
 .wz-warn {
   margin: 0.4rem 0 0;
   font-size: 0.78rem;
@@ -176,6 +201,25 @@
   background: var(--danger-weak);
   border-color: var(--danger-border);
   box-shadow: inset 0 0 0 1px var(--danger-border);
+}
+/* 전 생도 비수업 시간(생도대·군사훈련…) — 칠할 것이 없으니 누를 수 없다 */
+.wz-block-cell.is-noclass {
+  background: repeating-linear-gradient(
+    45deg, var(--chip-bg), var(--chip-bg) 4px, transparent 4px, transparent 8px
+  );
+  border-style: dashed;
+  cursor: default;
+  overflow: hidden;
+}
+.wz-block-label {
+  display: block;
+  font-size: 0.5rem;
+  line-height: 1;
+  color: var(--text-3);
+  padding: 0 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wz-clear { display: block; margin: 0.5rem auto 0; }
 
@@ -237,9 +281,19 @@
   gap: 0.35rem;
   font-size: 0.78rem;
   color: var(--text-2);
-  padding: 0.12rem 0;
+  padding: 0.14rem 0;
 }
 .wz-cand-secs b { color: var(--text); }
+.wz-cand-course { font-weight: 600; color: var(--text); }
+.wz-cand-time { color: var(--text-3); font-size: 0.72rem; }
+/* 같은 시간에 교수가 여럿일 때 — 시간표는 그대로 두고 담을 분반만 고른다 */
+.wz-prof-pick {
+  margin-left: auto;
+  max-width: 55%;
+  font-size: 0.74rem;
+  padding: 0.15rem 0.3rem;
+}
+.wz-cand-secs .muted { margin-left: auto; font-size: 0.74rem; }
 
 .wz-pairs { margin: 0.5rem 0; font-size: 0.82rem; color: var(--danger); }
 .wz-pairs li { padding: 0.15rem 0; }
@@ -285,6 +339,13 @@
   max-width: 100%;
 }
 .wz-mini-cell i { font-size: 0.55rem; font-style: normal; opacity: 0.75; }
+/* 비수업 시간 — 수업이 배정될 수 없는 칸(빈 시간으로 세지 않는다) */
+.wz-mini td.is-noclass {
+  background: repeating-linear-gradient(
+    45deg, var(--chip-bg), var(--chip-bg) 3px, transparent 3px, transparent 6px
+  );
+  border-style: dashed;
+}
 
 /* 저장 확인 */
 .wz-confirm {

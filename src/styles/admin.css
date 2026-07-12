@@ -545,3 +545,20 @@ code {
   border: 1px solid var(--warn-border);
   border-radius: var(--r-md);
 }
+
+/* 전 생도 비수업 시간에 이름 붙이기(편람 일괄등록 미리보기) */
+.syl-blocks { display: flex; flex-direction: column; gap: 0.3rem; }
+.syl-block {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+}
+.syl-block-when {
+  flex: none;
+  width: 6.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.syl-block-label { flex: 1; font-size: 0.85rem; }
