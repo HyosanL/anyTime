@@ -164,6 +164,13 @@
   font-weight: 600;
   cursor: pointer;
 }
+/* 드롭다운 안의 마법사 진입 — 같은 줄 스타일이되 링크라 정렬만 맞춘다 */
+.tt-switch-wiz {
+  display: block;
+  margin-top: 0;
+  text-align: center;
+  text-decoration: none;
+}
 .tt-switch-new {
   display: flex;
   flex-direction: column;
@@ -197,6 +204,10 @@
 }
 .tt-empty-cta {
   margin-top: 0.85rem;
+}
+.tt-empty-wiz {
+  display: inline-block;
+  margin-top: 0.55rem;
 }
 .tt-empty-hint {
   margin-top: 0.7rem;

@@ -1,0 +1,334 @@
+/* ============================================================
+   시간표 마법사 (/wizard)
+   - 색은 전부 토큰(var(--...)). 단, 과목 칸의 파스텔 배경은 데이터성 값이라
+     JS 팔레트에서 인라인으로 들어오고 글자색은 --on-pastel 로 고정한다.
+   ============================================================ */
+
+.wizard .wz-lead {
+  margin: 0.6rem 0 0.9rem;
+  color: var(--text-2);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.wizard .wz-lead strong { color: var(--text); }
+
+/* 진행 표시 ① ② ③ ④ */
+.wz-steps {
+  display: flex;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.2rem 0 0.4rem;
+  padding: 0;
+}
+.wz-step {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.2rem;
+  border-radius: var(--r-full);
+  background: var(--chip-bg);
+  color: var(--text-3);
+  font-size: 0.78rem;
+}
+.wz-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: var(--r-full);
+  background: var(--card);
+  color: var(--text-3);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.wz-step.is-on {
+  background: var(--primary-weak);
+  color: var(--primary);
+  font-weight: 700;
+}
+.wz-step.is-on .wz-step-n { background: var(--primary); color: var(--on-primary); }
+.wz-step.is-done { color: var(--text-2); }
+.wz-step.is-done .wz-step-n { background: var(--success-weak); color: var(--success); }
+
+/* 학기 선택 */
+.wz-sem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.wz-sem label { font-size: 0.85rem; color: var(--text-2); }
+.wz-sem select { flex: 1; }
+
+/* 검색 결과 · 담은 과목 */
+.wz-find, .wz-picked, .wz-courses, .wz-cands, .wz-saved, .wz-plan, .wz-pairs, .wz-cand-secs, .wz-secs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wz-find-row, .wz-picked-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.wz-find-name { margin: 0; font-weight: 600; font-size: 0.92rem; color: var(--text); }
+.wz-find-sub { margin: 0.1rem 0 0; font-size: 0.78rem; color: var(--text-3); }
+
+/* 과목 색 점 */
+.wz-dot {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: var(--r-full);
+  flex: none;
+}
+
+/* ── 2단계: 분반 고르기 ───────────────────────────────────────── */
+.wz-course {
+  padding: 0.7rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.wz-course.is-bad { border-color: var(--danger-border); background: var(--danger-weak); }
+.wz-course-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+.wz-course-name { font-weight: 700; font-size: 0.92rem; color: var(--text); }
+.wz-count {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--r-full);
+  background: var(--chip-bg);
+}
+.wz-count.is-narrow { color: var(--primary); background: var(--primary-weak); font-weight: 700; }
+.wz-course-ops { margin-left: auto; display: flex; gap: 0.35rem; }
+
+.wz-secs li { margin-bottom: 0.25rem; }
+.wz-sec {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.wz-sec.is-on { border-color: var(--primary-weak-border); background: var(--primary-weak); }
+.wz-sec input { flex: none; accent-color: var(--primary); }
+.wz-sec-no { font-weight: 700; color: var(--text); flex: none; }
+.wz-sec-prof { color: var(--text-2); flex: none; }
+.wz-sec-time { margin-left: auto; color: var(--text-3); font-size: 0.76rem; text-align: right; }
+
+.wz-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.76rem;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.wz-warn {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ── 3단계: 기피 시간 격자 ────────────────────────────────────── */
+.wz-block-wrap { overflow-x: auto; }
+.wz-block {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.wz-block th {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-weight: 600;
+  padding: 0.2rem;
+}
+.wz-block td { padding: 1px; }
+.wz-block-cell {
+  display: block;
+  width: 100%;
+  height: 1.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  cursor: pointer;
+}
+.wz-block-cell.is-on {
+  background: var(--danger-weak);
+  border-color: var(--danger-border);
+  box-shadow: inset 0 0 0 1px var(--danger-border);
+}
+.wz-clear { display: block; margin: 0.5rem auto 0; }
+
+.wz-sortbox {
+  margin-top: 1rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.wz-sort-label { margin: 0 0 0.45rem; font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.wz-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.1rem;
+  font-size: 0.84rem;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.wz-sort.is-on { color: var(--primary); font-weight: 600; }
+.wz-sort input { accent-color: var(--primary); }
+
+/* ── 4단계: 후보 ──────────────────────────────────────────────── */
+.wz-cand {
+  padding: 0.7rem 0.75rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.wz-cand.is-on {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), var(--shadow-sm);
+}
+.wz-cand-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.5rem;
+}
+.wz-cand-rank {
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--text-3);
+  flex: none;
+}
+.wz-cand-stats {
+  font-size: 0.76rem;
+  color: var(--text-2);
+  line-height: 1.3;
+}
+.wz-cand-head button { margin-left: auto; flex: none; }
+
+.wz-cand-secs { margin-top: 0.5rem; }
+.wz-cand-secs li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  padding: 0.12rem 0;
+}
+.wz-cand-secs b { color: var(--text); }
+
+.wz-pairs { margin: 0.5rem 0; font-size: 0.82rem; color: var(--danger); }
+.wz-pairs li { padding: 0.15rem 0; }
+
+/* 후보 미리보기 격자 */
+.wz-mini {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.wz-mini th {
+  font-size: 0.68rem;
+  color: var(--text-3);
+  font-weight: 600;
+  padding: 0.15rem 0;
+}
+.wz-mini-corner { width: 1.2rem; }
+.wz-mini-p { width: 1.2rem; }
+.wz-mini td {
+  height: 1.55rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.wz-mini-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.05;
+  color: var(--on-pastel);
+  padding: 0 1px;
+}
+.wz-mini-cell b {
+  font-size: 0.6rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.wz-mini-cell i { font-size: 0.55rem; font-style: normal; opacity: 0.75; }
+
+/* 저장 확인 */
+.wz-confirm {
+  margin-top: 0.9rem;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid var(--primary-weak-border);
+  border-radius: var(--r-md);
+  background: var(--primary-weak);
+}
+.wz-confirm h3 { margin: 0 0 0.6rem; font-size: 0.95rem; color: var(--text); }
+.wz-plan li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.wz-plan-name {
+  flex: none;
+  width: 8.5rem;
+  font-size: 0.85rem;
+}
+.wz-plan-how { font-size: 0.76rem; color: var(--text-2); }
+
+/* 확정 지정 */
+.wz-saved li { margin-bottom: 0.4rem; }
+.wz-saved-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+  cursor: pointer;
+}
+.wz-saved-row input { accent-color: var(--primary); }
+.wz-saved-name { font-weight: 600; color: var(--text); }
+.wz-saved-row .muted { margin-left: auto; font-size: 0.78rem; }
+
+/* 하단 버튼 */
+.wz-nav { margin-top: 1rem; }
+.wz-nav-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.wz-nav-row button { flex: 1; }

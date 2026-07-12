@@ -118,6 +118,35 @@ export async function removeSection(timetableId, sectionId) {
   if (error) throw error;
 }
 
+// 여러 분반을 한 번에 담는다(마법사가 후보를 저장할 때 — 분반 수만큼 왕복하지 않고 요청 1회).
+// 겹침·학기 검사는 그대로 DB 트리거가 한다. 마법사는 겹치지 않는 조합만 만들어 오므로
+// 여기서 걸리면 그 사이에 카탈로그가 바뀐 것(관리자 수정) — 호출부가 사유를 보여준다.
+export async function addSections(timetableId, sectionIds) {
+  const ids = [...new Set(sectionIds ?? [])];
+  if (!ids.length) return;
+  const { error } = await supabase
+    .from('timetable_entry')
+    .insert(ids.map((section_id) => ({ timetable_id: timetableId, section_id })));
+  if (error) throw error;
+  kvDel(entryKey(timetableId));   // 캐시 스냅샷 무효화 → 홈이 새로 읽는다
+}
+
+// 학기당 5개 상한 때문에, 마법사는 '비어 있는 시간표'(담긴 분반 0 + 직접추가 0)를 후보로 재사용한다.
+// (신규 계정이 갖고 있는 빈 '내 시간표'가 대표적 — 그대로 두면 후보를 4개밖에 못 만든다)
+// 시간표를 하나씩 열어보지 않고 두 번의 요청으로 학기 전체를 센다.
+export async function findEmptyTimetables(ids) {
+  const list = [...new Set(ids ?? [])];
+  if (!list.length) return new Set();
+  const [{ data: entries, error: e1 }, { data: customs, error: e2 }] = await Promise.all([
+    supabase.from('timetable_entry').select('timetable_id').in('timetable_id', list),
+    supabase.from('custom_class').select('timetable_id').in('timetable_id', list),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const used = new Set([...(entries ?? []), ...(customs ?? [])].map((r) => r.timetable_id));
+  return new Set(list.filter((id) => !used.has(id)));
+}
+
 // 확정 시간표들에 담긴 분반 id(모든 학기) — '내가 듣는 강의' 표시용(교수 검색 등)
 export async function listPrimarySectionIds() {
   const { data, error } = await supabase

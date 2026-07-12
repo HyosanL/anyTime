@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 // 홈 시간표 카드의 제목 = 시간표 전환 드롭다운.
 // 목록에서 전환하고, 그 자리에서 확정 지정·이름 변경·삭제·새로 만들기까지 처리한다.
@@ -162,7 +163,13 @@ export default function TimetableSwitcher({
               <p className="account-note">학기당 5개까지. 새 시간표는 빈 상태로 시작합니다.</p>
             </form>
           ) : (
-            <button type="button" className="tt-switch-add" onClick={openCreate}>＋ 새 시간표 만들기</button>
+            <>
+              <button type="button" className="tt-switch-add" onClick={openCreate}>＋ 새 시간표 만들기</button>
+              {/* 여러 경우의 수를 한 번에: 과목·가능한 분반만 고르면 조합을 만들어 준다 */}
+              <Link to="/wizard" className="tt-switch-add tt-switch-wiz" onClick={close}>
+                🪄 시간표 마법사로 짜기
+              </Link>
+            </>
           )}
         </div>
       )}

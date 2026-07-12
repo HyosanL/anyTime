@@ -14,6 +14,7 @@ import LocationHelp from './components/LocationHelp';
 // (특히 강의평·게시판 계열은 korcen, 관리자는 pdfjs 를 끌고 오므로 초기 번들에서 반드시 분리)
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const CourseSearch = lazy(() => import('./pages/CourseSearch'));
+const Wizard = lazy(() => import('./pages/Wizard'));
 const ProfessorSearch = lazy(() => import('./pages/ProfessorSearch'));
 const EmptyRooms = lazy(() => import('./pages/EmptyRooms'));
 const ProfessorDetail = lazy(() => import('./pages/ProfessorDetail'));
@@ -154,6 +155,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/search" element={<ProtectedRoute><CourseSearch /></ProtectedRoute>} />
+          <Route path="/wizard" element={<ProtectedRoute><Wizard /></ProtectedRoute>} />
           <Route path="/professors" element={<ProtectedRoute><ProfessorSearch /></ProtectedRoute>} />
           <Route path="/rooms" element={<ProtectedRoute><EmptyRooms /></ProtectedRoute>} />
           <Route path="/professor/:code" element={<ProtectedRoute><ProfessorDetail /></ProtectedRoute>} />

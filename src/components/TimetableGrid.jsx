@@ -107,6 +107,7 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], onDeleteCu
         <p className="tt-empty-title">아직 시간표가 비어 있어요</p>
         <p className="muted">수업을 검색해 시간표에 추가해 보세요.</p>
         <Link to="/search" className="btn btn-primary tt-empty-cta">🔍 강의 검색하기</Link>
+        <Link to="/wizard" className="link-btn tt-empty-wiz">🪄 마법사로 한 번에 짜기</Link>
         <p className="tt-empty-hint">DB에 없는 수업은 위 ‘＋ 직접 추가’로 넣을 수 있어요.</p>
       </div>
     );
