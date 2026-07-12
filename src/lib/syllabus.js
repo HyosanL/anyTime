@@ -38,7 +38,7 @@ export async function extractPdfPages(file) {
   return pages;
 }
 
-// ---------- Workers AI 파싱 호출 ----------
+// ---------- Gemini 파싱 호출 ----------
 async function authHeader() {
   const { data } = await supabase.auth.getSession();
   const t = data?.session?.access_token;
@@ -53,7 +53,49 @@ const PARSE_ERRORS = {
   UNAUTH: '로그인이 만료되었습니다. 다시 로그인해 주세요.',
 };
 
-async function callParse(kind, text, token) {
+// ---------- 파싱 결과 캐시 ----------
+// 같은 PDF 를 다시 올리면(실패 후 재시도·설정만 바꿔 재실행) 페이지 텍스트가 그대로라
+// Gemini 를 다시 부를 이유가 없다. 캐시가 없던 탓에 재시도 몇 번으로 무료 한도를 태웠다.
+// 키에 모델을 넣는다 — GEMINI_MODEL 을 바꿨는데 옛 모델의 결과를 물려받으면 안 된다.
+// 프롬프트·스키마를 고치면 CACHE_V 를 올려 통째로 무효화한다.
+const CACHE_V = 1;
+const CACHE_PREFIX = 'syllabus-parse:';
+
+async function cacheKey(model, kind, text) {
+  const buf = new TextEncoder().encode(`${CACHE_V}|${model}|${kind}|${text}`);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return CACHE_PREFIX + [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+const cacheGet = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } };
+
+// 용량 초과 시엔 낡은 항목(옛 모델·옛 CACHE_V)이 쌓인 것이므로 싹 비우고 한 번만 재시도한다.
+// 그래도 안 되면 캐시를 포기할 뿐, 파싱 자체는 막지 않는다.
+const cacheSet = (k, rows) => {
+  const v = JSON.stringify(rows);
+  try { localStorage.setItem(k, v); } catch {
+    try { clearParseCache(); localStorage.setItem(k, v); } catch { /* 있으면 좋고 없어도 그만 */ }
+  }
+};
+
+export function clearParseCache() {
+  for (const k of Object.keys(localStorage)) if (k.startsWith(CACHE_PREFIX)) localStorage.removeItem(k);
+}
+
+// 서버에 설정된 모델명을 묻는다. 캐시 키에 넣기 위한 것이고, Gemini 는 부르지 않아 공짜다.
+async function currentModel(token) {
+  try {
+    const res = await fetch('/api/parse-syllabus', { headers: { Authorization: token } });
+    return (await res.json())?.model || 'unknown';
+  } catch { return 'unknown'; }
+}
+
+async function callParse(model, kind, text, token, useCache) {
+  const key = await cacheKey(model, kind, text);
+  if (useCache) {
+    const hit = cacheGet(key);
+    if (hit) return { rows: hit, cached: true };
+  }
   try {
     const res = await fetch('/api/parse-syllabus', {
       method: 'POST',
@@ -65,7 +107,9 @@ async function callParse(kind, text, token) {
       const known = PARSE_ERRORS[j.status];
       return { rows: [], error: known || j.detail || `AI 파싱 실패 (HTTP ${res.status})` };
     }
-    return { rows: Array.isArray(j.rows) ? j.rows : [] };
+    const rows = Array.isArray(j.rows) ? j.rows : [];
+    cacheSet(key, rows); // 성공만 캐시한다 — 에러를 캐시하면 영영 실패한 채로 굳는다.
+    return { rows };
   } catch (e) {
     return { rows: [], error: `AI 파싱 요청 실패: ${e?.message || e}` };
   }
@@ -130,16 +174,19 @@ function groupTimes(slots) {
 }
 
 // ---------- 메인: PDF → rows + periods ----------
-export async function parseSyllabus(file, { onProgress } = {}) {
+export async function parseSyllabus(file, { onProgress, noCache = false } = {}) {
   const pages = await extractPdfPages(file);
   const coursePages = pages.filter((p) => p.includes('담당교수'));
   const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
   const token = await authHeader();
+  const model = await currentModel(token);
+  const useCache = !noCache;
   const errors = [];
+  let cachedPages = 0;
 
   let periods = [];
   if (periodPages.length) {
-    const { rows: raw, error } = await callParse('periods', periodPages[0], token);
+    const { rows: raw, error } = await callParse(model, 'periods', periodPages[0], token, useCache);
     if (error) errors.push(error);
     periods = raw
       .map((p) => ({ no: Number(p.no) || 0, start: String(p.start || '').slice(0, 5), end: String(p.end || '').slice(0, 5) }))
@@ -149,8 +196,9 @@ export async function parseSyllabus(file, { onProgress } = {}) {
 
   let done = 0;
   const perPage = await mapLimit(coursePages, 3, async (txt) => {
-    const { rows, error } = await callParse('courses', txt, token);
+    const { rows, error, cached } = await callParse(model, 'courses', txt, token, useCache);
     if (error) errors.push(error);
+    if (cached) cachedPages += 1;
     done += 1;
     onProgress?.(done, coursePages.length);
     return rows.map(normRow).filter(Boolean);
@@ -170,7 +218,11 @@ export async function parseSyllabus(file, { onProgress } = {}) {
       if (!prev.room && r.room) prev.room = r.room;
     }
   }
-  return { rows: [...byKey.values()], periods, errors, pageCount: pages.length, coursePages: coursePages.length };
+  return {
+    rows: [...byKey.values()], periods, errors,
+    pageCount: pages.length, coursePages: coursePages.length,
+    model, cachedPages, // 관리자 화면에서 "몇 장이 공짜(캐시)였는지" 보여주기 위함
+  };
 }
 
 // ---------- CSV 소스: 표 CSV → rows (parseSyllabus 와 같은 rows 형태) ----------

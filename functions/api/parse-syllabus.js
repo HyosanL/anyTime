@@ -13,7 +13,12 @@
 // 유료 등급(결제 활성화)에서 쓸 것 — 무료 등급은 제출 내용이 Google 학습에 사용된다.
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/interactions';
-const MODEL = 'gemini-3.5-flash';
+
+// 기본을 Flash-Lite 로 둔다. 이 작업(표 텍스트 → 행 추출)은 프런티어 추론이 필요 없고,
+// Flash 대비 입력 $1.50→$0.25, 출력 $9.00→$1.50 (1M 토큰당)으로 6배 싸다.
+// 수강편람 1회 분석(~19콜) 기준 약 $0.43 → $0.07.
+// 품질이 모자라면 코드 수정 없이 Pages 환경변수 GEMINI_MODEL 로 갈아끼운다(예: gemini-3.5-flash).
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
 const DAY_HINT = '요일 숫자: 월=1, 화=2, 수=3, 목=4, 금=5, 토=6, 일=7.';
 
@@ -136,6 +141,12 @@ const fail = (detail) => {
   return Response.json({ status: 'ERROR', detail }, { status: 500 });
 };
 
+// 현재 설정된 모델명만 알려준다. 클라이언트가 파싱 캐시 키에 넣으려고 묻는 것이라
+// Gemini 는 부르지 않는다(과금 0). 로그인 검증은 _middleware.js 가 이미 마쳤다.
+export function onRequestGet({ env }) {
+  return Response.json({ status: 'OK', model: env.GEMINI_MODEL || DEFAULT_MODEL });
+}
+
 export async function onRequestPost(context) {
   const { request, env, data } = context;
 
@@ -167,13 +178,15 @@ export async function onRequestPost(context) {
   const sys = kind === 'periods' ? PERIOD_SYS : COURSE_SYS;
   const schema = kind === 'periods' ? PERIOD_SCHEMA : COURSE_SCHEMA;
 
+  const model = env.GEMINI_MODEL || DEFAULT_MODEL;
+
   let res;
   try {
     res = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         input: `${sys}\n\n--- 페이지 텍스트 ---\n${text}`,
         response_format: { type: 'text', mime_type: 'application/json', schema },
       }),
@@ -200,5 +213,5 @@ export async function onRequestPost(context) {
     // 응답 형태가 예상과 다르면 조용히 0건으로 넘기지 말고 원문 일부를 보여준다.
     return fail(`Gemini 응답에서 rows를 찾지 못했습니다: ${JSON.stringify(json).slice(0, 300)}`);
   }
-  return Response.json({ status: 'OK', rows });
+  return Response.json({ status: 'OK', rows, model });
 }

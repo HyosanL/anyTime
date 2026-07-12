@@ -27,6 +27,9 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   const [plan, setPlan] = useState(null);
   const [err, setErr] = useState('');
   const [result, setResult] = useState('');
+  // 같은 PDF 재분석은 캐시로 공짜(Gemini 미호출). 파싱이 틀렸을 때만 캐시를 버리고 새로 부른다.
+  const [noCache, setNoCache] = useState(false);
+  const [cost, setCost] = useState('');
 
   function patchPlan(updater) {
     setPlan((p) => {
@@ -36,7 +39,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
     });
   }
 
-  function resetOut() { setPlan(null); setResult(''); }
+  function resetOut() { setPlan(null); setResult(''); setCost(''); }
 
   async function analyze() {
     if (isCsv && !paste.trim() && !file) return setErr('CSV 파일을 선택하거나 아래에 붙여넣으세요.');
@@ -53,9 +56,13 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
         const text = paste.trim() ? paste : await file.text();
         ({ rows, periods } = lib.parseCsvRows(text));
       } else {
-        ({ rows, periods, errors = [] } = await lib.parseSyllabus(file, {
+        let model; let cachedPages; let coursePages;
+        ({ rows, periods, errors = [], model, cachedPages, coursePages } = await lib.parseSyllabus(file, {
+          noCache,
           onProgress: (d, t) => setProgress({ label: 'AI 분석 중…', done: d, total: t }),
         }));
+        const billed = coursePages - cachedPages;
+        setCost(`${model} · ${coursePages}장 중 ${cachedPages}장은 캐시(무과금), ${billed}장 호출`);
       }
       if (!rows.length) {
         // 서버가 실패해서 비었다면 PDF 형식 탓으로 오인시키지 말고 실제 사유를 보여준다.
@@ -163,6 +170,13 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
         </label>
       )}
 
+      {!isCsv && (
+        <label className="note">
+          <input type="checkbox" checked={noCache} onChange={(e) => { setNoCache(e.target.checked); resetOut(); }} />
+          {' '}캐시 무시하고 다시 분석 (AI를 새로 호출 — 파싱 결과가 틀렸을 때만)
+        </label>
+      )}
+
       <button className="btn-add btn-block" disabled={busy || !canAnalyze} onClick={analyze}>
         {busy && !plan ? '분석 중…' : (isCsv ? 'CSV 분석' : 'PDF 분석')}
       </button>
@@ -170,6 +184,8 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       {progress && (
         <p className="note syl-progress">{progress.label}{progress.total ? ` (${progress.done}/${progress.total})` : ''}</p>
       )}
+
+      {cost && !progress && <p className="note">{cost}</p>}
       {err && <p className="error-msg">{err}</p>}
       {result && <p className="admin-msg is-ok">{result}</p>}
 
