@@ -204,25 +204,74 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
     return rows.map(normRow).filter(Boolean);
   });
 
-  // 페이지 간 중복(교양선택 등 반복) 제거: course|sectionNo 키
-  const byKey = new Map();
-  for (const r of perPage.flat()) {
-    const key = `${r.course}|${r.sectionNo}`;
-    const prev = byKey.get(key);
-    if (!prev) byKey.set(key, r);
-    else {
-      // 더 정보가 많은 쪽 유지(교수/시간 보강)
-      if (!prev.professor && r.professor) prev.professor = r.professor;
-      if (!prev.department && r.department) prev.department = r.department;
-      if ((r.times?.length || 0) > (prev.times?.length || 0)) prev.times = r.times;
-      if (!prev.room && r.room) prev.room = r.room;
-    }
-  }
   return {
-    rows: [...byKey.values()], periods, errors,
+    rows: dedupeSections(perPage.flat()), periods, errors,
     pageCount: pages.length, coursePages: coursePages.length,
     model, cachedPages, // 관리자 화면에서 "몇 장이 공짜(캐시)였는지" 보여주기 위함
   };
+}
+
+// ---------- 같은 과목 안에서 분반 정리 ----------
+// 지금까지는 `과목|분반번호`로 묶었다. 그런데 편람은 교반 번호를 중복 인쇄한다 —
+// 알고리즘·데이터마이닝·분사추진기관은 서로 다른 두 분반이 둘 다 '교반 1'로 찍혀 있었고,
+// 번호로만 묶는 바람에 뒤에 온 분반이 통째로 사라졌다(2026-2 적재에서 5개 분반 유실).
+//
+// 그래서 신원을 '번호'가 아니라 '내용(시간)'으로 본다:
+//   · 번호도 같고 시간도 같다  → 같은 분반이 여러 페이지에 반복 게재된 것 → 합친다.
+//   · 번호는 같은데 시간이 다르다 → 서로 다른 분반이다 → 둘 다 살리고 번호를 새로 준다.
+//   · 시간이 비어 있는 행은, 그 번호에 시간 있는 행이 딱 하나면 거기에 흡수시킨다(정보 보강).
+const slotsKey = (r) => (r.times ?? []).map((t) => `${t.day}:${t.period}`).sort().join(',');
+
+export function dedupeSections(rows) {
+  const fill = (dst, src) => {
+    if (!dst.professor && src.professor) dst.professor = src.professor;
+    if (!dst.department && src.department) dst.department = src.department;
+    if (!dst.room && src.room) dst.room = src.room;
+  };
+
+  // 1) 과목|번호 로 모으고, 그 안에서 시간별로 나눈다.
+  const groups = new Map();
+  for (const r of rows) {
+    const k = `${r.course}|${r.sectionNo}`;
+    (groups.get(k) ?? groups.set(k, []).get(k)).push(r);
+  }
+
+  const out = [];
+  for (const list of groups.values()) {
+    const byTimes = new Map();
+    for (const r of list) {
+      const tk = slotsKey(r);
+      const prev = byTimes.get(tk);
+      if (!prev) byTimes.set(tk, { ...r });
+      else fill(prev, r);
+    }
+    const timed = [...byTimes.keys()].filter((k) => k !== '');
+    if (byTimes.has('') && timed.length === 1) {   // 시간 없는 행 → 유일한 시간 있는 행에 흡수
+      fill(byTimes.get(timed[0]), byTimes.get(''));
+      byTimes.delete('');
+    }
+    out.push(...byTimes.values());
+  }
+
+  // 2) 한 과목 안에서 번호가 겹치면 뒤엣것에 빈 번호를 준다(앞엣것은 편람 번호를 지킨다).
+  //    새 번호를 고를 때 '다른 분반이 뒤에서 쓸 번호'는 피한다 — 1,1,2,3 에서 두 번째 1 에
+  //    2 를 주면 진짜 2분반과 부딪힌다.
+  const present = new Map();   // course → Set(편람에 등장한 모든 번호)
+  for (const r of out) {
+    (present.get(r.course) ?? present.set(r.course, new Set()).get(r.course)).add(r.sectionNo);
+  }
+  const used = new Map();      // course → Set(이번에 확정한 번호)
+  for (const r of out) {
+    const p = present.get(r.course);
+    const u = used.get(r.course) ?? used.set(r.course, new Set()).get(r.course);
+    if (!u.has(r.sectionNo)) { u.add(r.sectionNo); continue; }
+    let n = 1;
+    while (u.has(n) || p.has(n)) n++;
+    r.sectionNo = n;
+    u.add(n);
+    p.add(n);
+  }
+  return out;
 }
 
 // ---------- CSV 소스: 표 CSV → rows (parseSyllabus 와 같은 rows 형태) ----------
@@ -326,7 +375,8 @@ export function parseCsvRows(text) {
       room: p.room,
     }))
     .filter(Boolean);
-  return { rows, periods: [] };
+  // CSV 도 같은 그물을 통과시킨다 — 사람이 분반 번호를 겹쳐 적어도 분반이 사라지지 않는다.
+  return { rows: dedupeSections(rows), periods: [] };
 }
 
 export const CSV_TEMPLATE = [
