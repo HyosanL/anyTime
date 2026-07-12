@@ -127,7 +127,9 @@ export default function Post() {
     setReacted(getReacted('post', id));
     const r = await react(Number(id), on ? `un${kind}` : kind);
     if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); kvDel(`bb:post:${id}`); navigate(-1); return; }
-    if (r === 'ALREADY') alert('이미 신고한 글입니다.');  // 다른 기기/캐시 삭제로 로컬 기록이 비었을 때
+    // 'ALREADY' = 서버가 이미 내 반응을 갖고 있다(다른 기기에서 눌렀거나 로컬 기록이 지워진 경우).
+    // 좋아요/싫어요는 로컬 상태만 맞추면 되니 조용히 넘어가고, 신고만 안내한다.
+    if (r === 'ALREADY' && kind === 'report') alert('이미 신고한 글입니다.');
     load();
   }
   async function submitComment(e) {
