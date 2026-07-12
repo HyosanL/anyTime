@@ -1,55 +1,133 @@
-// 강의 PDF에서 브라우저(pdf.js)가 뽑은 페이지 텍스트를 Workers AI로 구조화한다.
+// 강의 PDF에서 브라우저(pdf.js)가 뽑은 페이지 텍스트를 Gemini 로 구조화한다.
 // 요청(JSON): { kind: 'courses'|'periods', text: string }
 // 응답: { status:'OK', rows:[...] }  — 과목-분반 행 또는 교시 행
 // _middleware.js 가 로그인 검증을 마쳤고(data.user), 여기서 추가로 is_admin 을 확인한다.
+//
+// ※ Workers AI(무료 뉴런 10,000/일)에서 옮겨왔다. 수강편람 1회 분석에 페이지당 1회씩
+//   호출이 나가는데(이 PDF 기준 ~18회), 70B 모델로는 한 번 돌리면 하루치 무료 한도를
+//   거의 다 써서 두 번째 실행부터 4006(한도초과)으로 죽었다.
+// ※ PDF 원본을 그대로 Gemini 에 보내지 않는 이유: Worker 에서 수 MB PDF 를 base64 로
+//   인코딩하면 무료 플랜의 요청당 CPU 10ms 제한(에러 1102)에 걸린다. 텍스트만 보낸다.
+//
+// 필요한 시크릿: GEMINI_API_KEY (Pages 대시보드 Secret 또는 `wrangler pages secret put`).
+// 유료 등급(결제 활성화)에서 쓸 것 — 무료 등급은 제출 내용이 Google 학습에 사용된다.
 
-const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const API = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+const MODEL = 'gemini-3.5-flash';
 
 const DAY_HINT = '요일 숫자: 월=1, 화=2, 수=3, 목=4, 금=5, 토=6, 일=7.';
 
-const COURSE_SYS = `너는 공군사관학교 수강편람(한국어)에서 OCR로 뽑은 어수선한 페이지 텍스트를 표 데이터로 정리한다.
-오직 JSON 배열만 출력한다. 각 원소 = 한 "과목-분반":
-{
- "course": "과목명(내부 공백 제거)",
- "sectionNo": 분반 번호 숫자 ("1(3반)"이면 1, "2(2반)"이면 2),
- "professor": "담당교수 성명" 또는 null (계급 모르면 이름만, '강사'/'수탁' 등은 그대로),
- "department": "교수 소속(전공/학과 머리말에서 유추)" 또는 null,
- "times": [{ "day": 1~7, "period": 교시숫자 }]  ("월1 월2 금3" → [{"day":1,"period":1},{"day":1,"period":2},{"day":5,"period":3}]),
- "room": "강의실" 또는 null,
- "area": "교양필수/교양선택/전공필수/전공선택/군사학 등" 또는 null
-}
+const COURSE_SYS = `너는 공군사관학교 수강편람(한국어) PDF에서 추출한 어수선한 페이지 텍스트를 표 데이터로 정리한다.
+각 행 = 한 "과목-분반".
 규칙:
 - ${DAY_HINT}
 - 분반마다 1개 객체. 한 과목에 분반 1,2,3 이 서로 다른 교수/시간이면 3개 객체로.
+- sectionNo 는 분반 번호 숫자 ("1(3반)"이면 1, "2(2반)"이면 2).
+- 교반 표기 "1(월12수1)" 은 분반 1 이 월1,월2,수1 교시라는 뜻이다 → times: [{day:1,period:1},{day:1,period:2},{day:3,period:1}].
+- "3(목34금2)" 은 분반 3 이 목3,목4,금2 교시.
 - 과목명 안의 공백 제거: "교 양 글 쓰 기" → "교양글쓰기", "프 로 그 래 밍" → "프로그래밍".
-- 다음은 강의가 아니므로 제외: 페이지 머리말, 생도 현황(이름 목록), 일과시간표, 요일 머리글, "전 생도 연구시간","생도대시간","체육","군사훈련","점심식사","학과준비".
-- 코드는 절대 만들지 마라(과목코드/교수코드 출력 금지).
+- 담당교수가 여러 명(팀티칭)이면 첫 번째 1명만.
+- 다음은 강의가 아니므로 제외: 페이지 머리말, 생도 현황(이름 목록), 일과시간표, 요일 머리글,
+  "전 생도 연구시간","공통연구","생도대","체육","군사훈련","점심식사","학과준비","자기주도적역량".
+- 과목코드/교수코드는 절대 만들지 마라.
 - 확실하지 않으면 그 행을 빼라(억지로 채우지 말 것).
-출력은 JSON 배열 하나뿐. 설명/문장 금지.`;
+- 모르는 값은 빈 문자열("")로 둔다.`;
 
 const PERIOD_SYS = `너는 한국어 "생도 일과시간표"에서 교시별 시각을 추출한다.
-오직 JSON 배열만 출력: [{ "no": 교시숫자, "start": "HH:MM", "end": "HH:MM" }]
 - 실제 교시(1교시~8교시)만. "점심식사","학과준비" 등은 제외.
-- "08:10 ~ 09:00" → {"no":1,"start":"08:10","end":"09:00"}.
-출력은 JSON 배열 하나뿐.`;
+- "08:10 ~ 09:00" → { no:1, start:"08:10", end:"09:00" }.`;
 
-function extractJsonArray(s) {
-  if (!s) return [];
-  const a = s.indexOf('[');
-  const b = s.lastIndexOf(']');
-  if (a < 0 || b < 0 || b < a) return [];
-  try {
-    const v = JSON.parse(s.slice(a, b + 1));
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
+const COURSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    rows: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          course: { type: 'string', description: '과목명(내부 공백 제거)' },
+          sectionNo: { type: 'integer', description: '분반 번호' },
+          professor: { type: 'string', description: '담당교수 성명. 모르면 ""' },
+          department: { type: 'string', description: '교수 소속(학과/전공 머리말에서 유추). 모르면 ""' },
+          room: { type: 'string', description: '강의실. 모르면 ""' },
+          times: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                day: { type: 'integer', description: '월=1 … 일=7' },
+                period: { type: 'integer', description: '교시 번호' },
+              },
+              required: ['day', 'period'],
+            },
+          },
+        },
+        required: ['course', 'sectionNo', 'times'],
+      },
+    },
+  },
+  required: ['rows'],
+};
+
+const PERIOD_SCHEMA = {
+  type: 'object',
+  properties: {
+    rows: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          no: { type: 'integer' },
+          start: { type: 'string', description: 'HH:MM' },
+          end: { type: 'string', description: 'HH:MM' },
+        },
+        required: ['no', 'start', 'end'],
+      },
+    },
+  },
+  required: ['rows'],
+};
+
+// Interactions API 응답에서 모델이 낸 텍스트를 꺼낸다.
+// output_text 가 편의 필드지만 REST 원본에 늘 있다고 보장하지 않아 steps 순회로도 폴백한다.
+function outputText(j) {
+  if (typeof j?.output_text === 'string' && j.output_text) return j.output_text;
+  const parts = [];
+  for (const step of Array.isArray(j?.steps) ? j.steps : []) {
+    for (const c of Array.isArray(step?.content) ? step.content : []) {
+      if (typeof c?.text === 'string') parts.push(c.text);
+    }
   }
+  if (parts.length) return parts.join('');
+  // 레거시 generateContent 형태 대비
+  const legacy = j?.candidates?.[0]?.content?.parts?.map((p) => p?.text).filter(Boolean).join('');
+  return legacy || '';
+}
+
+// 스키마를 강제해도 코드펜스/설명이 섞여 오는 경우가 있어 관대하게 파싱한다.
+function extractRows(s) {
+  if (!s) return null;
+  const tryParse = (t) => { try { return JSON.parse(t); } catch { return null; } };
+  let v = tryParse(s);
+  if (!v) {
+    const a = s.indexOf('{');
+    const b = s.lastIndexOf('}');
+    if (a >= 0 && b > a) v = tryParse(s.slice(a, b + 1));
+  }
+  if (!v) {
+    const a = s.indexOf('[');
+    const b = s.lastIndexOf(']');
+    if (a >= 0 && b > a) v = tryParse(s.slice(a, b + 1));
+  }
+  if (Array.isArray(v)) return v;
+  if (Array.isArray(v?.rows)) return v.rows;
+  return null;
 }
 
 export async function onRequestPost(context) {
   const { request, env, data } = context;
 
-  // 관리자만 (Workers AI 남용 방지)
+  // 관리자만 (외부 API 남용·과금 방지)
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/is_admin`, {
       method: 'POST',
@@ -61,10 +139,12 @@ export async function onRequestPost(context) {
       body: '{}',
     });
     const ok = await r.json().catch(() => false);
-    if (!ok) return Response.json({ status: 'FORBIDDEN' }, { status: 403 });
+    if (ok !== true) return Response.json({ status: 'FORBIDDEN' }, { status: 403 });
   } catch {
     return Response.json({ status: 'FORBIDDEN' }, { status: 403 });
   }
+
+  if (!env.GEMINI_API_KEY) return Response.json({ status: 'NO_GEMINI_KEY' }, { status: 500 });
 
   let body;
   try { body = await request.json(); } catch { return Response.json({ status: 'BAD_REQUEST' }, { status: 400 }); }
@@ -73,18 +153,43 @@ export async function onRequestPost(context) {
   if (!text.trim()) return Response.json({ status: 'OK', rows: [] });
 
   const sys = kind === 'periods' ? PERIOD_SYS : COURSE_SYS;
+  const schema = kind === 'periods' ? PERIOD_SCHEMA : COURSE_SCHEMA;
+
+  let res;
   try {
-    const out = await env.AI.run(MODEL, {
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: text },
-      ],
-      max_tokens: 4096,
-      temperature: 0.1,
+    res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        model: MODEL,
+        input: `${sys}\n\n--- 페이지 텍스트 ---\n${text}`,
+        response_format: { type: 'text', mime_type: 'application/json', schema },
+      }),
     });
-    const raw = typeof out === 'string' ? out : (out.response ?? '');
-    return Response.json({ status: 'OK', rows: extractJsonArray(raw) });
   } catch (e) {
-    return Response.json({ status: 'ERROR', detail: String(e?.message || e) }, { status: 500 });
+    return Response.json({ status: 'ERROR', detail: `Gemini 호출 실패: ${e?.message || e}` }, { status: 502 });
   }
+
+  const raw = await res.text();
+  if (!res.ok) {
+    // Gemini 의 사유(모델명 오류·키 무효·결제 미활성·쿼터 등)를 그대로 올려보내 진단 가능하게 한다.
+    let detail = raw.slice(0, 400);
+    try { detail = JSON.parse(raw)?.error?.message || detail; } catch { /* 원문 유지 */ }
+    return Response.json({ status: 'ERROR', detail: `Gemini ${res.status}: ${detail}` }, { status: 502 });
+  }
+
+  let json;
+  try { json = JSON.parse(raw); } catch {
+    return Response.json({ status: 'ERROR', detail: 'Gemini 응답이 JSON이 아닙니다.' }, { status: 502 });
+  }
+
+  const rows = extractRows(outputText(json));
+  if (!rows) {
+    // 응답 형태가 예상과 다르면 조용히 0건으로 넘기지 말고 원문 일부를 보여준다.
+    return Response.json(
+      { status: 'ERROR', detail: `Gemini 응답에서 rows를 찾지 못했습니다: ${JSON.stringify(json).slice(0, 300)}` },
+      { status: 502 },
+    );
+  }
+  return Response.json({ status: 'OK', rows });
 }

@@ -48,19 +48,24 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       const catalog = await getCatalog({ force: true }).catch(() => null);
       let rows;
       let periods = [];
+      let errors = [];
       if (isCsv) {
         const text = paste.trim() ? paste : await file.text();
         ({ rows, periods } = lib.parseCsvRows(text));
       } else {
-        ({ rows, periods } = await lib.parseSyllabus(file, {
+        ({ rows, periods, errors = [] } = await lib.parseSyllabus(file, {
           onProgress: (d, t) => setProgress({ label: 'AI 분석 중…', done: d, total: t }),
         }));
       }
       if (!rows.length) {
-        setErr(isCsv ? '읽어들인 과목이 없습니다. 헤더(과목명/분반/담당교수/강의시간…)와 형식을 확인하세요.'
+        // 서버가 실패해서 비었다면 PDF 형식 탓으로 오인시키지 말고 실제 사유를 보여준다.
+        if (errors.length) setErr('분석 실패: ' + errors[0]);
+        else setErr(isCsv ? '읽어들인 과목이 없습니다. 헤더(과목명/분반/담당교수/강의시간…)와 형식을 확인하세요.'
           : '추출된 과목이 없습니다. 다른 PDF이거나 형식이 다를 수 있어요.');
         return;
       }
+      // 일부 페이지만 실패한 경우: 결과는 보여주되 누락 가능성을 경고한다.
+      if (errors.length) setErr(`일부 페이지 분석 실패(${errors.length}건) — 과목이 누락됐을 수 있습니다: ${errors[0]}`);
       setPlan(lib.reconcile(rows, periods, catalog || {}, Number(year), Number(term)));
     } catch (e) {
       setErr('분석 실패: ' + (e?.message || e));

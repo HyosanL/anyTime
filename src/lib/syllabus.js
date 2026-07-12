@@ -45,6 +45,14 @@ async function authHeader() {
   return t ? `Bearer ${t}` : '';
 }
 
+// 실패해도 나머지 페이지는 계속 파싱하되, 사유는 버리지 않고 { rows, error } 로 돌려준다.
+// (에러를 삼키면 "추출된 과목이 없습니다"처럼 PDF 탓으로 오인되는 메시지만 남는다.)
+const PARSE_ERRORS = {
+  NO_GEMINI_KEY: 'GEMINI_API_KEY 가 배포에 없습니다. Pages 프로젝트 Secret 에 추가하고 재배포하세요.',
+  FORBIDDEN: '관리자 권한이 필요합니다.',
+  UNAUTH: '로그인이 만료되었습니다. 다시 로그인해 주세요.',
+};
+
 async function callParse(kind, text, token) {
   try {
     const res = await fetch('/api/parse-syllabus', {
@@ -52,11 +60,14 @@ async function callParse(kind, text, token) {
       headers: { 'Content-Type': 'application/json', Authorization: token },
       body: JSON.stringify({ kind, text }),
     });
-    if (!res.ok) return [];
     const j = await res.json().catch(() => ({}));
-    return Array.isArray(j.rows) ? j.rows : [];
-  } catch {
-    return [];
+    if (!res.ok) {
+      const known = PARSE_ERRORS[j.status];
+      return { rows: [], error: known || j.detail || `AI 파싱 실패 (HTTP ${res.status})` };
+    }
+    return { rows: Array.isArray(j.rows) ? j.rows : [] };
+  } catch (e) {
+    return { rows: [], error: `AI 파싱 요청 실패: ${e?.message || e}` };
   }
 }
 
@@ -124,10 +135,12 @@ export async function parseSyllabus(file, { onProgress } = {}) {
   const coursePages = pages.filter((p) => p.includes('담당교수'));
   const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
   const token = await authHeader();
+  const errors = [];
 
   let periods = [];
   if (periodPages.length) {
-    const raw = await callParse('periods', periodPages[0], token);
+    const { rows: raw, error } = await callParse('periods', periodPages[0], token);
+    if (error) errors.push(error);
     periods = raw
       .map((p) => ({ no: Number(p.no) || 0, start: String(p.start || '').slice(0, 5), end: String(p.end || '').slice(0, 5) }))
       .filter((p) => p.no >= 1 && /^\d\d:\d\d$/.test(p.start) && /^\d\d:\d\d$/.test(p.end))
@@ -136,7 +149,8 @@ export async function parseSyllabus(file, { onProgress } = {}) {
 
   let done = 0;
   const perPage = await mapLimit(coursePages, 3, async (txt) => {
-    const rows = await callParse('courses', txt, token);
+    const { rows, error } = await callParse('courses', txt, token);
+    if (error) errors.push(error);
     done += 1;
     onProgress?.(done, coursePages.length);
     return rows.map(normRow).filter(Boolean);
@@ -156,7 +170,7 @@ export async function parseSyllabus(file, { onProgress } = {}) {
       if (!prev.room && r.room) prev.room = r.room;
     }
   }
-  return { rows: [...byKey.values()], periods, pageCount: pages.length, coursePages: coursePages.length };
+  return { rows: [...byKey.values()], periods, errors, pageCount: pages.length, coursePages: coursePages.length };
 }
 
 // ---------- CSV 소스: 표 CSV → rows (parseSyllabus 와 같은 rows 형태) ----------
