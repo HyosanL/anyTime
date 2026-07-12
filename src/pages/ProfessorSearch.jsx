@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { getCatalog, buildSections, sectionKey } from '../lib/cache';
+import { getCatalog, buildSections } from '../lib/cache';
+import { listPrimarySectionIds } from '../lib/timetable';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
 
@@ -31,15 +32,14 @@ export default function ProfessorSearch() {
       setError('교수 목록을 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
     }
     // 내 확정시간표(담당 교수 코드용)와 강의평 집계는 서로 독립 → 병렬 1왕복.
-    // timetable 은 sectionKey 에 필요한 컬럼만 투영(과다 조회 방지).
-    const [{ data: tt }, { data }] = await Promise.all([
-      supabase.from('timetable').select('course_code, year, term, section_no'),
+    // 초안 시간표는 세지 않는다(확정에 담은 강의 = 내가 듣는 강의).
+    const [regIds, { data }] = await Promise.all([
+      listPrimarySectionIds().catch(() => new Set()),
       supabase.from('professor_rating').select('professor_code, review_count, avg_overall'),
     ]);
-    if (tt && sections.length) {
-      const regKeys = new Set(tt.map(sectionKey));
+    if (regIds.size && sections.length) {
       const codes = new Set();
-      sections.forEach((s) => { if (regKeys.has(s.key) && s.professor_code) codes.add(s.professor_code); });
+      sections.forEach((s) => { if (regIds.has(s.id) && s.professor_code) codes.add(s.professor_code); });
       setMyProfCodes([...codes]);
     }
     // 강의평 집계(있으면 검색 결과에 별점·후기수 표시)

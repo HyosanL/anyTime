@@ -50,16 +50,15 @@ export default function Memo() {
     });
   }
 
+  // 보유일수는 서버가 판정한다 — 확정(is_primary) 시간표에 담긴 것만 인정(초안은 제외).
   async function loadReviewEligibility() {
-    const [{ data: tt }, { data: md }] = await Promise.all([
-      supabase.from('timetable').select('created_at')
-        .match({ course_code: courseCode, year: y, term: t, section_no: sn }).maybeSingle(),
+    const [{ data: held }, { data: md }] = await Promise.all([
+      supabase.rpc('timetable_held_days', {
+        p_course_code: courseCode, p_year: y, p_term: t, p_section_no: sn,
+      }),
       supabase.rpc('get_review_min_days'),
     ]);
-    const daysHeld = tt?.created_at
-      ? Math.floor((Date.now() - new Date(tt.created_at).getTime()) / 86400000)
-      : null;
-    setRev({ minDays: md ?? 30, daysHeld });
+    setRev({ minDays: md ?? 30, daysHeld: held ?? null });
   }
 
   // silent: 당겨서 새로고침 때는 목록을 '불러오는 중…'으로 갈아치우지 않는다

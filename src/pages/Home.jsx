@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { isIos } from '../components/InstallGate';
 import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
-import { getCatalog, buildMyTimetable, saveTimetableCache, readTimetableCache } from '../lib/cache';
+import TimetableSwitcher from '../components/TimetableSwitcher';
+import { getCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
 import { boardEnabled } from '../lib/board';
 import { saveTimetableImage } from '../lib/timetableImage';
+import {
+  listTimetables, readTimetablesCache, listEntries, readEntriesCache,
+  createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
+  readSelectedId, writeSelectedId, pickTimetable, isOverlapError,
+} from '../lib/timetable';
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
@@ -57,7 +62,9 @@ function CustomClassForm({ onAdd }) {
   );
 }
 
-// 홈(화면3): 본인 뱃지 + 확정시간표(시각 기준, 캐시 우선 즉시 표시) + 직접 추가 + 네비.
+// 홈(화면3): 본인 뱃지 + 시간표(전환 가능, 캐시 우선 즉시 표시) + 직접 추가 + 네비.
+// 시간표는 학기마다 여러 개 가질 수 있고(지난 학기·다음 학기 초안), 학기별 1개가 '확정'이다.
+// 강의평·메모 자격은 확정 시간표만 인정한다(서버 RPC가 강제).
 export default function Home() {
   const { cadet, session, logout } = useAuthContext();
   const navigate = useNavigate();
@@ -67,9 +74,10 @@ export default function Home() {
   // 관리자 여부는 이미 cadet 프로필에 실려 온다(useAuth) — 별도 is_admin RPC 왕복 불필요.
   const isAdmin = !!cadet?.is_admin;
 
-  const [current, setCurrent] = useState(null);
-  const [mine, setMine] = useState([]);
-  const [periods, setPeriods] = useState([]);
+  const [catalog, setCatalog] = useState(null);
+  const [timetables, setTimetables] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [entries, setEntries] = useState([]);        // 선택한 시간표에 담긴 분반
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -77,81 +85,140 @@ export default function Home() {
   const [adding, setAdding] = useState(false);
   const [boardOn, setBoardOn] = useState(true);
 
+  const selected = useMemo(
+    () => timetables.find((t) => t.id === selectedId) ?? null,
+    [timetables, selectedId]
+  );
+  const semesters = useMemo(() => (catalog ? semesterList(catalog) : []), [catalog]);
+
+  // 선택한 시간표의 학기 기준으로 격자를 조립한다(지난·다음 학기도 그대로 그려진다).
+  const { mine, periods } = useMemo(() => {
+    if (!catalog) return { mine: [], periods: [] };
+    return buildMyTimetable(catalog, entries, selected);
+  }, [catalog, entries, selected]);
+
   useEffect(() => {
     boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
   }, []);
 
-  // 캐시 우선(즉시) → 백그라운드 갱신(stale-while-revalidate). 네트워크가 화면을 막지 않는다.
+  // 시간표 목록 새로 받아 반영(생성·이름변경·확정·삭제 후 공통).
+  const refreshList = useCallback(async (preferId = null) => {
+    const list = await listTimetables();
+    setTimetables(list);
+    const cur = catalog ? currentSemester(catalog) : null;
+    const pick = pickTimetable(list, cur, preferId ?? readSelectedId());
+    setSelectedId(pick?.id ?? null);
+    return list;
+  }, [catalog]);
+
+  // ── 목록: 캐시 우선(즉시) → 백그라운드 갱신 ──────────────────────────
   useEffect(() => {
+    if (!uid) return;
     let active = true;
     (async () => {
-      // ── 즉시: 기기 캐시로 그리기 ──
-      const [catalog, cachedRows] = await Promise.all([
+      const [cat, cachedList] = await Promise.all([
         getCatalog().catch(() => null),   // cache-first → 대개 즉시
-        readTimetableCache(),             // IndexedDB
+        readTimetablesCache(),
       ]);
       if (!active) return;
-      let cur = null;
-      if (catalog) {
-        const built = buildMyTimetable(catalog, cachedRows || []);
-        cur = built.current;
-        setCurrent(built.current);
-        setMine(built.mine);
-        setPeriods(built.periods);
-        if (uid && cur) setCustomClasses(readCustomCache(uid, cur.year, cur.term));
-      }
-      setLoading(false);
+      const cur = cat ? currentSemester(cat) : null;
+      setCatalog(cat);
 
-      // ── 백그라운드: 서버 최신 시간표 ──
-      const { data, error } = await supabase.from('timetable').select('*');
-      if (!active) return;
-      if (error || !data) {
-        setOffline(true);
-      } else {
-        setOffline(false);
-        saveTimetableCache(data);
-        const cat2 = catalog || (await getCatalog().catch(() => null));
-        if (cat2 && active) {
-          const built2 = buildMyTimetable(cat2, data);
-          setCurrent(built2.current);
-          setMine(built2.mine);
-          setPeriods(built2.periods);
-          cur = built2.current;
+      const cachedPick = pickTimetable(cachedList, cur, readSelectedId());
+      if (cachedPick) {
+        setTimetables(cachedList);
+        setSelectedId(cachedPick.id);
+        setEntries(await readEntriesCache(cachedPick.id));
+        setCustomClasses(readCustomCache(cachedPick.id));
+      }
+      if (active) setLoading(false);
+
+      try {
+        let list = await listTimetables();
+        if (!active) return;
+        // 시간표가 하나도 없는 계정(신규 가입) → 이번 학기 시간표를 하나 만들어 준다.
+        if (list.length === 0 && cur) {
+          await createTimetable({ uid, year: cur.year, term: cur.term, name: '내 시간표' });
+          list = await listTimetables();
+          if (!active) return;
         }
-      }
-
-      // ── 백그라운드: 직접추가(DB) ──
-      if (uid && cur && active) {
-        try {
-          const fresh = await listCustomClasses(uid, cur.year, cur.term);
-          if (active) setCustomClasses(fresh);
-        } catch { /* 오프라인 → 캐시 유지 */ }
+        setOffline(false);
+        setTimetables(list);
+        setSelectedId(pickTimetable(list, cur, readSelectedId())?.id ?? null);
+      } catch {
+        setOffline(true);   // 오프라인 → 캐시 스냅샷 유지
       }
     })();
     return () => { active = false; };
   }, [uid]);
 
+  // ── 선택한 시간표의 내용(담긴 분반 + 직접추가) ───────────────────────
+  useEffect(() => {
+    if (!selectedId) { setEntries([]); setCustomClasses([]); return; }
+    let active = true;
+    writeSelectedId(selectedId);
+    (async () => {
+      setEntries(await readEntriesCache(selectedId));      // 즉시: 캐시
+      setCustomClasses(readCustomCache(selectedId));
+      try {
+        const [fresh, customs] = await Promise.all([
+          listEntries(selectedId),
+          listCustomClasses(uid, selectedId),
+        ]);
+        if (!active) return;
+        setOffline(false);
+        setEntries(fresh);
+        setCustomClasses(customs);
+      } catch {
+        if (active) setOffline(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [selectedId, uid]);
+
   const reloadCustom = useCallback(async () => {
-    if (!uid || !current) return;
-    try { setCustomClasses(await listCustomClasses(uid, current.year, current.term)); } catch { /* ignore */ }
-  }, [uid, current]);
+    if (!selectedId) return;
+    try { setCustomClasses(await listCustomClasses(uid, selectedId)); } catch { /* ignore */ }
+  }, [uid, selectedId]);
 
   const handleAddCustom = useCallback(async (entry) => {
-    if (!uid) return { error: '로그인이 필요합니다.' };
-    if (!current) return { error: '현재 학기가 설정되지 않아 추가할 수 없습니다.' };
+    if (!selectedId) return { error: '시간표를 먼저 만들어 주세요.' };
     try {
-      await addCustomClass(uid, { ...entry, year: current.year, term: current.term });
+      await addCustomClass(selectedId, entry);
       await reloadCustom();
       return { ok: true };
     } catch (e) {
-      const s = `${e?.message || ''} ${e?.code || ''}`;
       return {
-        error: /overlap|23P01|exclusion/i.test(s)
+        error: isOverlapError(e)
           ? '그 시간에 이미 다른 강의가 있습니다 (겹침).'
           : '추가에 실패했습니다. 잠시 후 다시 시도하세요.',
       };
     }
-  }, [uid, current, reloadCustom]);
+  }, [selectedId, reloadCustom]);
+
+  // ── 시간표 관리(드롭다운에서 호출) ───────────────────────────────────
+  const handleSelect = useCallback((id) => { writeSelectedId(id); setSelectedId(id); }, []);
+
+  const handleCreate = useCallback(async ({ year, term, name }) => {
+    const made = await createTimetable({ uid, year, term, name });
+    writeSelectedId(made.id);
+    await refreshList(made.id);
+  }, [uid, refreshList]);
+
+  const handleRename = useCallback(async (id, name) => {
+    await renameTimetable(id, name);
+    await refreshList(id);
+  }, [refreshList]);
+
+  const handleSetPrimary = useCallback(async (id) => {
+    await setPrimaryTimetable(id);
+    await refreshList(id);
+  }, [refreshList]);
+
+  const handleDelete = useCallback(async (id) => {
+    await deleteTimetable(id);
+    await refreshList(id === selectedId ? null : selectedId);
+  }, [refreshList, selectedId]);
 
   // iOS 공유 핸드오프: 공유 화면(사파리)이 복사해 둔 글 주소를 붙여넣어 그 글로 이동.
   // iOS 는 사파리↔홈화면앱 저장소 분리 + 앱 실행 API 부재라 Android(pending-nav)처럼
@@ -171,15 +238,14 @@ export default function Home() {
   }, [navigate]);
 
   const handleDeleteCustom = useCallback(async (id, title) => {
-    if (!uid) return;
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
     try {
-      await removeCustomClass(uid, id);
+      await removeCustomClass(id);
       await reloadCustom();
     } catch {
       alert('삭제에 실패했습니다. 잠시 후 다시 시도하세요.');
     }
-  }, [uid, reloadCustom]);
+  }, [reloadCustom]);
 
   return (
     <div className="page home">
@@ -201,17 +267,29 @@ export default function Home() {
       <div className="home-body">
         <section className="card home-tt">
           <div className="home-tt-head">
-            <h2 className="card-title">{current ? `${current.year}-${current.term} ` : ''}시간표</h2>
+            <TimetableSwitcher
+              timetables={timetables}
+              selected={selected}
+              semesters={semesters}
+              onSelect={handleSelect}
+              onCreate={handleCreate}
+              onRename={handleRename}
+              onSetPrimary={handleSetPrimary}
+              onDelete={handleDelete}
+            />
             <div className="home-tt-actions">
               {offline && <span className="cache-tag">오프라인</span>}
               {(mine.length > 0 || customClasses.length > 0) && (
                 <button className="btn-ghost btn-sm" title="시간표를 이미지로 저장"
-                  onClick={() => saveTimetableImage({ mine, periods, customClasses, title: `${current ? `${current.year}-${current.term} ` : ''}시간표` })}>🖼️ 이미지 저장</button>
+                  onClick={() => saveTimetableImage({
+                    mine, periods, customClasses,
+                    title: selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표',
+                  })}>🖼️ 이미지 저장</button>
               )}
-              <button className="btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>{adding ? '닫기' : '＋ 직접 추가'}</button>
+              <button className="btn-ghost btn-sm" disabled={!selected} onClick={() => setAdding((v) => !v)}>{adding ? '닫기' : '＋ 직접 추가'}</button>
             </div>
           </div>
-          {adding && <CustomClassForm onAdd={handleAddCustom} />}
+          {adding && selected && <CustomClassForm onAdd={handleAddCustom} />}
           <div className="home-tt-body">
             {loading ? (
               <p className="muted center">불러오는 중…</p>
@@ -219,6 +297,11 @@ export default function Home() {
               <TimetableGrid mine={mine} periods={periods} customClasses={customClasses} onDeleteCustom={handleDeleteCustom} />
             )}
           </div>
+          {selected && !selected.is_primary && (
+            <p className="tt-draft-note">
+              초안 시간표입니다. 강의평·수업메모는 <strong>확정</strong> 시간표에 담긴 강의만 열립니다.
+            </p>
+          )}
         </section>
 
         <nav className="home-nav">
