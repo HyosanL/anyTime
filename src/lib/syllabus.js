@@ -338,6 +338,70 @@ export const CSV_TEMPLATE = [
   '대학수학,,이용균,,화5 목1 목2,402,2반',
 ].join('\n');
 
+// ---------- 기존 분반 대조 ----------
+// 분반의 신원은 (과목, 연도, 학기, 분반번호)인데, 분반번호는 소스마다 다르게 매겨진다 —
+// CSV 는 분반칸이 비면 등장순으로 1,2,3… 을 자동 부여하고, 편람 PDF 는 실제 교반 번호(3,4…)를 쓴다.
+// 같은 학기를 두 소스로 적재하면 번호만 달라 PK 가 갈리고, 화면엔 똑같은 분반이 두 벌 남는다.
+// 그래서 번호를 믿지 않고 내용(강의시간 + 담당교수)으로 기존 분반을 먼저 찾아 그 번호를 물려받는다.
+const timesKey = (blocks) => [...(blocks ?? [])].map((b) => `${b.day}:${b.start}-${b.end}`).sort().join(',');
+
+// 이 학기 기존 분반: course_code → [{ sectionNo, professorCode, key(시간), times }]
+function existingSections(catalog, year, term) {
+  const blocksBySec = new Map();
+  for (const t of catalog?.section_time ?? []) {
+    if (Number(t.year) !== year || Number(t.term) !== term) continue;
+    const k = `${t.course_code}|${t.section_no}`;
+    (blocksBySec.get(k) ?? blocksBySec.set(k, []).get(k))
+      .push({ day: t.day_of_week, start: t.start_period, end: t.end_period });
+  }
+  const byCourse = new Map();
+  for (const s of catalog?.section ?? []) {
+    if (Number(s.year) !== year || Number(s.term) !== term) continue;
+    const times = blocksBySec.get(`${s.course_code}|${s.section_no}`) ?? [];
+    const list = byCourse.get(s.course_code) ?? byCourse.set(s.course_code, []).get(s.course_code);
+    list.push({ sectionNo: s.section_no, professorCode: s.professor_code ?? null, key: timesKey(times), times });
+  }
+  return byCourse;
+}
+
+// 계획 분반에 최종 분반번호를 부여한다. 반환: { sections, claimed(이번 적용이 차지하는 기존 번호) }
+function assignSectionNos(planned, pool, codeOfProf) {
+  const taken = new Set();    // 이번 계획이 확정한 번호
+  const claimed = new Set();  // 이번 적용이 차지(재사용/덮어쓰기)하는 기존 분반 번호
+  const fixed = new Set();    // 1)에서 번호가 확정된 계획 분반(참조)
+  const out = planned.map((s) => ({ ...s, planNo: s.sectionNo, reused: false }));
+
+  // 1) 내용 매칭 — 시간이 같은 기존 분반의 번호를 물려받는다(교수까지 같으면 우선).
+  //    번호가 이미 같으면 그대로 두는 것도 '매칭'이다 — 같은 파일을 두 번 적용해도 제자리에 덮어쓴다.
+  for (const s of out) {
+    const key = timesKey(s.times);
+    if (!key) continue;
+    const cands = pool.filter((e) => !claimed.has(e.sectionNo) && e.key === key);
+    if (!cands.length) continue;
+    const pc = s.professorName ? codeOfProf(s.professorName) : null;
+    const hit = (pc && cands.find((e) => e.professorCode === pc)) || cands[0];
+    s.sectionNo = hit.sectionNo;
+    s.reused = true;
+    fixed.add(s);
+    taken.add(hit.sectionNo);
+    claimed.add(hit.sectionNo);
+  }
+
+  // 2) 나머지는 계획 번호 그대로 — 같은 번호의 기존 분반은 편람 기준으로 덮어쓴다.
+  //    단 1)이 이미 가져간 번호와 부딪힐 때만, 살아남을 기존 분반까지 피해 빈 번호로 민다.
+  const survivors = new Set(pool.filter((e) => !claimed.has(e.sectionNo)).map((e) => e.sectionNo));
+  for (const s of out) {
+    if (fixed.has(s)) continue;
+    let n = s.planNo;
+    if (taken.has(n)) { n = 1; while (taken.has(n) || survivors.has(n)) n += 1; }
+    s.sectionNo = n;
+    taken.add(n);
+    claimed.add(n);
+    survivors.delete(n);
+  }
+  return { sections: out, claimed };
+}
+
 // ---------- 대조(reconcile): 기존 catalog와 비교 ----------
 // catalog: { course[], professor[], section[], section_time[] }
 export function reconcile(rows, periods, catalog, year, term) {
@@ -391,30 +455,60 @@ export function reconcile(rows, periods, catalog, year, term) {
     };
   });
 
-  // 과목 플랜
+  // 과목 플랜 — 기존 분반과 내용 대조해 분반번호를 물려받는다(소스별 번호 차이로 인한 중복 방지).
+  const codeOfProf = new Map(professors.map((p) => [p.name, p.code]));
+  const existing = existingSections(catalog, year, term);
+  const claimedByCourse = new Map(); // course_code → Set(이번 적용이 차지하는 기존 분반번호)
+
   const courseList = [...courseGroups.values()].map((g) => {
-    const existing = courseByName.get(g.name);
+    const known = courseByName.get(g.name);
+    const planned = [...g.sections.values()]
+      .sort((a, b) => a.sectionNo - b.sectionNo)
+      .map((s) => ({ sectionNo: s.sectionNo, professorName: s.professor, times: groupTimes(s.slots), room: s.room }));
+    const pool = known ? (existing.get(known.code) ?? []) : [];
+    const { sections: assigned, claimed } = assignSectionNos(planned, pool, (n) => codeOfProf.get(n) ?? null);
+    if (known) claimedByCourse.set(known.code, claimed);
     return {
       name: g.name,
-      code: existing?.code ?? null,
+      code: known?.code ?? null,
       include: true,
-      sections: [...g.sections.values()]
-        .sort((a, b) => a.sectionNo - b.sectionNo)
-        .map((s) => ({ sectionNo: s.sectionNo, professorName: s.professor, times: groupTimes(s.slots), room: s.room })),
+      sections: assigned,
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
+  // 편람에 없는 기존 분반(= 이번 적용이 건드리지 않는 이 학기 분반). 지난 적재의 찌꺼기·중복이 여기 잡힌다.
+  const courseNameByCode = new Map(courses.map((c) => [c.code, c.name]));
+  const profNameByCode = new Map(profs.map((p) => [p.code, p.name]));
+  const stale = [];
+  for (const [code, list] of existing) {
+    const claimed = claimedByCourse.get(code) ?? new Set();
+    for (const e of list) {
+      if (claimed.has(e.sectionNo)) continue;
+      stale.push({
+        courseCode: code,
+        courseName: courseNameByCode.get(code) ?? code,
+        sectionNo: e.sectionNo,
+        professorName: e.professorCode ? (profNameByCode.get(e.professorCode) ?? e.professorCode) : null,
+        times: e.times,
+      });
+    }
+  }
+  stale.sort((a, b) => a.courseName.localeCompare(b.courseName, 'ko') || a.sectionNo - b.sectionNo);
 
   return {
     year, term,
     periods, includePeriods: periods.length > 0,
     professors: professors.sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     courses: courseList,
+    stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
     stats: {
       courses: courseList.length,
       newCourses: courseList.filter((c) => c.code == null).length,
       professors: professors.length,
       newProfessors: professors.filter((p) => p.action === 'create').length,
       ambiguous: professors.filter((p) => p.action === 'ambiguous').length,
+      reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
+      staleSections: stale.length,
     },
   };
 }
@@ -467,5 +561,19 @@ export async function applyPlan(plan, { onProgress } = {}) {
     done += batch.length;
     onProgress?.(done, courses.length);
   }
-  return { courses: totalC, sections: totalS };
+
+  // 3) (선택) 편람에 없는 기존 분반 삭제 — 지난 적재의 중복·찌꺼기 청소.
+  //    제외(체크 해제)한 과목의 분반은 이번에 다시 쓰이지도 않았으므로 건드리지 않는다.
+  let removed = null;
+  if (plan.removeStale && plan.stale?.length) {
+    const excluded = new Set(plan.courses.filter((c) => c.include === false && c.code).map((c) => c.code));
+    const list = plan.stale
+      .filter((s) => !excluded.has(s.courseCode))
+      .map((s) => ({ course_code: s.courseCode, section_no: s.sectionNo }));
+    if (list.length) {
+      const r = await callAdmin('delete_sections', { year: plan.year, term: plan.term, sections: list });
+      removed = { sections: r.removed || 0, entries: r.entries || 0 };
+    }
+  }
+  return { courses: totalC, sections: totalS, removed };
 }

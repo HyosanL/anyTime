@@ -446,6 +446,29 @@ Deno.serve(async (req) => {
         }
         return json({ status: 'OK', courses: nC, sections: nS })
       }
+      // AI/CSV 일괄등록 3단계(선택): 편람에 없는 기존 분반 삭제 = 그 학기를 이번 파일로 '대체'.
+      // 분반번호는 소스마다 다르게 매겨져(CSV 자동번호 vs 편람 교반번호) 같은 강의가 두 벌로 남기 쉬운데,
+      // 프런트(reconcile)가 내용으로 대조해 뽑아낸 잉여 분반만 여기로 넘어온다.
+      // section 삭제는 section_time·timetable_entry 로 CASCADE 된다 — 생도 시간표에서 사라지는 건수를
+      // 함께 세어 돌려주고(관리자 화면에 표시), 학기 전체를 지우는 사고를 막기 위해 목록은 반드시 명시받는다.
+      case 'delete_sections': {
+        const year = Number(payload.year)
+        const term = Number(payload.term)
+        const list = (payload.sections as any[]) ?? []
+        let removed = 0
+        let entries = 0
+        for (const s of list) {
+          const key = { course_code: String(s.course_code), year, term, section_no: Number(s.section_no) }
+          const { data: sec } = await admin.from('section').select('id').match(key).maybeSingle()
+          if (!sec) continue
+          const { count } = await admin.from('timetable_entry')
+            .select('*', { count: 'exact', head: true }).eq('section_id', sec.id)
+          entries += count ?? 0
+          await admin.from('section').delete().match(key).throwOnError()
+          removed++
+        }
+        return json({ status: 'OK', removed, entries })
+      }
       // ── 정보 수정 제안 ──
       case 'list_corrections': {
         const st = payload.status ? String(payload.status) : 'pending'

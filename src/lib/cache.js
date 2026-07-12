@@ -44,14 +44,38 @@ async function readCache() {
   return out;
 }
 
+// PostgREST 는 한 요청에 최대 1000행만 준다(기본 max-rows). 한 학기 편람만 올려도 section_time 은
+// 이 선을 넘는다 — 잘린 줄 모르고 쓰면 시간표에서 강의시간이 사라지고, 관리자 일괄등록의 기존 분반
+// 대조(reconcile)가 조용히 빗나가 같은 분반이 두 벌로 들어간다. 그래서 끝까지 이어 받는다.
+// 페이지 경계가 흔들리지 않도록 반드시 키 순서로 정렬해서 받는다(정렬 없는 range 는 행이 겹치거나 샌다).
+const PAGE = 1000;
+const ORDER_KEYS = {
+  professor: ['code'],
+  semester: ['year', 'term'],
+  course: ['code'],
+  period: ['no'],
+  section: ['id'],
+  section_time: ['course_code', 'year', 'term', 'section_no', 'day_of_week', 'start_period'],
+};
+
+async function fetchTable(table) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase.from(table).select('*');
+    for (const col of ORDER_KEYS[table] ?? []) q = q.order(col);
+    // eslint-disable-next-line no-await-in-loop
+    const { data, error } = await q.range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if ((data?.length ?? 0) < PAGE) return out;
+  }
+}
+
 async function fetchFromServer() {
   // 6개 카탈로그 테이블을 병렬로 받는다(직렬 왕복 6회 → 1회 배치). 하나라도 실패하면 throw.
-  const responses = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
+  const tables = await Promise.all(TABLES.map(fetchTable));
   const result = {};
-  TABLES.forEach((t, i) => {
-    if (responses[i].error) throw responses[i].error;
-    result[t] = responses[i].data ?? [];
-  });
+  TABLES.forEach((t, i) => { result[t] = tables[i]; });
   return result;
 }
 

@@ -89,7 +89,10 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
     try {
       const lib = await import('../lib/syllabus');
       const r = await lib.applyPlan(plan, { onProgress: (d, t) => setProgress({ label: '적용 중…', done: d, total: t }) });
-      setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.`);
+      const cleaned = r.removed
+        ? ` 편람에 없던 기존 분반 ${r.removed.sections}개 삭제${r.removed.entries ? ` (생도 시간표 ${r.removed.entries}건에서 함께 제거됨)` : ''}.`
+        : '';
+      setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.${cleaned}`);
       setPlan(null); setFile(null); setPaste('');
       onApplied?.();
     } catch (e) {
@@ -197,6 +200,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             <span className="tag tag-primary">신규과목 {plan.stats.newCourses}</span>
             <span className="tag">교수 {plan.stats.professors}</span>
             <span className="tag tag-primary">신규교수 {plan.stats.newProfessors}</span>
+            {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
           </div>
 
@@ -245,13 +249,36 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                 <div className="syl-sections">
                   {c.sections.map((s) => (
                     <div className="syl-sec" key={s.sectionNo}>
-                      <b>{s.sectionNo}분반</b> · {s.professorName || '교수미정'} · {fmtTimes(s.times)}{s.room ? ` · ${s.room}` : ''}
+                      <b>{s.sectionNo}분반</b>{s.reused ? <span className="tag tag-success">기존 분반</span> : null} · {s.professorName || '교수미정'} · {fmtTimes(s.times)}{s.room ? ` · ${s.room}` : ''}
                     </div>
                   ))}
                 </div>
               </div>
             ))}
           </div>
+
+          {plan.stale.length > 0 && (
+            <>
+              <div className="section-label adm-sub-label">이 파일에 없는 기존 분반 ({plan.stale.length})</div>
+              <p className="note">
+                {plan.year}-{plan.term} 학기에 <b>이미 등록돼 있는데</b> 이번 파일에는 없는 분반입니다.
+                다른 소스(CSV↔PDF)로 두 번 적재해 생긴 <b>중복</b>이거나 폐강된 분반일 수 있어요.
+              </p>
+              <label className="adm-check">
+                <input type="checkbox" checked={!!plan.removeStale}
+                  onChange={(e) => patchPlan((p) => { p.removeStale = e.target.checked; })} />
+                {' '}적용할 때 <b>삭제</b> (이 학기를 이번 파일로 대체) — 생도 시간표에 담긴 분반이면 그 항목도 함께 사라집니다
+              </label>
+              <div className="syl-list">
+                {plan.stale.slice(0, 30).map((s) => (
+                  <div className="syl-sec" key={`${s.courseCode}-${s.sectionNo}`}>
+                    <b>{s.courseName}</b> {s.sectionNo}분반 · {s.professorName || '교수미정'} · {fmtTimes(s.times)}
+                  </div>
+                ))}
+                {plan.stale.length > 30 && <div className="syl-sec muted">… 외 {plan.stale.length - 30}개</div>}
+              </div>
+            </>
+          )}
 
           <button className="btn-add btn-block" disabled={busy} onClick={apply}>{busy ? '적용 중…' : '검토 완료 — DB에 적용'}</button>
         </div>
