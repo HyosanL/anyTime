@@ -209,6 +209,22 @@
   display: inline-block;
   margin-top: 0.55rem;
 }
+
+/* 전 생도 공통 비수업 시간(생도대·군사훈련·자율선택형교과).
+   수업이 아니므로 파스텔 색을 주지 않고 빗금 회색으로 깐다 — 격자에 '내 수업'과 섞이면 안 된다. */
+.tt td.tt-td-block {
+  background: repeating-linear-gradient(
+    45deg, var(--chip-bg), var(--chip-bg) 4px, transparent 4px, transparent 8px
+  );
+}
+.tt-cell-block {
+  color: var(--text-3);
+  cursor: default;
+}
+.tt-cell-block .tt-course {
+  font-weight: 600;
+  font-size: 0.72rem;
+}
 .tt-empty-hint {
   margin-top: 0.7rem;
   font-size: 0.8rem;

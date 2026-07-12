@@ -129,9 +129,18 @@ export function groupByTime(sections) {
 }
 
 // ---------------------------------------------------------------------
-//  후보의 성격 — 공강 요일 / 1교시 횟수 / 빈 교시
+//  후보의 성격 — 공강일 / 반일 공강 / 1교시 / 낀 시간
+//
+//  주의: '비는 교시의 총합'은 지표가 되지 못한다 — 같은 과목들을 듣는 한 한 주의 수업
+//  교시 수는 어느 후보든 똑같아서, 비는 교시 총합도 항상 같기 때문이다. 의미 있는 건
+//  그 빈 시간이 '어떻게 뭉치느냐'다:
+//    · 공강일   — 하루가 통째로 빈다 (가장 크다)
+//    · 반일 공강 — 오전(1~4교시) 또는 오후(5~8교시)가 통째로 빈다
+//    · 낀 시간   — 수업과 수업 사이에 끼어 뜨는 교시(하루의 맨 앞·맨 뒤가 비는 건 위에서 셌다)
+//  noClass(생도대·군사훈련·자율선택형교과)는 원래 수업이 없는 시간이라 어느 쪽으로도 세지 않는다.
 // ---------------------------------------------------------------------
-// noClass 는 '원래 수업이 없는 시간'이라 빈 시간(공강교시)으로 세지 않는다.
+const AM_LAST = 4;   // 1~4교시 = 오전, 5교시부터 오후
+
 export function comboStats(groups, periodNos, noClass = new Set()) {
   const m = new Int32Array(8);
   for (const g of groups) {
@@ -140,6 +149,8 @@ export function comboStats(groups, periodNos, noClass = new Set()) {
   }
   const firstPeriod = periodNos[0] ?? 1;
   const freeDays = [];
+  const amFree = [];
+  const pmFree = [];
   let early = 0;
   let gaps = 0;
   let dayCount = 0;
@@ -151,23 +162,35 @@ export function comboStats(groups, periodNos, noClass = new Set()) {
     }
     dayCount++;
     if (m[d] & (1 << firstPeriod)) early++;
+
+    // 반일 공강 — 그날 수업은 있지만 오전(또는 오후)이 통째로 빈다.
+    // 비수업 교시는 후보를 가리는 데 쓸 수 없으니 뺀다: 금5~8 은 전 생도가 수업이 없어서
+    // '오후공강 금'이 어느 후보에나 붙는다 — 아무것도 구분하지 못하는 지표가 된다.
+    const amSlots = periodNos.filter((p) => p <= AM_LAST && !noClass.has(`${d}-${p}`));
+    const pmSlots = periodNos.filter((p) => p > AM_LAST && !noClass.has(`${d}-${p}`));
+    if (amSlots.length && !amSlots.some((p) => m[d] & (1 << p))) amFree.push(d);
+    if (pmSlots.length && !pmSlots.some((p) => m[d] & (1 << p))) pmFree.push(d);
+
+    // 낀 시간 — 첫 수업과 마지막 수업 사이의 빈 교시(비수업 시간 제외).
     const used = periodNos.filter((p) => m[d] & (1 << p));
     const first = used[0];
     const last = used[used.length - 1];
-    // 첫 수업~마지막 수업 사이의 빈 교시 — 단, 비수업 시간은 빼고 센다.
     gaps += periodNos.filter(
       (p) => p > first && p < last && !(m[d] & (1 << p)) && !noClass.has(`${d}-${p}`)
     ).length;
   }
   const unscheduled = groups.filter((g) => !(g.times?.length)).length;
-  return { freeDays, early, gaps, dayCount, unscheduled };
+  return { freeDays, amFree, pmFree, early, gaps, dayCount, unscheduled };
 }
+
+const halfDays = (s) => s.amFree.length + s.pmFree.length;
 
 // 정렬: 무엇을 먼저 볼 것인가. (동점이면 나머지 지표로 차례차례 가른다)
 export const SORTS = {
-  free:  { label: '공강일 많은 순',            key: (x) => [-x.stats.freeDays.length, x.stats.gaps, x.stats.early] },
-  early: { label: '1교시 적은 순',             key: (x) => [x.stats.early, -x.stats.freeDays.length, x.stats.gaps] },
-  gap:   { label: '빈 시간(공강교시) 적은 순', key: (x) => [x.stats.gaps, -x.stats.freeDays.length, x.stats.early] },
+  free:  { label: '공강일 많은 순',      key: (x) => [-x.stats.freeDays.length, -halfDays(x.stats), x.stats.gaps, x.stats.early] },
+  half:  { label: '반일 공강 많은 순',   key: (x) => [-halfDays(x.stats), -x.stats.freeDays.length, x.stats.gaps, x.stats.early] },
+  early: { label: '1교시 적은 순',       key: (x) => [x.stats.early, -x.stats.freeDays.length, -halfDays(x.stats), x.stats.gaps] },
+  gap:   { label: '낀 시간 적은 순',     key: (x) => [x.stats.gaps, -x.stats.freeDays.length, -halfDays(x.stats), x.stats.early] },
 };
 
 // 정렬만 다시 한다 — 정렬 기준을 바꿨다고 조합을 다시 만들 이유는 없다(조합 집합은 그대로다).

@@ -153,11 +153,9 @@ export default function Wizard() {
     [catalog]
   );
 
-  // 전 생도 비수업 시간(생도대·군사훈련·자율선택형교과) — 그 학기에 아무 분반도 열리지
-  // 않는 요일×교시. 편람에 구멍으로 찍혀 있으므로 카탈로그에서 그대로 유도한다.
-  const noClass = useMemo(() => deriveNoClass(sections, periodNos), [sections, periodNos]);
-
-  // 그 구멍의 이름(관리자가 일괄등록 때 붙인다). 없으면 그냥 '수업 없는 시간'.
+  // 관리자가 이름 붙인 비수업 시간(common_block). 자동 유도로는 잡히지 않는 것도 여기 들어온다 —
+  // 예: 월7·8, 수7·8 은 '자율선택형교과' 시간이라 일반 강의는 없지만 체육(무도·체력단련)이
+  // 열려 있어서 '개설 0개' 규칙에 걸리지 않는다. 그래서 관리자가 직접 등록한다.
   const blockLabel = useMemo(() => {
     const map = {};
     for (const b of catalog?.common_block ?? []) {
@@ -166,6 +164,13 @@ export default function Wizard() {
     }
     return map;
   }, [catalog, sem]);
+
+  // 전 생도 비수업 시간 = 자동 유도(어떤 분반도 열리지 않는 칸) ∪ 관리자가 이름 붙인 칸.
+  const noClass = useMemo(() => {
+    const s = deriveNoClass(sections, periodNos);
+    for (const k of Object.keys(blockLabel)) s.add(k);
+    return s;
+  }, [sections, periodNos, blockLabel]);
 
   // 과목 단위로 묶고, 그 안에서 다시 '같은 시간'끼리 묶는다.
   const courses = useMemo(() => {
@@ -808,6 +813,11 @@ export default function Wizard() {
                 저장할 후보를 <strong>최대 {maxSave}개</strong> 고르세요.
               </p>
 
+              <p className="wz-note">
+                <strong>낀 시간</strong> = 수업과 수업 사이에 끼어 뜨는 교시. 하루의 맨 앞·맨 뒤가 비는 것은
+                <strong> 오전공강·오후공강</strong>으로 따로 셉니다. 회색 빗금(생도대·군사훈련·자율선택형교과)은
+                원래 수업이 없는 시간이라 어느 쪽으로도 세지 않습니다.
+              </p>
               {result.blockedOut.length > 0 && (
                 <p className="wz-note">
                   기피 시간 때문에 제외된 분반: {result.blockedOut.map((b) => `${b.name} ${b.n}개`).join(', ')}
@@ -832,8 +842,10 @@ export default function Wizard() {
                           {c.stats.freeDays.length > 0
                             ? `공강일 ${c.stats.freeDays.map(dayLabel).join('·')}`
                             : '공강일 없음'}
+                          {c.stats.amFree.length > 0 && ` · 오전공강 ${c.stats.amFree.map(dayLabel).join('·')}`}
+                          {c.stats.pmFree.length > 0 && ` · 오후공강 ${c.stats.pmFree.map(dayLabel).join('·')}`}
                           {' · '}1교시 {c.stats.early}회
-                          {' · '}빈 시간 {c.stats.gaps}칸
+                          {' · '}낀 시간 {c.stats.gaps}칸
                         </span>
                         <button
                           className={`btn-sm ${on ? 'btn-remove' : 'btn-add'}`}

@@ -6,7 +6,7 @@ import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSwitcher from '../components/TimetableSwitcher';
-import { getCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
+import { getCatalog, buildMyTimetable, buildCommonBlocks, currentSemester, semesterList } from '../lib/cache';
 import { boardEnabled } from '../lib/board';
 import { saveTimetableImage } from '../lib/timetableImage';
 import {
@@ -96,6 +96,14 @@ export default function Home() {
     if (!catalog) return { mine: [], periods: [] };
     return buildMyTimetable(catalog, entries, selected);
   }, [catalog, entries, selected]);
+
+  // 전 생도 공통 비수업 시간(생도대·군사훈련·자율선택형교과) — 격자에 함께 깐다.
+  // 생도마다 DB에 담지 않는다: 모두에게 똑같은 시간이라 저장할 이유가 없고(계정당 쓰기 0),
+  // 학기가 바뀌면 카탈로그를 따라 저절로 바뀐다. 관리자가 편람 등록 때 이름을 붙인다.
+  const commonBlocks = useMemo(
+    () => (catalog && selected ? buildCommonBlocks(catalog, selected) : []),
+    [catalog, selected]
+  );
 
   useEffect(() => {
     boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
@@ -290,7 +298,7 @@ export default function Home() {
               {(mine.length > 0 || customClasses.length > 0) && (
                 <button className="btn-ghost btn-sm" title="시간표를 이미지로 저장"
                   onClick={() => saveTimetableImage({
-                    mine, periods, customClasses,
+                    mine, periods, customClasses, commonBlocks,
                     title: selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표',
                   })}>🖼️ 이미지 저장</button>
               )}
@@ -302,7 +310,7 @@ export default function Home() {
             {loading ? (
               <p className="muted center">불러오는 중…</p>
             ) : (
-              <TimetableGrid mine={mine} periods={periods} customClasses={customClasses} onDeleteCustom={handleDeleteCustom} />
+              <TimetableGrid mine={mine} periods={periods} customClasses={customClasses} commonBlocks={commonBlocks} onDeleteCustom={handleDeleteCustom} />
             )}
           </div>
           {selected && !selected.is_primary && (

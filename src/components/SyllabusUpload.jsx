@@ -30,6 +30,8 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   // 같은 PDF 재분석은 캐시로 공짜(Gemini 미호출). 파싱이 틀렸을 때만 캐시를 버리고 새로 부른다.
   const [noCache, setNoCache] = useState(false);
   const [cost, setCost] = useState('');
+  // 직접 추가할 공통 비수업 시간(자동 유도가 못 찾는 자율선택형교과 등)
+  const [nb, setNb] = useState({ day: 1, start: 7, end: 8, label: '자율선택형교과' });
 
   function patchPlan(updater) {
     setPlan((p) => {
@@ -132,6 +134,22 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       const arr = [...p.commonBlocks];
       arr[i] = { ...arr[i], label: v };
       p.commonBlocks = arr;
+    });
+  }
+  function removeBlock(i) {
+    patchPlan((p) => { p.commonBlocks = p.commonBlocks.filter((_, k) => k !== i); });
+  }
+  // 자동 유도는 '개설 분반 0개'인 칸만 찾는다. 월7·8, 수7·8 처럼 자율선택형교과(체육)가
+  // 열려 있는 시간은 강의가 있으니 못 찾는다 — 관리자가 직접 넣는다.
+  function addBlock() {
+    const day = Number(nb.day);
+    const start = Number(nb.start);
+    const end = Number(nb.end);
+    if (!day || !start || !end || end < start) return;
+    patchPlan((p) => {
+      const rest = p.commonBlocks.filter((b) => !(b.day === day && b.start === start));
+      p.commonBlocks = [...rest, { day, start, end, label: nb.label.trim(), manual: true }]
+        .sort((a, b) => a.day - b.day || a.start - b.start);
     });
   }
 
@@ -270,6 +288,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   <div className="syl-block" key={`${b.day}-${b.start}`}>
                     <span className="syl-block-when">
                       {DAY[b.day]} {b.start}{b.end > b.start ? `~${b.end}` : ''}교시
+                      {b.manual && <em className="syl-block-manual"> 직접</em>}
                     </span>
                     <input
                       className="syl-block-label"
@@ -279,6 +298,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                       value={b.label}
                       onChange={(e) => setBlockLabel(i, e.target.value)}
                     />
+                    <button className="rev-del-btn" title="이 블록 빼기" onClick={() => removeBlock(i)}>×</button>
                   </div>
                 ))}
               </div>
@@ -289,6 +309,27 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                 <option value="전 생도 연구시간" />
                 <option value="체육" />
               </datalist>
+
+              {/* 자동 유도는 '개설 분반 0개'인 칸만 찾는다. 월7·8, 수7·8 처럼 자율선택형교과(무도·
+                  체력단련)가 열려 있는 시간은 강의가 있어서 못 찾는다 → 여기서 직접 넣는다. */}
+              <p className="note">
+                <b>월7·8, 수7·8</b>처럼 체육(무도·체력단련)만 열리는 <b>자율선택형교과</b> 시간은
+                강의가 있어서 자동으로 잡히지 않습니다. 아래에서 직접 추가하세요 (한 번 넣으면 다음 편람 등록 때도 유지됩니다).
+              </p>
+              <div className="syl-block syl-block-new">
+                <select value={nb.day} onChange={(e) => setNb({ ...nb, day: +e.target.value })}>
+                  {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>{DAY[d]}</option>)}
+                </select>
+                <input type="number" min="1" max="12" value={nb.start}
+                  onChange={(e) => setNb({ ...nb, start: +e.target.value })} />
+                <span className="syl-block-tilde">~</span>
+                <input type="number" min="1" max="12" value={nb.end}
+                  onChange={(e) => setNb({ ...nb, end: +e.target.value })} />
+                <input className="syl-block-label" list="syl-block-names" maxLength={20}
+                  placeholder="이름" value={nb.label}
+                  onChange={(e) => setNb({ ...nb, label: e.target.value })} />
+                <button className="btn-add btn-sm" onClick={addBlock}>＋ 추가</button>
+              </div>
             </div>
           )}
 

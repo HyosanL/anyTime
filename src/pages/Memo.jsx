@@ -120,6 +120,7 @@ export default function Memo() {
     markReacted('memo', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
     const { data } = await supabase.rpc('report_memo', { p_id: id });
     if (data === 'DELETED') { setMemos((prev) => prev.filter((m) => m.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
+    else if (data === 'ALREADY') alert('이미 신고한 메모입니다.');
     else alert('신고되었습니다.');
   }
 

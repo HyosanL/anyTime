@@ -79,9 +79,16 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // 시간표 canvas 를 생성. 블록이 없으면 null.
-export function renderTimetableCanvas({ mine, periods, customClasses, title = '시간표' }) {
-  const blocks = buildBlocks({ mine, periods, customClasses });
-  if (blocks.length === 0) return null;
+export function renderTimetableCanvas({ mine, periods, customClasses, commonBlocks = [], title = '시간표' }) {
+  const classes = buildBlocks({ mine, periods, customClasses });
+  if (classes.length === 0) return null;
+
+  // 공통 비수업 시간(생도대·군사훈련·자율선택형교과)은 수업 아래에 회색으로 깐다 —
+  // 화면 격자와 같은 그림이 나와야 저장한 이미지가 딴판이 되지 않는다.
+  const backdrop = (commonBlocks || []).map((b) => ({
+    day: b.day, startMin: b.startMin, endMin: b.endMin, title: b.label, color: null, noClass: true,
+  }));
+  const blocks = [...backdrop, ...classes];   // 수업을 나중에 그려 위에 얹는다
 
   const usedDays = new Set([1, 2, 3, 4, 5]);
   blocks.forEach((b) => usedDays.add(b.day));
@@ -154,7 +161,7 @@ export function renderTimetableCanvas({ mine, periods, customClasses, title = '�
     ctx.fillText(pad2(h), PAD + HOURCOL_W / 2, y + 22);
   });
 
-  // 강의 블록
+  // 강의 블록 (공통 비수업 시간이 먼저 깔리고 그 위에 수업이 얹힌다)
   blocks.forEach((b) => {
     const di = days.indexOf(b.day);
     if (di < 0) return;
@@ -162,12 +169,12 @@ export function renderTimetableCanvas({ mine, periods, customClasses, title = '�
     const y = gridTop + ((b.startMin - minH * 60) / 60) * ROW_H;
     const h = ((b.endMin - b.startMin) / 60) * ROW_H;
     roundRect(ctx, x + 2.5, y + 2.5, DAYCOL_W - 5, h - 5, 8);
-    ctx.fillStyle = b.color;
+    ctx.fillStyle = b.noClass ? '#eef1f5' : b.color;
     ctx.fill();
 
     const innerX = x + 9, innerW = DAYCOL_W - 18;
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#1f2937';
+    ctx.fillStyle = b.noClass ? '#94a3b8' : '#1f2937';
     ctx.font = `600 12.5px ${FONT}`;
     const roomLines = b.room ? 1 : 0;
     const maxTitleLines = Math.max(1, Math.min(3, Math.floor((h - 12) / 16) - roomLines));

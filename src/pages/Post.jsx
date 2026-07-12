@@ -127,6 +127,7 @@ export default function Post() {
     setReacted(getReacted('post', id));
     const r = await react(Number(id), on ? `un${kind}` : kind);
     if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); kvDel(`bb:post:${id}`); navigate(-1); return; }
+    if (r === 'ALREADY') alert('이미 신고한 글입니다.');  // 다른 기기/캐시 삭제로 로컬 기록이 비었을 때
     load();
   }
   async function submitComment(e) {

@@ -554,10 +554,12 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term) {
   }
 
   const out = [];
+  const covered = new Set();
   for (let d = 1; d <= 5; d++) {          // 평일만 — 주말은 원래 수업이 없다
     let run = null;
     periodNos.forEach((p, i) => {
       if (used.has(`${d}-${p}`)) { run = null; return; }
+      covered.add(`${d}-${p}`);
       const label = prev[`${d}-${p}`] ?? '';
       // 이어진 칸이라도 이름이 다르면 다른 블록으로 끊는다(생도대시간 ↔ 군사훈련).
       if (run && run.lastIdx === i - 1 && run.label === label) { run.end = p; run.lastIdx = i; return; }
@@ -565,7 +567,19 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term) {
       out.push(run);
     });
   }
-  return out.map(({ day, start, end, label }) => ({ day, start, end, label }));
+
+  // 관리자가 손으로 등록해 둔 블록은 그대로 이어받는다.
+  // 자동 유도는 '개설 분반 0개'만 잡으므로, 월7·8·수7·8 처럼 자율선택형교과(체육)가 열려 있는
+  // 시간은 절대 못 찾는다 — 관리자가 직접 넣은 것을 편람을 다시 올렸다고 날려서는 안 된다.
+  for (const b of catalog.common_block ?? []) {
+    if (b.year !== year || b.term !== term) continue;
+    if (covered.has(`${b.day_of_week}-${b.start_period}`)) continue;   // 자동 유도가 이미 덮음
+    out.push({ day: b.day_of_week, start: b.start_period, end: b.end_period, label: b.label, manual: true });
+  }
+
+  return out
+    .map(({ day, start, end, label, manual }) => ({ day, start, end, label, manual: !!manual }))
+    .sort((a, b) => a.day - b.day || a.start - b.start);
 }
 
 // ---------- 검토: 같은 교수, 같은 시간 ----------

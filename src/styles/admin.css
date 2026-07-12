@@ -561,4 +561,22 @@ code {
   font-weight: 600;
   color: var(--text-2);
 }
-.syl-block-label { flex: 1; font-size: 0.85rem; }
+.syl-block-label { flex: 1; min-width: 0; font-size: 0.85rem; }
+.syl-block-manual {
+  margin-left: 0.3rem;
+  font-style: normal;
+  font-size: 0.68rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--r-full);
+  background: var(--primary-weak);
+  color: var(--primary);
+}
+.syl-block-new {
+  margin-top: 0.2rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  flex-wrap: wrap;
+}
+.syl-block-new select { flex: none; width: 4rem; }
+.syl-block-new input[type='number'] { flex: none; width: 3.4rem; }
+.syl-block-tilde { color: var(--text-3); }

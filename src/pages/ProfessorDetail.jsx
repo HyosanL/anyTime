@@ -109,7 +109,8 @@ export default function ProfessorDetail() {
     if (data === 'DELETED') {
       setReviews((prev) => prev.filter((r) => r.id !== id));
       alert('신고 누적으로 삭제되었습니다.');
-    } else alert('신고되었습니다.');
+    } else if (data === 'ALREADY') alert('이미 신고한 강의평입니다.');
+    else alert('신고되었습니다.');
   }
 
   const profName = prof?.name ?? code;

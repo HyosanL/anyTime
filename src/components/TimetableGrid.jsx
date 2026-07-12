@@ -19,7 +19,10 @@ const pad2 = (n) => String(n).padStart(2, '0');
 
 // 시간 기준(한 시간 단위 칸) 주간 시간표.
 // DB 강의(mine + periods)와 직접 추가한 강의(customClasses)를 하나의 격자에 합쳐 보여준다.
-function TimetableGrid({ mine = [], periods = [], customClasses = [], onDeleteCustom }) {
+// commonBlocks = 전 생도 공통 비수업 시간(생도대·군사훈련·자율선택형교과).
+//   [{ day, startMin, endMin, label }] — 카탈로그(common_block)에서 계산해 온다.
+//   DB에 담기지 않는다(생도마다 저장할 이유가 없다) — 격자에만 깔린다.
+function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], onDeleteCustom }) {
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
   // (부모 Home 이 시작 중 여러 번 리렌더돼도 데이터가 그대로면 재계산하지 않음)
   const grid = useMemo(() => {
@@ -69,10 +72,11 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], onDeleteCu
     blocks.forEach((b) => usedDays.add(b.day));
     const days = [...usedDays].sort((a, b) => a - b);
 
-    // 시(hour) 범위
+    // 시(hour) 범위 — 공통 비수업 시간도 포함해야 그 칸이 격자에 나온다
+    // (수업이 6교시에 끝나도 7·8교시 자율선택형교과가 보여야 한다).
     let minH = Infinity;
     let maxH = -Infinity;
-    blocks.forEach((b) => {
+    [...blocks, ...commonBlocks].forEach((b) => {
       minH = Math.min(minH, Math.floor(b.startMin / 60));
       maxH = Math.max(maxH, Math.ceil(b.endMin / 60));
     });
@@ -97,8 +101,31 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], onDeleteCu
       }
     });
 
+    // 공통 비수업 시간은 '수업이 없는 칸'에만 깐다 — 수업이 언제나 우선이다.
+    // (그 시간에 자율선택형교과를 실제로 듣는 생도는 그 강의가 보여야 한다)
+    const runs = [];
+    commonBlocks.forEach((b) => {
+      const sH = Math.floor(b.startMin / 60);
+      const eH = Math.max(sH + 1, Math.ceil(b.endMin / 60));
+      let run = null;
+      for (let h = sH; h < eH; h++) {
+        if (cells[`${b.day}-${h}`] || h < minH || h >= maxH) { run = null; continue; }
+        if (run && run.endH === h) { run.endH = h + 1; continue; }
+        run = { day: b.day, startH: h, endH: h + 1, title: b.label };
+        runs.push(run);
+      }
+    });
+    runs.forEach((r) => {
+      const span = r.endH - r.startH;
+      for (let h = r.startH; h < r.endH; h++) {
+        cells[`${r.day}-${h}`] = {
+          block: true, title: r.title, span: h === r.startH ? span : 0, skip: h !== r.startH,
+        };
+      }
+    });
+
     return { empty: false, days, hours, periodNoByHour, cells };
-  }, [mine, periods, customClasses]);
+  }, [mine, periods, customClasses, commonBlocks]);
 
   if (grid.empty) {
     return (
@@ -137,8 +164,17 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], onDeleteCu
                 const c = cells[`${d}-${h}`];
                 if (c?.skip) return null;
                 return (
-                  <td key={d} rowSpan={c && c.span > 1 ? c.span : undefined} style={c ? { background: c.color } : undefined}>
-                    {c &&
+                  <td
+                    key={d}
+                    className={c?.block ? 'tt-td-block' : undefined}
+                    rowSpan={c && c.span > 1 ? c.span : undefined}
+                    style={c && !c.block ? { background: c.color } : undefined}
+                  >
+                    {c && c.block ? (
+                      <span className="tt-cell tt-cell-block" title="전 생도 비수업 시간">
+                        <span className="tt-course">{c.title}</span>
+                      </span>
+                    ) : c &&
                       (c.custom ? (
                         <button
                           type="button"
