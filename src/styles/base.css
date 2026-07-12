@@ -387,6 +387,35 @@ a.list-row, .list-row a { color: inherit; }
 .install-yes { background: var(--primary); color: var(--on-primary); border: none; border-radius: var(--r-sm); padding: 0.35rem 0.8rem; font-weight: 700; cursor: pointer; }
 .install-no { background: transparent; color: var(--text-3); border: none; cursor: pointer; font-size: 0.95rem; }
 
+/* PWA 새 버전 알림 — 하단 플로팅 토스트(헤더 z-index 20/30 위, 모달 100/200 아래) */
+.update-toast {
+  position: fixed; left: 50%; z-index: 90;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.7rem;
+  max-width: min(calc(100vw - 2rem), var(--app-w));
+  padding: 0.5rem 0.6rem 0.5rem 1rem;
+  background: var(--primary-weak); color: var(--text);
+  border: 1px solid var(--primary-weak-border); border-radius: var(--r-full);
+  box-shadow: var(--shadow-md); font-size: 0.85rem;
+  animation: update-rise 0.24s ease;
+}
+.update-msg { font-weight: 600; white-space: nowrap; }
+.update-actions { display: flex; align-items: center; gap: 0.3rem; flex: none; }
+.update-yes {
+  background: var(--primary); color: var(--on-primary); border: none;
+  border-radius: var(--r-full); padding: 0.4rem 0.95rem; font-weight: 700;
+  font-size: 0.82rem; cursor: pointer;
+}
+.update-no {
+  background: transparent; color: var(--text-3); border: none; cursor: pointer;
+  font-size: 1rem; line-height: 1; padding: 0.25rem 0.35rem;
+}
+@keyframes update-rise {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* ---------- PWA 설치 게이트(모바일 강제 설치 화면) ---------- */
 .install-gate {
   min-height: 100dvh;

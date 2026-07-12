@@ -18,7 +18,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // prompt: 새 SW 를 곧바로 강제 리로드하지 않고 '대기' 상태로 둔다 → UpdatePrompt 가
+      // "새 버전이 나왔어요 [새로고침]" 배너를 띄우고, 사용자가 눌러 즉시 적용할 수 있다.
+      // 누르지 않아도 대기 SW 는 앱을 완전히 닫았다 다시 열면 자동 활성화된다(자동 업데이트 유지).
+      // 감지 속도는 UpdatePrompt 가 주기적/포그라운드 복귀 시 registration.update() 로 당긴다.
+      registerType: 'prompt',
       includeAssets: ['icons/icon.svg'],
       manifest: {
         name: '애타 - AnyTime',

@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import InstallGate from './components/InstallGate';
 import PushPrompt from './components/PushPrompt';
+import UpdatePrompt from './components/UpdatePrompt';
 import LocationHelp from './components/LocationHelp';
 
 // 홈/로그인만 초기 번들에 두고, 나머지는 지연 로드한다.
@@ -143,6 +144,7 @@ export default function App() {
   return (
     <AuthProvider>
       <div className="app">
+        <UpdatePrompt />
         <InstallGate>
         <PushSync />
         <PushNavigator />
