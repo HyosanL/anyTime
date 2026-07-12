@@ -29,6 +29,18 @@ const EDITABLE: Record<string, string[]> = {
 
 // (요일·교시 파싱/적용 로직은 DB 함수 apply_correction_row 로 이관됨 — db/schema.sql)
 
+// 분반을 넣기 전, 그 학기가 semester 에 없으면 만들어 준다(section 의 FK 대상).
+// 이미 있으면 건드리지 않는다 — is_current 를 덮어써 현재 학기를 강등시키면 안 되므로
+// upsert(ignoreDuplicates) = INSERT … ON CONFLICT DO NOTHING.
+async function ensureSemester(admin: any, year: unknown, term: unknown) {
+  const y = Number(year)
+  const t = Number(term)
+  if (!Number.isInteger(y) || (t !== 1 && t !== 2)) return
+  await admin.from('semester')
+    .upsert({ year: y, term: t, is_current: false }, { onConflict: 'year,term', ignoreDuplicates: true })
+    .throwOnError()
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ status: 'BAD_REQUEST' }, 405)
@@ -186,10 +198,14 @@ Deno.serve(async (req) => {
       case 'set_semester': {
         if (payload.is_current) {
           await admin.from('semester').update({ is_current: false }).neq('year', -1)
+          await admin.from('semester').upsert({
+            year: payload.year, term: payload.term, is_current: true,
+          }).throwOnError()
+        } else {
+          // 학기 '추가'(다음 학기 미리 열기) — 이미 있으면 그대로 둔다.
+          // upsert 로 is_current:false 를 덮어쓰면 현재 학기를 강등시켜 버린다.
+          await ensureSemester(admin, payload.year, payload.term)
         }
-        await admin.from('semester').upsert({
-          year: payload.year, term: payload.term, is_current: !!payload.is_current,
-        }).throwOnError()
         return json({ status: 'OK' })
       }
       case 'set_period':
@@ -198,6 +214,7 @@ Deno.serve(async (req) => {
         }).throwOnError()
         return json({ status: 'OK' })
       case 'set_section':
+        await ensureSemester(admin, payload.year, payload.term)   // 없는 학기면 자동 개설
         await admin.from('section').upsert({
           course_code: payload.course_code, year: payload.year, term: payload.term,
           section_no: payload.section_no, professor_code: payload.professor_code ?? null,
@@ -328,6 +345,15 @@ Deno.serve(async (req) => {
       }
       case 'bulk_catalog': {
         const courses = (payload.courses as any[]) ?? []
+        // CSV 안에 아직 없는 학기가 섞여 있으면 먼저 개설한다(section 의 FK).
+        const sems = new Set<string>()
+        for (const co of courses) {
+          for (const se of (co.sections ?? [])) sems.add(`${se.year}-${se.term}`)
+        }
+        for (const s of sems) {
+          const [y, t] = s.split('-')
+          await ensureSemester(admin, y, t)
+        }
         let created = 0
         for (const co of courses) {
           const { data: code } = await admin.rpc('gen_course_code')
@@ -389,6 +415,7 @@ Deno.serve(async (req) => {
       case 'apply_syllabus_courses': {
         const year = payload.year
         const term = payload.term
+        await ensureSemester(admin, year, term)   // 다음 학기 편람을 올려도 학기가 자동 개설된다
         let nC = 0
         let nS = 0
         for (const co of ((payload.courses as any[]) ?? [])) {

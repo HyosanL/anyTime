@@ -220,6 +220,13 @@ export default function Home() {
     await refreshList(id === selectedId ? null : selectedId);
   }, [refreshList, selectedId]);
 
+  // '새 시간표 만들기'를 열 때만 학기 목록을 서버에서 갱신한다
+  // (관리자가 방금 연 다음 학기가 24시간 캐시에 막혀 안 보이는 일을 막는다).
+  const refreshSemesters = useCallback(async () => {
+    const cat = await getCatalog({ force: true });
+    setCatalog(cat);
+  }, []);
+
   // iOS 공유 핸드오프: 공유 화면(사파리)이 복사해 둔 글 주소를 붙여넣어 그 글로 이동.
   // iOS 는 사파리↔홈화면앱 저장소 분리 + 앱 실행 API 부재라 Android(pending-nav)처럼
   // 자동 전달이 불가능한 유일한 플랫폼 — 클립보드가 두 세계를 잇는 유일한 통로다.
@@ -276,6 +283,7 @@ export default function Home() {
               onRename={handleRename}
               onSetPrimary={handleSetPrimary}
               onDelete={handleDelete}
+              onOpenCreate={refreshSemesters}
             />
             <div className="home-tt-actions">
               {offline && <span className="cache-tag">오프라인</span>}

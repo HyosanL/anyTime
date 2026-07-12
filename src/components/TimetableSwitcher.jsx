@@ -12,6 +12,7 @@ export default function TimetableSwitcher({
   onRename,
   onSetPrimary,
   onDelete,
+  onOpenCreate,     // 새로 열린 학기(관리자가 방금 추가한 다음 학기)를 그 자리에서 받아오기
 }) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -45,11 +46,14 @@ export default function TimetableSwitcher({
     return n === 0 ? '내 시간표' : `초안 ${n}`;
   }
 
-  function openCreate() {
+  async function openCreate() {
     setErr('');
     setNewSem(`${cur?.year ?? ''}-${cur?.term ?? ''}`);
     setNewName(suggestName(cur));
     setCreating(true);
+    // 카탈로그 캐시는 24시간이라, 관리자가 방금 연 다음 학기가 안 보일 수 있다.
+    // 이 폼을 열 때만 서버에서 학기 목록을 다시 받는다(평소엔 캐시 그대로).
+    if (onOpenCreate) { try { await onOpenCreate(); } catch { /* 오프라인 → 캐시 목록 */ } }
   }
 
   async function run(fn) {

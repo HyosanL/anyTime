@@ -655,7 +655,7 @@ export default function Admin() {
 
         {section === 'semesters' && (
           <>
-            <Card icon="🗓️" title="현재 학기 설정" desc="현재 학기를 지정합니다. 등록되지 않은 학기를 지정하면 새 학기로 만들어 현재로 설정합니다. 칩을 ×로 삭제할 수 있습니다.">
+            <Card icon="🗓️" title="학기" desc="학기를 추가하거나 현재 학기를 지정합니다. 다음 학기를 미리 열려면 '학기 추가'만 하세요 — 생도가 그 학기 시간표를 미리 짤 수 있고, 현재 학기는 그대로 유지됩니다. 칩을 ×로 삭제할 수 있습니다(그 학기 분반·시간표도 함께 삭제).">
               <div className="adm-tags">
                 {cat?.semester?.length ? cat.semester.map((s) => (
                   <span key={s.year + '' + s.term} className={`tag ${s.is_current ? 'tag-primary' : ''}`}>{s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
@@ -669,7 +669,10 @@ export default function Admin() {
                   <select value={sem.term} onChange={(e) => setSem({ ...sem, term: +e.target.value })}><option value={1}>1</option><option value={2}>2</option></select>
                 </label>
               </div>
-              <button className="btn-add btn-block" onClick={() => run('set_semester', { ...sem, is_current: true }, '현재 학기 설정')}>현재 학기로 설정</button>
+              <div className="adm-btn-row">
+                <button className="btn-add" onClick={() => run('set_semester', { ...sem, is_current: false }, `${sem.year}-${sem.term} 학기 추가`)}>＋ 학기 추가</button>
+                <button className="btn-ghost" onClick={() => run('set_semester', { ...sem, is_current: true }, '현재 학기 설정')}>현재 학기로 설정</button>
+              </div>
             </Card>
 
             <Card icon="⏰" title="교시" desc="각 교시의 시작·종료 시각을 표에서 바로 수정합니다. 맨 아래 줄에서 새 교시를 추가하세요.">
