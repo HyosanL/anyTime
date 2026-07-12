@@ -148,6 +148,9 @@ vite.config.ts.timestamp-*
 # 학과 홈페이지 크롤링 원본(대용량 스크랩) — 로컬 전용, 커밋 안 함.
 crawl/
 
+# 임시 작업 파일(라이브 적용용 SQL·ERD 캡처 등) — 로컬 전용, 커밋 안 함.
+scratchpad/
+
 # 문서 빌드 중간 산출물 (gen.mjs: body.html → full html → PDF)
 docs/build/*.html
 !docs/build/*.body.html
