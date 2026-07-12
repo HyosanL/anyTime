@@ -5,7 +5,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { supabase } from '../supabase';
-import { parseGridsOnPage, toItems, universalBlocks, crossCheck } from './grid';
+import { parseGridsOnPage, toItems, universalBlocks, crossCheck, fixColumnBleed } from './grid';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -63,7 +63,8 @@ const PARSE_ERRORS = {
 // Gemini 를 다시 부를 이유가 없다. 캐시가 없던 탓에 재시도 몇 번으로 무료 한도를 태웠다.
 // 키에 모델을 넣는다 — GEMINI_MODEL 을 바꿨는데 옛 모델의 결과를 물려받으면 안 된다.
 // 프롬프트·스키마를 고치면 CACHE_V 를 올려 통째로 무효화한다.
-const CACHE_V = 2;
+//   3: 프롬프트 수정(영역/학과 열을 과목명에 붙이지 말 것) + 모델 교체(2026-07-13)
+const CACHE_V = 3;
 const CACHE_PREFIX = 'syllabus-parse:';
 
 async function cacheKey(model, kind, text) {
@@ -209,8 +210,12 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
     return rows.map(normRow).filter(Boolean);
   });
 
+  // 표의 '영역/학과' 열이 과목명에 달라붙은 것을 격자를 근거로 떼어낸다
+  // ("컴퓨터 시스템보안" → 과목 '시스템보안', 학과 '컴퓨터'). 격자를 못 읽었으면 그대로 둔다.
+  const { rows, fixed } = fixColumnBleed(dedupeSections(perPage.flat()), grids);
+
   return {
-    rows: dedupeSections(perPage.flat()), periods, errors, grids,
+    rows, periods, errors, grids, renamed: fixed,
     pageCount: pages.length, coursePages: coursePages.length,
     model, cachedPages, // 관리자 화면에서 "몇 장이 공짜(캐시)였는지" 보여주기 위함
   };

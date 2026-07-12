@@ -37,8 +37,11 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   // 같은 PDF 재분석은 캐시로 공짜(Gemini 미호출). 파싱이 틀렸을 때만 캐시를 버리고 새로 부른다.
   const [noCache, setNoCache] = useState(false);
   const [cost, setCost] = useState('');
-  // 직접 추가할 공통 비수업 시간(자동 유도가 못 찾는 자율선택형교과 등)
-  const [nb, setNb] = useState({ day: 1, start: 7, end: 8, label: '자율선택형교과' });
+  // 직접 추가(예외용 탈출구) — 격자를 못 읽는 편람에서만 쓴다. 평소엔 접혀 있다.
+  const [addingBlock, setAddingBlock] = useState(false);
+  const [nb, setNb] = useState({ day: 1, start: 7, end: 8, label: '' });
+  // 표의 '영역/학과' 열이 과목명에 달라붙은 것을 격자로 되돌린 내역
+  const [renamed, setRenamed] = useState([]);
 
   function patchPlan(updater) {
     setPlan((p) => {
@@ -48,7 +51,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
     });
   }
 
-  function resetOut() { setPlan(null); setResult(''); setCost(''); }
+  function resetOut() { setPlan(null); setResult(''); setCost(''); setRenamed([]); }
 
   async function analyze() {
     if (isCsv && !paste.trim() && !file) return setErr('CSV 파일을 선택하거나 아래에 붙여넣으세요.');
@@ -66,11 +69,12 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
         const text = paste.trim() ? paste : await file.text();
         ({ rows, periods } = lib.parseCsvRows(text));
       } else {
-        let model; let cachedPages; let coursePages;
-        ({ rows, periods, errors = [], grids = [], model, cachedPages, coursePages } = await lib.parseSyllabus(file, {
+        let model; let cachedPages; let coursePages; let renamed = [];
+        ({ rows, periods, errors = [], grids = [], renamed = [], model, cachedPages, coursePages } = await lib.parseSyllabus(file, {
           noCache,
           onProgress: (d, t) => setProgress({ label: 'AI 분석 중…', done: d, total: t }),
         }));
+        setRenamed(renamed);
         const billed = coursePages - cachedPages;
         setCost(`${model} · ${coursePages}장 중 ${cachedPages}장은 캐시(무과금), ${billed}장 호출`
           + (grids.length ? ` · 주간 격자 ${grids.length}장은 AI 없이 직접 읽음(무과금)` : ''));
@@ -301,6 +305,15 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             </div>
           )}
 
+          {/* 표의 맨 왼쪽 '영역/학과' 열이 과목명에 달라붙는다("컴퓨터 시스템보안").
+              격자에 진짜 이름이 있으므로 그것으로 되돌린다 — 무엇을 고쳤는지 보여준다. */}
+          {renamed.length > 0 && (
+            <p className="note">
+              과목명에 붙은 <b>학과 열</b>을 격자 기준으로 떼어냈습니다:{' '}
+              {renamed.map((r) => `${r.from} → ${r.to}`).join(', ')}
+            </p>
+          )}
+
           {plan.periods.length > 0 && (
             <label className="adm-check syl-period">
               <input type="checkbox" checked={plan.includePeriods} onChange={(e) => patchPlan((p) => { p.includePeriods = e.target.checked; })} />
@@ -316,10 +329,10 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                 전 생도 비수업 시간 ({plan.commonBlocks.length}) — 이름 붙이기
               </div>
               <p className="note">
-                이 편람에서 <b>어떤 분반도 열리지 않는</b> 시간입니다(생도대시간·군사훈련·자율선택형교과 등).
-                이름을 붙이면 <b>시간표 마법사 격자에 그대로 뜨고</b>, 마법사가 이 시간을
-                <b> 빈 시간(공강)으로 세지 않습니다</b>. 비워 두면 이름 없이 ‘수업 없는 시간’으로만 보입니다
-                (계산은 이름과 무관하게 됩니다).
+                이 편람에서 <b>어떤 분반도 열리지 않는</b> 시간입니다. 이름은 <b>주간 격자에서 자동으로</b>
+                읽어 왔습니다(생도대·군사훈련·공통연구 …) — 그대로 두시면 됩니다. 고치거나 비워도 되고,
+                <b> ×</b>로 뺄 수도 있습니다(계산은 이름과 무관합니다). 시간표·마법사 격자에 회색으로 깔리고,
+                마법사가 이 시간을 <b>빈 시간(공강)으로 세지 않습니다</b>.
               </p>
               <div className="syl-list">
                 {plan.commonBlocks.map((b, i) => (
@@ -348,26 +361,29 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                 <option value="체육" />
               </datalist>
 
-              {/* 자동 유도는 '개설 분반 0개'인 칸만 찾는다. 월7·8, 수7·8 처럼 자율선택형교과(무도·
-                  체력단련)가 열려 있는 시간은 강의가 있어서 못 찾는다 → 여기서 직접 넣는다. */}
-              <p className="note">
-                <b>월7·8, 수7·8</b>처럼 체육(무도·체력단련)만 열리는 <b>자율선택형교과</b> 시간은
-                강의가 있어서 자동으로 잡히지 않습니다. 아래에서 직접 추가하세요 (한 번 넣으면 다음 편람 등록 때도 유지됩니다).
-              </p>
-              <div className="syl-block syl-block-new">
-                <select value={nb.day} onChange={(e) => setNb({ ...nb, day: +e.target.value })}>
-                  {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>{DAY[d]}</option>)}
-                </select>
-                <input type="number" min="1" max="12" value={nb.start}
-                  onChange={(e) => setNb({ ...nb, start: +e.target.value })} />
-                <span className="syl-block-tilde">~</span>
-                <input type="number" min="1" max="12" value={nb.end}
-                  onChange={(e) => setNb({ ...nb, end: +e.target.value })} />
-                <input className="syl-block-label" list="syl-block-names" maxLength={20}
-                  placeholder="이름" value={nb.label}
-                  onChange={(e) => setNb({ ...nb, label: e.target.value })} />
-                <button className="btn-add btn-sm" onClick={addBlock}>＋ 추가</button>
-              </div>
+              {/* 직접 추가는 '예외용 탈출구'다 — 격자를 못 읽는 편람(양식이 다른 해)에서만 쓴다.
+                  기본으로 펼쳐 두면 '넣어야 하는 것'처럼 보인다. 접어 둔다. */}
+              {addingBlock ? (
+                <div className="syl-block syl-block-new">
+                  <select value={nb.day} onChange={(e) => setNb({ ...nb, day: +e.target.value })}>
+                    {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>{DAY[d]}</option>)}
+                  </select>
+                  <input type="number" min="1" max="12" value={nb.start}
+                    onChange={(e) => setNb({ ...nb, start: +e.target.value })} />
+                  <span className="syl-block-tilde">~</span>
+                  <input type="number" min="1" max="12" value={nb.end}
+                    onChange={(e) => setNb({ ...nb, end: +e.target.value })} />
+                  <input className="syl-block-label" list="syl-block-names" maxLength={20}
+                    placeholder="이름" value={nb.label}
+                    onChange={(e) => setNb({ ...nb, label: e.target.value })} />
+                  <button className="btn-add btn-sm" onClick={addBlock}>＋ 추가</button>
+                  <button className="btn-ghost btn-sm" onClick={() => setAddingBlock(false)}>닫기</button>
+                </div>
+              ) : (
+                <button type="button" className="link-btn" onClick={() => setAddingBlock(true)}>
+                  ＋ 직접 추가 (격자에 없는 시간을 넣어야 할 때만)
+                </button>
+              )}
             </div>
           )}
 

@@ -337,6 +337,27 @@ export default function Admin() {
   // 섹션이 바뀌면 메시지를 비워 깔끔하게 시작
   useEffect(() => { setMsg(''); }, [section]);
 
+  // 학기 삭제는 이 앱에서 가장 파괴적인 버튼이다. (year,term) 은 section·common_block·timetable 이
+  // 모두 ON DELETE CASCADE 로 물고 있어서, 칩의 × 한 번이 그 학기의 분반·강의시간은 물론
+  // 생도들이 저장해 둔 시간표까지 통째로 지운다 — 실제로 2026-2 학기가 이렇게 날아갔다.
+  // 되돌릴 방법이 없으므로(백업 복원뿐) 학기명을 그대로 입력해야만 실행한다.
+  function deleteSemester(s) {
+    const key = `${s.year}-${s.term}`;
+    const n = (cat?.section ?? []).filter((x) => x.year === s.year && x.term === s.term).length;
+    const typed = prompt(
+      `⚠️ ${key} 학기를 삭제하면 되돌릴 수 없습니다.\n\n`
+      + `함께 사라지는 것:\n`
+      + `  · 이 학기 분반 ${n}개와 강의시간 전부\n`
+      + `  · 생도들이 저장한 ${key} 시간표 전부 (담긴 강의·직접추가 포함)\n`
+      + `  · 이 학기의 비수업 시간 설정\n\n`
+      + `강의 정보만 다시 올리고 싶은 것이라면 학기를 지울 필요가 없습니다 —\n`
+      + `CSV·편람 일괄등록이 기존 분반을 대조해 갱신합니다.\n\n`
+      + `정말 지우려면 "${key}" 를 그대로 입력하세요.`
+    );
+    if (typed?.trim() !== key) return;
+    run('delete_catalog', { table: 'semester', key: { year: s.year, term: s.term } }, `${key} 학기 삭제`);
+  }
+
   async function run(action, payload, okMsg) {
     setMsg('');
     const r = await call(action, payload);
@@ -655,11 +676,12 @@ export default function Admin() {
 
         {section === 'semesters' && (
           <>
-            <Card icon="🗓️" title="학기" desc="학기를 추가하거나 현재 학기를 지정합니다. 다음 학기를 미리 열려면 '학기 추가'만 하세요 — 생도가 그 학기 시간표를 미리 짤 수 있고, 현재 학기는 그대로 유지됩니다. 칩을 ×로 삭제할 수 있습니다(그 학기 분반·시간표도 함께 삭제).">
+            <Card icon="🗓️" title="학기" desc="학기를 추가하거나 현재 학기를 지정합니다. 다음 학기를 미리 열려면 '학기 추가'만 하세요 — 생도가 그 학기 시간표를 미리 짤 수 있고, 현재 학기는 그대로 유지됩니다. ⚠️ 학기 삭제는 그 학기의 분반·강의시간과 생도들이 저장한 시간표까지 전부 지웁니다(되돌릴 수 없음).">
               <div className="adm-tags">
                 {cat?.semester?.length ? cat.semester.map((s) => (
                   <span key={s.year + '' + s.term} className={`tag ${s.is_current ? 'tag-primary' : ''}`}>{s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
-                    <button className="x" onClick={() => run('delete_catalog', { table: 'semester', key: { year: s.year, term: s.term } }, '학기 삭제')}>×</button>
+                    <button className="x" title="이 학기 삭제 (분반·생도 시간표까지 연쇄 삭제)"
+                      onClick={() => deleteSemester(s)}>×</button>
                   </span>
                 )) : <span className="note">등록된 학기가 없습니다.</span>}
               </div>

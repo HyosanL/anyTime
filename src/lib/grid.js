@@ -175,6 +175,46 @@ export function courseSlots(grids) {
 // 한쪽이 다른 쪽의 앞부분이면 같은 과목으로 본다.
 const sameCourse = (a, b) => a.startsWith(b) || b.startsWith(a);
 
+// 세부내용 표의 맨 왼쪽 '영역/학과' 열. pdf.js 가 표를 한 줄로 눕히면 이 값이 과목명 앞에
+// 달라붙는다("컴퓨터 시스템보안 3 1(목34 금3) 유승훈"). 프롬프트로도 막지만, 모델이 흔들리면
+// 그대로 새어 들어오므로 격자로 결정적으로 되돌린다.
+const DEPT_WORDS = [
+  '교양필수', '교양선택', '군사학', '일반학', '전공필수', '전공선택', '전공', '수탁',
+  '컴퓨터', '전자', '기계', '항공', '우주', '국관', '국제관계', '경영', '국방경영',
+  '정책', '항공우주정책', '인공지능', '시스템', '체육', '교양',
+];
+
+/**
+ * '영역/학과' 열이 과목명에 달라붙은 것을 격자를 근거로 떼어낸다.
+ *   "컴퓨터시스템보안" + 격자에 "시스템보안" 있음 + 떨어져 나갈 앞부분이 학과어 → "시스템보안"
+ * 격자에 그 이름이 이미 있으면 손대지 않는다("컴퓨터구조"는 그 자체가 과목명이다).
+ * @returns { rows, fixed:[{ from, to }] }
+ */
+export function fixColumnBleed(rows, grids) {
+  const names = new Set(courseSlots(grids).keys());
+  if (!names.size) return { rows, fixed: [] };
+
+  const fixed = [];
+  const cache = new Map();
+  const resolve = (course) => {
+    if (cache.has(course)) return cache.get(course);
+    let out = course;
+    if (!names.has(course)) {
+      // 격자에 있는 이름이 이 과목명의 '꼬리'이고, 잘려 나갈 머리가 학과어이면 그것이 진짜 이름이다.
+      const cands = [...names].filter(
+        (g) => g.length >= 3 && course.length > g.length && course.endsWith(g)
+          && DEPT_WORDS.includes(course.slice(0, course.length - g.length))
+      );
+      if (cands.length === 1) out = cands[0];
+    }
+    cache.set(course, out);
+    if (out !== course) fixed.push({ from: course, to: out });
+    return out;
+  };
+
+  return { rows: rows.map((r) => ({ ...r, course: resolve(r.course) })), fixed };
+}
+
 /**
  * 세부내용 표에서 뽑은 분반을 격자와 대조한다.
  *
