@@ -23,9 +23,13 @@ const API = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 // 막는다: ① findProfConflicts(같은 교수·같은 교시 = 파싱 오류 신호)를 미리보기에서 경고
 // ② 주간 격자 대조(lib/grid.js, AI 호출 0회)가 요일 오류를 잡는다. 관리자가 적용 전에 본다.
 //
-// 1회 분석(~19콜) 약 $0.07(Flash 는 $0.43). 재분석은 캐시라 무과금.
+// 값(2026-07 확인, 1M 토큰당): flash-lite $0.25 in / $1.50 out · flash $1.50 in / $9.00 out
+// → 입력·출력 모두 정확히 6배 싸다. 재분석은 페이지 캐시라 무과금.
 // 코드 수정 없이 Pages 환경변수 GEMINI_MODEL 로 갈아끼울 수 있다(정확도가 의심되면 즉시 복귀).
-const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+//
+// ⚠ 모델명은 반드시 지원 목록에서 확인할 것. 'gemini-3.5-flash-lite' 는 존재하지 않는다
+//   (Flash-Lite 는 3.1 세대에만 있다). 이름을 패턴으로 추측했다가 404 로 파싱이 통째로 죽었다.
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
 const DAY_HINT = '요일 숫자: 월=1, 화=2, 수=3, 목=4, 금=5, 토=6, 일=7.';
 
