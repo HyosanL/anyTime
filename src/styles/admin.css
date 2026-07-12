@@ -537,3 +537,11 @@ code {
   border-left: 2px solid var(--border);
 }
 .syl-sec { font-size: 0.8rem; color: var(--text-2); padding-left: 0.6rem; }
+.syl-conflicts { display: flex; flex-direction: column; gap: 0.35rem; }
+.syl-conflict {
+  font-size: 0.82rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--warn-weak);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+}

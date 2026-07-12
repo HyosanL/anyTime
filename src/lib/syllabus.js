@@ -58,7 +58,7 @@ const PARSE_ERRORS = {
 // Gemini 를 다시 부를 이유가 없다. 캐시가 없던 탓에 재시도 몇 번으로 무료 한도를 태웠다.
 // 키에 모델을 넣는다 — GEMINI_MODEL 을 바꿨는데 옛 모델의 결과를 물려받으면 안 된다.
 // 프롬프트·스키마를 고치면 CACHE_V 를 올려 통째로 무효화한다.
-const CACHE_V = 1;
+const CACHE_V = 2;
 const CACHE_PREFIX = 'syllabus-parse:';
 
 async function cacheKey(model, kind, text) {
@@ -495,11 +495,14 @@ export function reconcile(rows, periods, catalog, year, term) {
   }
   stale.sort((a, b) => a.courseName.localeCompare(b.courseName, 'ko') || a.sectionNo - b.sectionNo);
 
+  const conflicts = findProfConflicts({ courses: courseList });
+
   return {
     year, term,
     periods, includePeriods: periods.length > 0,
     professors: professors.sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     courses: courseList,
+    conflicts,                   // 같은 교수·같은 교시 — 파싱 오류 신호. 적용은 막지 않고 보여만 준다.
     stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
     stats: {
       courses: courseList.length,
@@ -509,8 +512,37 @@ export function reconcile(rows, periods, catalog, year, term) {
       ambiguous: professors.filter((p) => p.action === 'ambiguous').length,
       reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
       staleSections: stale.length,
+      conflicts: conflicts.length,
     },
   };
+}
+
+// ---------- 검토: 같은 교수, 같은 시간 ----------
+// 한 교수가 같은 요일·교시에 두 분반을 동시에 가르칠 수는 없다. 편람 표에서 같은 시간대에
+// 나란히 열린 분반(영어회화 4·5·6분반이 모두 목1교시, 교수만 다름)의 교수 이름을 AI 가
+// 한 사람에게 몰아 붙이는 실수를 저질렀다. 모델을 올려도 확률이 줄 뿐이라 여기서 결정적으로
+// 잡아 관리자에게 보여준다. CSV 오타도 같은 그물에 걸린다.
+// 적용을 막지는 않는다 — 두 분반이 실제로 합반 수업일 여지가 있어 판단은 사람이 한다.
+export function findProfConflicts(plan) {
+  const slots = new Map(); // "교수|요일|교시" → { professorName, day, period, sections[] }
+  for (const c of plan?.courses ?? []) {
+    if (c.include === false) continue;
+    for (const s of c.sections ?? []) {
+      if (!s.professorName) continue;
+      for (const b of s.times ?? []) {
+        for (let p = b.start; p <= b.end; p++) {
+          const k = `${s.professorName}|${b.day}|${p}`;
+          const slot = slots.get(k)
+            ?? slots.set(k, { professorName: s.professorName, day: b.day, period: p, sections: [] }).get(k);
+          slot.sections.push({ courseName: c.name, sectionNo: s.sectionNo });
+        }
+      }
+    }
+  }
+  return [...slots.values()]
+    .filter((s) => s.sections.length > 1)
+    .sort((a, b) =>
+      a.professorName.localeCompare(b.professorName, 'ko') || a.day - b.day || a.period - b.period);
 }
 
 // ---------- 적용 ----------

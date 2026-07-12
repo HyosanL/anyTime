@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { getCatalog } from '../lib/cache';
 
 const DAY = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
@@ -129,6 +129,16 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
 
   const canAnalyze = isCsv ? (!!paste.trim() || !!file) : !!file;
 
+  // 제외(체크 해제)한 과목은 적용되지 않으니 충돌 경고에서도 빼준다.
+  // 남은 분반이 하나뿐이면 더 이상 충돌이 아니다.
+  const conflicts = useMemo(() => {
+    const excluded = new Set((plan?.courses ?? []).filter((c) => c.include === false).map((c) => c.name));
+    if (!excluded.size) return plan?.conflicts ?? [];
+    return (plan?.conflicts ?? [])
+      .map((c) => ({ ...c, sections: c.sections.filter((s) => !excluded.has(s.courseName)) }))
+      .filter((c) => c.sections.length > 1);
+  }, [plan]);
+
   return (
     <div className="syl">
       {isCsv ? (
@@ -202,7 +212,29 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             <span className="tag tag-primary">신규교수 {plan.stats.newProfessors}</span>
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
+            {conflicts.length > 0 && <span className="tag tag-warn">시간 충돌 {conflicts.length}</span>}
           </div>
+
+          {conflicts.length > 0 && (
+            <div className="syl-conflicts">
+              <div className="section-label adm-sub-label">⚠️ 같은 교수 · 같은 교시 ({conflicts.length})</div>
+              <p className="note">
+                한 교수가 같은 교시에 두 분반을 <b>동시에</b> 담당하는 것으로 읽혔습니다.
+                같은 시간대에 나란히 열린 분반(예: 영어회화 4·5·6분반이 모두 목1교시)의 교수 이름을
+                {isCsv ? ' CSV 에서 잘못 적었을' : ' AI 가 한 사람에게 몰아 붙였을'} 가능성이 큽니다.
+                {isCsv ? ' 해당 행을 고쳐 다시 올리세요.' : ' ‘캐시 무시하고 다시 분석’으로 재시도하거나, CSV 로 바로잡아 올리세요.'}
+                {' '}(합반 수업이라면 그대로 적용해도 됩니다.)
+              </p>
+              <div className="syl-list">
+                {conflicts.map((c) => (
+                  <div className="syl-conflict" key={`${c.professorName}-${c.day}-${c.period}`}>
+                    <b>{c.professorName}</b> · {DAY[c.day]}{c.period}교시
+                    <span className="muted"> — {c.sections.map((s) => `${s.courseName} ${s.sectionNo}분반`).join(', ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {plan.periods.length > 0 && (
             <label className="adm-check syl-period">
