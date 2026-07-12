@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getSharedPost, boardImageObjectUrl, shareImageObjectUrl } from '../lib/board';
+import { hasViewed, markViewed } from '../lib/views';
 import { stashPendingNav } from '../lib/push';
 import { appUrl } from '../lib/share';
 import { isIos, isMobile, isStandalone } from '../components/InstallGate';
@@ -28,7 +29,7 @@ function timeAgo(iso) {
 //    push 딥링크와 같은 통로·3분 유효) 이 화면으로 읽게 한다 — 웹에서 설치된
 //    WebAPK 를 직접 실행하는 API 는 없다(2026-07-05 실측, InstallGate 참고).
 //  - 비회원: 읽기 전용 + 시작하기 CTA. 관리자가 비회원 열람을 차단하면 안내만.
-//  - 조회수: 비회원 열람도 집계(p_view, 기기 세션당 1회). 회원은 앱 화면(get_post_b)
+//  - 조회수: 비회원 열람도 집계(p_view, 기기당 1회). 회원은 앱 화면(get_post_b)
 //    쪽에서 집계되므로 여기선 세지 않는다(중복 방지 — 서버도 anon 만 +1).
 // =====================================================================
 export default function SharePost() {
@@ -44,15 +45,14 @@ export default function SharePost() {
     if (loading) return undefined;
     let active = true;
     (async () => {
-      let countView = false;
-      if (!session) {
-        try { countView = !sessionStorage.getItem(`bb:viewed:s:${token}`); } catch { /* 프라이버시 모드 등 */ }
-      }
+      // 조회수는 기기당 1회만 집계(좋아요와 동일). 회원은 앱 화면(get_post_b)에서 집계돼 여기선 세지 않음.
+      const viewKey = `s:${token}`;
+      const countView = !session && !hasViewed(viewKey);
       const { data: d, error } = await getSharedPost(token, countView);
       if (!active) return;
       if (error || !d) { setState('gone'); return; }
       if (d.disabled) { setState('disabled'); return; }
-      if (countView) { try { sessionStorage.setItem(`bb:viewed:s:${token}`, '1'); } catch { /* noop */ } }
+      if (countView) markViewed(viewKey);
       const appPath = `/board/post/${d.post_id}`;
       if (session) {
         if (!isMobile() || isStandalone()) { navigate(appPath, { replace: true }); return; }

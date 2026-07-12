@@ -121,7 +121,7 @@ export const removeFavorite = (boardId) => supabase.auth.getSession().then(({ da
 // 진입마다의 재요청은 호출부(Board 는 마운트당 1회 [] 이펙트)에서 이미 최소화돼 있다.
 export const boardEnabled = () => supabase.rpc('board_enabled').then((r) => r.data !== false);
 // 게시글 상세: get_post_b RPC(SETOF board_post)라 기존 SELECT 와 동일한 1요청·같은 응답 형태.
-// view=true 면 서버가 조회수 +1 — 호출부(Post 화면)가 기기 세션당 1회만 넘긴다.
+// view=true 면 서버가 조회수 +1 — 호출부(Post 화면)가 기기당 1회만 넘긴다.
 export const getPost = (id, view = false) =>
   supabase.rpc('get_post_b', { p_id: Number(id), p_view: !!view })
     .select(POST_SELECT_B).maybeSingle().then((r) => r.data);
@@ -152,7 +152,7 @@ export const createShare = (postId) =>
     if (r.error) throw r.error;
     return r.data;
   });
-// 공유 글 읽기(비회원 가능). view=true 면 서버가 비회원 열람만 조회수 +1(기기 세션당 1회는 호출부가 보장).
+// 공유 글 읽기(비회원 가능). view=true 면 서버가 비회원 열람만 조회수 +1(기기당 1회는 호출부가 보장).
 // 반환: { data: { post_id, post, images, comments } | { disabled: true } | null, error }
 export const getSharedPost = (token, view = false) =>
   supabase.rpc('get_shared_post', { p_token: token, p_view: !!view });

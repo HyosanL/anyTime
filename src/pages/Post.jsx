@@ -4,6 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys, createShare } from '../lib/board';
 import { shareLink, appUrl } from '../lib/share';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
+import { hasViewed, markViewed } from '../lib/views';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
 import { maskProfanity } from '../lib/moderation';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
@@ -84,11 +85,11 @@ export default function Post() {
       if (seq.current === my && !gotFresh && c?.post) { setPost(c.post); setComments(c.comments ?? []); }
     });
     try {
-      // 조회수는 기기 세션당 1회만 집계(새로고침·반응/댓글 후 재조회로 부풀지 않게)
-      let countView = false;
-      try { countView = !sessionStorage.getItem(`bb:viewed:${id}`); } catch { /* 프라이버시 모드 등 */ }
+      // 조회수는 기기당 1회만 집계(좋아요와 동일 — 새로고침·반응/댓글 후 재조회로 부풀지 않게)
+      const viewKey = `p:${id}`;
+      const countView = !hasViewed(viewKey);
       const [p, cs] = await Promise.all([getPost(id, countView), listComments(id)]);
-      if (p && countView) { try { sessionStorage.setItem(`bb:viewed:${id}`, '1'); } catch { /* noop */ } }
+      if (p && countView) markViewed(viewKey);
       if (seq.current !== my) return;
       gotFresh = true;
       if (!p) { setGone(true); setPost(null); kvDel(`bb:post:${id}`); return; }
