@@ -7,7 +7,7 @@ import {
   listTimetables, createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
   addSections, findEmptyTimetables, writeSelectedId, isOverlapError,
 } from '../lib/timetable';
-import { generateCombos, sortCombos, groupByTime, deriveNoClass, SORTS } from '../lib/wizard';
+import { generateCombos, pickDiverse, groupByTime, deriveNoClass, SORTS } from '../lib/wizard';
 
 // 과목별 파스텔 색(TimetableGrid 와 같은 팔레트) — 데이터성 값이라 다크모드와 무관.
 const PALETTE = [
@@ -16,7 +16,8 @@ const PALETTE = [
 ];
 
 const MAX_PER_SEM = 5;                 // DB 트리거와 같은 값(학기당 시간표 상한)
-const SHOW_LIMIT = 30;                 // 한 번에 보여줄 후보 수
+const SHOW_LIMIT = 20;                 // 한 번에 보여줄 후보 수 — 사람이 훑어보고 고를 수 있는 양
+const BUSY_HINT = 400;                 // 이 정도 경우의 수부터는 '분반을 좁히라'고 권한다
 const NAME_MAX = 20;                   // timetable.name CHECK
 const CAND_NAME = (i) => `후보 ${String.fromCharCode(65 + i)}`;   // 후보 A, B, C…
 
@@ -84,11 +85,30 @@ function MiniGrid({ groups, picked, periodNos, days, colorOf, noClass, blockLabe
   );
 }
 
+// 후보의 성격을 한눈에 — 문장으로 늘어놓으면 좁은 화면에서 두세 줄로 접혀 카드가 길어진다.
+function CandChips({ stats }) {
+  const none = stats.freeDays.length === 0 && stats.amFree.length === 0 && stats.pmFree.length === 0;
+  return (
+    <span className="wz-chips">
+      {stats.freeDays.length > 0 && (
+        <span className="wz-chip is-good">공강 {stats.freeDays.map(dayLabel).join('·')}</span>
+      )}
+      {stats.amFree.length > 0 && <span className="wz-chip">오전 {stats.amFree.map(dayLabel).join('·')}</span>}
+      {stats.pmFree.length > 0 && <span className="wz-chip">오후 {stats.pmFree.map(dayLabel).join('·')}</span>}
+      {none && <span className="wz-chip">공강 없음</span>}
+      {stats.early > 0 && <span className="wz-chip">1교시 {stats.early}</span>}
+      {stats.gaps > 0 && <span className="wz-chip">낀시간 {stats.gaps}</span>}
+    </span>
+  );
+}
+
 // 시간표 마법사: 들어야 하는 과목을 담고 → 과목마다 '가능한 시간·교수'만 켜고 → 조건을 주면
-// 겹치지 않는 조합을 전부 만들어 보여준다. 그중 최대 5개를 저장하고 하나를 확정으로 지정한다.
+// 겹치지 않는 조합을 만들어 서로 다른 20개를 보여준다. 그중 최대 5개를 저장하고 하나를 확정한다.
 //
 // ★ 켠 것만 후보에 들어간다. 항공기상 1분반만 켰다면 2·3분반은 어떤 후보에도 등장하지 않는다.
 // ★ 같은 과목·같은 시간에 교수만 다른 분반은 한 후보로 합친다(후보 폭발 방지). 교수는 4단계에서 고른다.
+// ★ 조합이 수백 개 나와도 화면에는 '성격이 서로 다른' 20개만 올린다(pickDiverse) — 분반 하나만
+//    다른 쌍둥이 20개를 늘어놓으면 고를 것이 없는 것과 같다.
 // ★ 조합 계산은 전부 브라우저에서(카탈로그는 이미 IndexedDB 캐시) — 서버는 '저장'에서만 쓴다.
 export default function Wizard() {
   const { session } = useAuthContext();
@@ -136,6 +156,9 @@ export default function Wizard() {
     })();
     return () => { active = false; };
   }, []);
+
+  // 단계를 넘길 때마다 맨 위로 — 아래쪽 버튼을 누른 자리에서 다음 화면 중간이 열리면 길을 잃는다.
+  useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
 
   const semesters = useMemo(() => (catalog ? semesterList(catalog) : []), [catalog]);
   const sem = useMemo(() => {
@@ -207,6 +230,12 @@ export default function Wizard() {
     [picked, courses]
   );
 
+  // 겹침을 따지기 전의 '켠 시간 묶음의 곱' — 후보가 얼마나 쏟아질지 미리 가늠하는 값.
+  const roughCount = useMemo(
+    () => items.reduce((n, it) => n * Math.max(1, it.options.length), 1),
+    [items]
+  );
+
   // 표시 요일: 평일 + 실제로 쓰이는 토·일
   const days = useMemo(() => {
     const set = new Set([1, 2, 3, 4, 5]);
@@ -233,7 +262,7 @@ export default function Wizard() {
   );
 
   // ── 조합 생성(순수 계산 — 서버 요청 없음) ───────────────────────────
-  // 탐색(무거움)과 정렬(가벼움)을 나눈다 — 정렬 기준만 바꿨다고 조합을 다시 만들지 않는다.
+  // 탐색(무거움)과 추림·정렬(가벼움)을 나눈다 — 정렬 기준만 바꿨다고 조합을 다시 만들지 않는다.
   const raw = useMemo(() => {
     if (step < 4 || items.length === 0) return null;
     return generateCombos({
@@ -244,8 +273,9 @@ export default function Wizard() {
     });
   }, [step, items, blocked, periodNos, noClass]);
 
-  const result = useMemo(
-    () => (raw ? { ...raw, combos: sortCombos(raw.combos, sortMode) } : null),
+  // 화면에 올릴 후보 — 성격이 서로 다른 것부터 SHOW_LIMIT 개.
+  const view = useMemo(
+    () => (raw ? pickDiverse(raw.combos, sortMode, SHOW_LIMIT) : null),
     [raw, sortMode]
   );
 
@@ -328,16 +358,23 @@ export default function Wizard() {
     }));
     resetResults();
   }
-  function toggleBlock(d, p) {
-    if (noClass.has(`${d}-${p}`)) return;      // 원래 수업이 없는 시간 — 칠할 것이 없다
+
+  // 기피 시간 칠하기. 칸 하나씩도 되고, 요일·교시 머리를 누르면 한 줄이 통째로 칠해진다 —
+  // 좁은 화면에서 '수요일을 통째로 비우고 싶다'를 여덟 번 두드리게 하면 안 된다.
+  function paint(keys) {
+    const open = keys.filter((k) => !noClass.has(k));      // 원래 수업이 없는 칸은 칠할 것이 없다
+    if (open.length === 0) return;
     setBlocked((prev) => {
       const next = new Set(prev);
-      const k = `${d}-${p}`;
-      if (next.has(k)) next.delete(k); else next.add(k);
+      const allOn = open.every((k) => next.has(k));        // 이미 다 칠해져 있으면 지운다
+      for (const k of open) { if (allOn) next.delete(k); else next.add(k); }
       return next;
     });
     resetResults();
   }
+  const toggleCell = (d, p) => paint([`${d}-${p}`]);
+  const toggleDay = (d) => paint(periodNos.map((p) => `${d}-${p}`));
+  const togglePeriod = (p) => paint(days.map((d) => `${d}-${p}`));
 
   function changeSem(v) {
     setSemKey(v);
@@ -385,7 +422,7 @@ export default function Wizard() {
     const done = [];
     try {
       for (const p of plan) {
-        const combo = result.combos.find((c) => c.sig === p.sig);
+        const combo = view.list.find((c) => c.sig === p.sig);
         if (!combo) continue;
         const name = (p.name || '').trim().slice(0, NAME_MAX) || '내 시간표';
         const sectionIds = combo.groups.map((g) => pickedSection(g).id);   // 고른 교수의 분반
@@ -437,6 +474,7 @@ export default function Wizard() {
     const curIsCandidate = cur ? done.some((d) => d.id === cur.id) : false;
     setKeepPrimary(cur && !curIsCandidate ? cur : null);
     setPrimaryId(curIsCandidate ? cur.id : (cur ? null : done[0]?.id ?? null));
+    setConfirming(false);
     setSaved(done);
   }
 
@@ -480,39 +518,44 @@ export default function Wizard() {
     return (
       <div className="page wizard">
         <header className="page-header row"><BackButton /><h2>확정 시간표 지정</h2></header>
-        {err && <p className="error-msg">{err}</p>}
-        <p className="wz-lead">
-          {saved.length}개를 저장했습니다. 이 학기의 <strong>확정 시간표</strong>를 고르세요.
-          <span className="muted"> 강의평·수업메모는 확정 시간표에 담긴 강의만 열립니다.</span>
-        </p>
-        <ul className="wz-saved">
-          {/* 강의가 담긴 기존 확정이 있으면 '그대로 두기'가 기본 — 말없이 끌어내리면
-              그 시간표로 얻은 강의평·수업메모 자격이 끊긴다. */}
-          {keepPrimary && (
-            <li>
-              <label className="wz-saved-row">
-                <input type="radio" name="primary" checked={primaryId === null} onChange={() => setPrimaryId(null)} />
-                <span className="wz-saved-name">기존 확정 유지 — ‘{keepPrimary.name}’</span>
-                <span className="muted">그대로 둠</span>
-              </label>
-            </li>
-          )}
-          {saved.map((s) => (
-            <li key={s.id}>
-              <label className="wz-saved-row">
-                <input type="radio" name="primary" checked={primaryId === s.id} onChange={() => setPrimaryId(s.id)} />
-                <span className="wz-saved-name">{s.name}</span>
-                <span className="muted">{sem?.year}-{sem?.term}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-        <div className="wz-nav">
-          <button className="btn-add btn-block" disabled={saving || (!primaryId && !keepPrimary)} onClick={finish}>
-            {saving ? '지정 중…' : primaryId ? '★ 확정하고 홈으로' : '확정은 그대로 두고 홈으로'}
-          </button>
+        <div className="wz-body">
+          {err && <p className="error-msg">{err}</p>}
+          <p className="wz-lead">
+            {saved.length}개를 저장했습니다. 이 학기의 <strong>확정 시간표</strong>를 고르세요.
+            <span className="muted"> 강의평·수업메모는 확정 시간표에 담긴 강의만 열립니다.</span>
+          </p>
+          <ul className="wz-saved">
+            {/* 강의가 담긴 기존 확정이 있으면 '그대로 두기'가 기본 — 말없이 끌어내리면
+                그 시간표로 얻은 강의평·수업메모 자격이 끊긴다. */}
+            {keepPrimary && (
+              <li>
+                <label className={`wz-saved-row${primaryId === null ? ' is-on' : ''}`}>
+                  <input type="radio" name="primary" checked={primaryId === null} onChange={() => setPrimaryId(null)} />
+                  <span className="wz-saved-name">기존 확정 유지 — ‘{keepPrimary.name}’</span>
+                  <span className="muted">그대로 둠</span>
+                </label>
+              </li>
+            )}
+            {saved.map((s) => (
+              <li key={s.id}>
+                <label className={`wz-saved-row${primaryId === s.id ? ' is-on' : ''}`}>
+                  <input type="radio" name="primary" checked={primaryId === s.id} onChange={() => setPrimaryId(s.id)} />
+                  <span className="wz-saved-name">{s.name}</span>
+                  <span className="muted">{sem?.year}-{sem?.term}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <p className="account-note">확정은 나중에 홈의 시간표 드롭다운에서 언제든 바꿀 수 있습니다.</p>
         </div>
-        <p className="account-note">확정은 나중에 홈의 시간표 드롭다운에서 언제든 바꿀 수 있습니다.</p>
+
+        <div className="wz-bar">
+          <div className="wz-bar-row">
+            <button className="btn-add btn-block" disabled={saving || (!primaryId && !keepPrimary)} onClick={finish}>
+              {saving ? '지정 중…' : primaryId ? '★ 확정하고 홈으로' : '확정은 그대로 두고 홈으로'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -533,429 +576,462 @@ export default function Wizard() {
         ))}
       </ol>
 
-      {err && <p className="error-msg">{err}</p>}
+      <div className="wz-body">
+        {err && <p className="error-msg">{err}</p>}
 
-      {/* ── 1. 과목 담기 ─────────────────────────────────────────────── */}
-      {step === 1 && (
-        <>
-          <div className="wz-sem">
-            <label htmlFor="wz-sem">학기</label>
-            <select id="wz-sem" value={semKey} onChange={(e) => changeSem(e.target.value)}>
-              {semesters.map((s) => (
-                <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>
-                  {s.year}-{s.term}학기{s.is_current ? ' (이번)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="wz-lead">들어야 하는 과목을 모두 담으세요. 분반은 다음 단계에서 고릅니다.</p>
+        {/* ── 1. 과목 담기 ─────────────────────────────────────────────── */}
+        {step === 1 && (
+          <>
+            <label className="field wz-sem">
+              <span className="field-label">학기</span>
+              <select value={semKey} onChange={(e) => changeSem(e.target.value)}>
+                {semesters.map((s) => (
+                  <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>
+                    {s.year}-{s.term}학기{s.is_current ? ' (이번)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="wz-lead">들어야 하는 과목을 모두 담으세요. 분반은 다음 단계에서 고릅니다.</p>
 
-          <div className="search-bar">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="과목명 · 과목코드 · 교수명 검색"
-            />
-          </div>
+            <div className="search-bar">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="과목명 · 과목코드 · 교수명 검색"
+              />
+            </div>
 
-          {q && (
-            found.length === 0 ? (
-              <div className="empty"><span className="empty-emoji">🔍</span>검색 결과가 없습니다.</div>
+            {q && (
+              found.length === 0 ? (
+                <div className="empty"><span className="empty-emoji">🔍</span>검색 결과가 없습니다.</div>
+              ) : (
+                <ul className="wz-find">
+                  {found.map((c) => (
+                    <li key={c.code} className="wz-find-row">
+                      <div className="wz-find-body">
+                        <p className="wz-find-name">{c.name}</p>
+                        <p className="wz-find-sub">
+                          {c.code} · 분반 {c.sections.length}개
+                          {c.sections.length > c.groups.length && ` (시간 ${c.groups.length}가지)`}
+                        </p>
+                      </div>
+                      <button className="btn-add btn-sm" onClick={() => addCourse(c)}>＋ 담기</button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+
+            <h3 className="section-label">담은 과목 {items.length > 0 && `(${items.length})`}</h3>
+            {items.length === 0 ? (
+              <div className="empty">
+                <span className="empty-emoji">📚</span>
+                아직 담은 과목이 없습니다. 위에서 검색해 담으세요.
+              </div>
             ) : (
-              <ul className="wz-find">
-                {found.map((c) => (
-                  <li key={c.code} className="wz-find-row">
-                    <div>
-                      <p className="wz-find-name">{c.name}</p>
-                      <p className="wz-find-sub">
-                        {c.code} · 분반 {c.sections.length}개
-                        {c.sections.length > c.groups.length && ` (시간 ${c.groups.length}가지)`}
-                      </p>
+              <ul className="wz-picked">
+                {items.map((it) => (
+                  <li key={it.course.code} className="wz-picked-row">
+                    <span className="wz-dot" style={{ background: colorOf(it.course.code) }} aria-hidden="true" />
+                    <div className="wz-find-body">
+                      <p className="wz-find-name">{it.course.name}</p>
+                      <p className="wz-find-sub">{it.course.code} · 분반 {it.course.sections.length}개</p>
                     </div>
-                    <button className="btn-add btn-sm" onClick={() => addCourse(c)}>＋ 담기</button>
+                    <button className="btn-remove btn-sm" onClick={() => dropCourse(it.course.code)}>제거</button>
                   </li>
                 ))}
               </ul>
-            )
-          )}
+            )}
+          </>
+        )}
 
-          <h3 className="section-label">담은 과목 {items.length > 0 && `(${items.length})`}</h3>
-          {items.length === 0 ? (
-            <div className="empty">
-              <span className="empty-emoji">📚</span>
-              아직 담은 과목이 없습니다. 위에서 검색해 담으세요.
-            </div>
-          ) : (
-            <ul className="wz-picked">
-              {items.map((it) => (
-                <li key={it.course.code} className="wz-picked-row">
-                  <div>
-                    <p className="wz-find-name">{it.course.name}</p>
-                    <p className="wz-find-sub">{it.course.code} · 분반 {it.course.sections.length}개</p>
-                  </div>
-                  <button className="btn-remove btn-sm" onClick={() => dropCourse(it.course.code)}>제거</button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="wz-nav">
-            <button className="btn-add btn-block" disabled={items.length === 0} onClick={() => setStep(2)}>
-              다음 — 분반 고르기
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* ── 2. 분반(시간·교수) 고르기 ─────────────────────────────────── */}
-      {step === 2 && (
-        <>
-          <p className="wz-lead">
-            <strong>들을 수 있는 것만 켜세요.</strong> 켠 것만 후보에 들어갑니다 —
-            끈 분반은 어떤 시간표에도 임의로 들어가지 않습니다.
-            <br />
-            <span className="muted">
-              같은 시간에 교수만 다른 분반은 한 줄로 묶었습니다(시간표가 똑같으니까).
-              교수는 후보를 고른 뒤 4단계에서 정합니다.
-            </span>
-          </p>
-
-          <ul className="wz-courses">
-            {items.map((it) => {
-              const all = it.course.groups;
-              const n = it.options.length;                                  // 켠 시간 묶음 수
-              const allSecs = it.course.sections.length;                    // 이 과목의 분반 총수
-              const onSecs = it.options.reduce((k, g) => k + g.sections.length, 0);   // 켠 분반 수
-              return (
-                <li key={it.course.code} className={`wz-course${n === 0 ? ' is-bad' : ''}`}>
-                  <div className="wz-course-head">
-                    <span className="wz-dot" style={{ background: colorOf(it.course.code) }} aria-hidden="true" />
-                    <span className="wz-course-name">{it.course.name}</span>
-                    <span className={`wz-count${onSecs < allSecs ? ' is-narrow' : ''}`}>
-                      분반 {allSecs}개 중 {onSecs}개
-                    </span>
-                    <span className="wz-course-ops">
-                      <button className="link-btn" onClick={() => setAllGroups(it.course.code, true)}>모두</button>
-                      <button className="link-btn" onClick={() => setAllGroups(it.course.code, false)}>해제</button>
-                    </span>
-                  </div>
-
-                  <ul className="wz-secs">
-                    {all.map((g) => {
-                      const on = !it.offKeys.has(g.key);
-                      const many = g.sections.length > 1;
-                      // 분반 번호가 먼저다 — 사람은 '몇 분반'으로 강의를 고른다.
-                      // 같은 시간에 교수만 다르면 그 분반들을 함께 적는다(1·2·3분반).
-                      const nos = g.sections.map((s) => s.section_no).join('·');
-                      return (
-                        <li key={g.key}>
-                          <label className={`wz-sec${on ? ' is-on' : ''}`}>
-                            <input type="checkbox" checked={on} onChange={() => toggleGroup(it.course.code, g.key)} />
-                            <span className="wz-sec-no">{nos}분반</span>
-                            <span className="wz-sec-prof">
-                              {many
-                                ? `교수 ${g.sections.length}명`
-                                : (g.sections[0].professor_name ?? '교수 미정')}
-                            </span>
-                            <span className="wz-sec-time">{formatTimes(g.times)}</span>
-                          </label>
-
-                          {/* 같은 시간에 교수가 여럿이면, 못 듣는 교수를 여기서 끈다.
-                              (기본은 전부 켜짐 — 후보에는 교수와 무관하게 이 시간이 한 번만 나온다) */}
-                          {on && many && (
-                            <ul className="wz-profs">
-                              {g.sections.map((s) => {
-                                const pon = !it.offSecs.has(s.id);
-                                return (
-                                  <li key={s.id}>
-                                    <label className={`wz-prof${pon ? ' is-on' : ''}`}>
-                                      <input
-                                        type="checkbox"
-                                        checked={pon}
-                                        onChange={() => toggleSection(it.course.code, s.id)}
-                                      />
-                                      <span>{s.section_no}분반 {s.professor_name ?? '교수 미정'}</span>
-                                    </label>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-
-                  {n === 0 && <p className="wz-warn">분반을 하나 이상 켜거나, 이 과목을 빼세요.</p>}
-                  {onSecs > 0 && onSecs < allSecs && (
-                    <p className="wz-note">
-                      이 과목은 {it.options.flatMap((g) => g.sections.map((s) => s.section_no)).sort((a, b) => a - b).join('·')}분반만 사용합니다.
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="wz-nav wz-nav-row">
-            <button className="btn-ghost" onClick={() => setStep(1)}>이전</button>
-            <button className="btn-add" disabled={!canStep3} onClick={() => setStep(3)}>다음 — 조건</button>
-          </div>
-        </>
-      )}
-
-      {/* ── 3. 조건(기피 시간 · 정렬) ─────────────────────────────────── */}
-      {step === 3 && (
-        <>
-          <p className="wz-lead">
-            비우고 싶은 시간을 칠하세요(선택). 그 시간을 쓰는 분반은 후보에서 빠집니다.
-          </p>
-          {noClass.size > 0 && (
-            <p className="wz-note wz-noclass-note">
-              회색 칸은 <strong>수업이 없는 시간</strong>입니다(생도대·군사훈련·자율선택형교과 등) —
-              이 학기에 개설된 강의가 하나도 없어 자동으로 잡았습니다. 빈 시간으로 세지 않습니다.
+        {/* ── 2. 분반(시간·교수) 고르기 ─────────────────────────────────── */}
+        {step === 2 && (
+          <>
+            <p className="wz-lead">
+              <strong>들을 수 있는 것만 켜세요.</strong> 켠 것만 후보에 들어갑니다 —
+              끈 분반은 어떤 시간표에도 임의로 들어가지 않습니다.
+              <span className="muted"> 같은 시간에 교수만 다른 분반은 한 줄로 묶었습니다(시간표가 똑같으니까).
+                교수는 후보를 고른 뒤 4단계에서 정합니다.</span>
             </p>
-          )}
 
-          <div className="wz-block-wrap">
-            <table className="wz-block">
-              <thead>
-                <tr>
-                  <th className="wz-mini-corner" />
-                  {days.map((d) => <th key={d}>{dayLabel(d)}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {periodNos.map((p) => (
-                  <tr key={p}>
-                    <th className="wz-mini-p">{p}</th>
-                    {days.map((d) => {
-                      const free = noClass.has(`${d}-${p}`);
-                      const on = blocked.has(`${d}-${p}`);
-                      const label = blockLabel[`${d}-${p}`];
-                      return (
-                        <td key={d}>
-                          <button
-                            type="button"
-                            className={`wz-block-cell${on ? ' is-on' : ''}${free ? ' is-noclass' : ''}`}
-                            disabled={free}
-                            aria-pressed={on}
-                            title={free ? (label ?? '수업 없는 시간') : undefined}
-                            aria-label={
-                              free
-                                ? `${dayLabel(d)}요일 ${p}교시 ${label ?? '수업 없는 시간'}`
-                                : `${dayLabel(d)}요일 ${p}교시 ${on ? '피함' : '가능'}`
-                            }
-                            onClick={() => toggleBlock(d, p)}
-                          >
-                            {free && label && <span className="wz-block-label">{label}</span>}
-                          </button>
-                        </td>
-                      );
-                    })}
+            {roughCount > BUSY_HINT && (
+              <p className="wz-hint">
+                지금 켠 분반으로는 경우의 수가 <strong>{roughCount.toLocaleString()}가지</strong>입니다.
+                못 듣는 분반을 꺼 둘수록 더 나은 후보가 위로 올라옵니다.
+              </p>
+            )}
+
+            <ul className="wz-courses">
+              {items.map((it) => {
+                const all = it.course.groups;
+                const n = it.options.length;                                  // 켠 시간 묶음 수
+                const allSecs = it.course.sections.length;                    // 이 과목의 분반 총수
+                const onSecs = it.options.reduce((k, g) => k + g.sections.length, 0);   // 켠 분반 수
+                return (
+                  <li key={it.course.code} className={`wz-course${n === 0 ? ' is-bad' : ''}`}>
+                    <div className="wz-course-head">
+                      <span className="wz-dot" style={{ background: colorOf(it.course.code) }} aria-hidden="true" />
+                      <span className="wz-course-name">{it.course.name}</span>
+                      <span className={`wz-count${onSecs < allSecs ? ' is-narrow' : ''}`}>
+                        분반 {onSecs}/{allSecs}
+                      </span>
+                      <span className="wz-course-ops">
+                        <button className="link-btn" onClick={() => setAllGroups(it.course.code, true)}>모두</button>
+                        <button className="link-btn" onClick={() => setAllGroups(it.course.code, false)}>해제</button>
+                      </span>
+                    </div>
+
+                    <ul className="wz-secs">
+                      {all.map((g) => {
+                        const on = !it.offKeys.has(g.key);
+                        const many = g.sections.length > 1;
+                        // 분반 번호가 먼저다 — 사람은 '몇 분반'으로 강의를 고른다.
+                        // 같은 시간에 교수만 다르면 그 분반들을 함께 적는다(1·2·3분반).
+                        const nos = g.sections.map((s) => s.section_no).join('·');
+                        return (
+                          <li key={g.key}>
+                            <label className={`wz-sec${on ? ' is-on' : ''}`}>
+                              <input type="checkbox" checked={on} onChange={() => toggleGroup(it.course.code, g.key)} />
+                              <span className="wz-sec-body">
+                                <span className="wz-sec-top">
+                                  <span className="wz-sec-no">{nos}분반</span>
+                                  <span className="wz-sec-prof">
+                                    {many
+                                      ? `교수 ${g.sections.length}명`
+                                      : (g.sections[0].professor_name ?? '교수 미정')}
+                                  </span>
+                                </span>
+                                <span className="wz-sec-time">{formatTimes(g.times)}</span>
+                              </span>
+                            </label>
+
+                            {/* 같은 시간에 교수가 여럿이면, 못 듣는 교수를 여기서 끈다.
+                                (기본은 전부 켜짐 — 후보에는 교수와 무관하게 이 시간이 한 번만 나온다) */}
+                            {on && many && (
+                              <ul className="wz-profs">
+                                {g.sections.map((s) => {
+                                  const pon = !it.offSecs.has(s.id);
+                                  return (
+                                    <li key={s.id}>
+                                      <label className={`wz-prof${pon ? ' is-on' : ''}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={pon}
+                                          onChange={() => toggleSection(it.course.code, s.id)}
+                                        />
+                                        <span>{s.section_no}분반 {s.professor_name ?? '교수 미정'}</span>
+                                      </label>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+
+                    {n === 0 && <p className="wz-warn">분반을 하나 이상 켜거나, 이 과목을 빼세요.</p>}
+                    {onSecs > 0 && onSecs < allSecs && (
+                      <p className="wz-note">
+                        {it.options.flatMap((g) => g.sections.map((s) => s.section_no)).sort((a, b) => a - b).join('·')}분반만 사용합니다.
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
+        {/* ── 3. 조건(기피 시간 · 정렬) ─────────────────────────────────── */}
+        {step === 3 && (
+          <>
+            <p className="wz-lead">
+              비우고 싶은 시간을 칠하세요(선택). 그 시간을 쓰는 분반은 후보에서 빠집니다.
+              <span className="muted"> 요일·교시 머리를 누르면 그 줄이 통째로 칠해집니다.</span>
+            </p>
+
+            <div className="wz-block-wrap">
+              <table className="wz-block">
+                <thead>
+                  <tr>
+                    <th className="wz-mini-corner" />
+                    {days.map((d) => (
+                      <th key={d}>
+                        <button type="button" className="wz-block-head" onClick={() => toggleDay(d)}>
+                          {dayLabel(d)}
+                        </button>
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="wz-sortbox">
-            <p className="wz-sort-label">어떤 시간표를 위로 올릴까요?</p>
-            {Object.entries(SORTS).map(([k, v]) => (
-              <label key={k} className={`wz-sort${sortMode === k ? ' is-on' : ''}`}>
-                <input type="radio" name="sort" checked={sortMode === k} onChange={() => setSortMode(k)} />
-                <span>{v.label}</span>
-              </label>
-            ))}
-          </div>
-
-          <div className="wz-nav wz-nav-row">
-            <button className="btn-ghost" onClick={() => setStep(2)}>이전</button>
-            <button className="btn-add" onClick={() => setStep(4)}>후보 만들기</button>
-          </div>
-          {blocked.size > 0 && (
-            <button className="link-btn wz-clear" onClick={() => { setBlocked(new Set()); resetResults(); }}>
-              칠한 시간 모두 지우기
-            </button>
-          )}
-        </>
-      )}
-
-      {/* ── 4. 후보 → 저장 ───────────────────────────────────────────── */}
-      {step === 4 && result && (
-        <>
-          {result.impossible.length > 0 ? (
-            <div className="empty">
-              <span className="empty-emoji">🚫</span>
-              <p><strong>{result.impossible.join(', ')}</strong> — 칠한 기피 시간 때문에 쓸 수 있는 시간이 남지 않았습니다.</p>
-              <span className="muted">기피 시간을 줄이거나 분반을 더 켜세요.</span>
-            </div>
-          ) : result.combos.length === 0 ? (
-            <div className="empty">
-              <span className="empty-emoji">🧩</span>
-              <p>고른 분반으로는 <strong>겹치지 않는 조합이 없습니다.</strong></p>
-              {result.pairs.length > 0 && (
-                <ul className="wz-pairs">
-                  {result.pairs.map(([a, b]) => (
-                    <li key={`${a}-${b}`}>‘{a}’ 와 ‘{b}’ 는 지금 켠 분반으로는 함께 들을 수 없습니다.</li>
+                </thead>
+                <tbody>
+                  {periodNos.map((p) => (
+                    <tr key={p}>
+                      <th className="wz-mini-p">
+                        <button type="button" className="wz-block-head" onClick={() => togglePeriod(p)}>{p}</button>
+                      </th>
+                      {days.map((d) => {
+                        const free = noClass.has(`${d}-${p}`);
+                        const on = blocked.has(`${d}-${p}`);
+                        const label = blockLabel[`${d}-${p}`];
+                        return (
+                          <td key={d}>
+                            <button
+                              type="button"
+                              className={`wz-block-cell${on ? ' is-on' : ''}${free ? ' is-noclass' : ''}`}
+                              disabled={free}
+                              aria-pressed={on}
+                              title={free ? (label ?? '수업 없는 시간') : undefined}
+                              aria-label={
+                                free
+                                  ? `${dayLabel(d)}요일 ${p}교시 ${label ?? '수업 없는 시간'}`
+                                  : `${dayLabel(d)}요일 ${p}교시 ${on ? '피함' : '가능'}`
+                              }
+                              onClick={() => toggleCell(d, p)}
+                            >
+                              {free && label && <span className="wz-block-label">{label}</span>}
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </ul>
-              )}
-              <span className="muted">분반을 더 켜거나, 과목을 하나 빼 보세요.</span>
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <>
-              <p className="wz-lead">
-                <strong>{result.combos.length}개</strong>의 시간표를 만들 수 있습니다.
-                {result.truncated && <span className="muted"> (너무 많아 일부만 검토했습니다 — 분반을 더 좁혀 보세요)</span>}
-                <br />
-                저장할 후보를 <strong>최대 {maxSave}개</strong> 고르세요.
-              </p>
 
+            <div className="wz-block-legend">
+              <span><i className="wz-key is-on" />피할 시간</span>
+              <span><i className="wz-key is-noclass" />수업 없는 시간</span>
+              {blocked.size > 0 && (
+                <button className="link-btn wz-clear" onClick={() => { setBlocked(new Set()); resetResults(); }}>
+                  모두 지우기
+                </button>
+              )}
+            </div>
+
+            {noClass.size > 0 && (
               <p className="wz-note">
-                <strong>낀 시간</strong> = 수업과 수업 사이에 끼어 뜨는 교시. 하루의 맨 앞·맨 뒤가 비는 것은
-                <strong> 오전공강·오후공강</strong>으로 따로 셉니다. 회색 빗금(생도대·군사훈련·자율선택형교과)은
-                원래 수업이 없는 시간이라 어느 쪽으로도 세지 않습니다.
+                빗금 친 칸은 이 학기에 개설된 강의가 하나도 없는 시간입니다(생도대·군사훈련·자율선택형교과 등).
+                칠할 것이 없어 누를 수 없고, 빈 시간으로도 세지 않습니다.
               </p>
-              {result.blockedOut.length > 0 && (
-                <p className="wz-note">
-                  기피 시간 때문에 제외된 분반: {result.blockedOut.map((b) => `${b.name} ${b.n}개`).join(', ')}
-                </p>
-              )}
-              {slots && slots.existing >= MAX_PER_SEM && slots.empty.length === 0 && (
-                <p className="wz-warn">
-                  이 학기 시간표가 이미 {MAX_PER_SEM}개입니다(상한). 홈에서 쓰지 않는 시간표를 지우고 다시 오세요.
-                </p>
-              )}
+            )}
 
-              <ul className="wz-cands">
-                {result.combos.slice(0, SHOW_LIMIT).map((c, i) => {
-                  const on = chosen.includes(c.sig);
-                  const idx = chosen.indexOf(c.sig);
-                  const full = !on && chosen.length >= maxSave;
-                  return (
-                    <li key={c.sig} className={`wz-cand${on ? ' is-on' : ''}`}>
-                      <div className="wz-cand-head">
-                        <span className="wz-cand-rank">#{i + 1}</span>
-                        <span className="wz-cand-stats">
-                          {c.stats.freeDays.length > 0
-                            ? `공강일 ${c.stats.freeDays.map(dayLabel).join('·')}`
-                            : '공강일 없음'}
-                          {c.stats.amFree.length > 0 && ` · 오전공강 ${c.stats.amFree.map(dayLabel).join('·')}`}
-                          {c.stats.pmFree.length > 0 && ` · 오후공강 ${c.stats.pmFree.map(dayLabel).join('·')}`}
-                          {' · '}1교시 {c.stats.early}회
-                          {' · '}낀 시간 {c.stats.gaps}칸
-                        </span>
+            <div className="wz-sortbox">
+              <p className="wz-sort-label">어떤 시간표를 위로 올릴까요?</p>
+              <div className="wz-sorts">
+                {Object.entries(SORTS).map(([k, v]) => (
+                  <label key={k} className={`wz-sort${sortMode === k ? ' is-on' : ''}`}>
+                    <input type="radio" name="sort" checked={sortMode === k} onChange={() => setSortMode(k)} />
+                    <span>{v.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── 4. 후보 → 저장 ───────────────────────────────────────────── */}
+        {step === 4 && view && (
+          <>
+            {raw.impossible.length > 0 ? (
+              <div className="empty">
+                <span className="empty-emoji">🚫</span>
+                <p><strong>{raw.impossible.join(', ')}</strong> — 칠한 기피 시간 때문에 쓸 수 있는 시간이 남지 않았습니다.</p>
+                <span className="muted">기피 시간을 줄이거나 분반을 더 켜세요.</span>
+              </div>
+            ) : view.list.length === 0 ? (
+              <div className="empty">
+                <span className="empty-emoji">🧩</span>
+                <p>고른 분반으로는 <strong>겹치지 않는 조합이 없습니다.</strong></p>
+                {raw.pairs.length > 0 && (
+                  <ul className="wz-pairs">
+                    {raw.pairs.map(([a, b]) => (
+                      <li key={`${a}-${b}`}>‘{a}’ 와 ‘{b}’ 는 지금 켠 분반으로는 함께 들을 수 없습니다.</li>
+                    ))}
+                  </ul>
+                )}
+                <span className="muted">분반을 더 켜거나, 과목을 하나 빼 보세요.</span>
+              </div>
+            ) : (
+              <>
+                <p className="wz-lead">
+                  겹치지 않는 조합 <strong>{raw.combos.length.toLocaleString()}개</strong>
+                  {raw.truncated && '+'} 중에서, <strong>서로 성격이 다른 {view.list.length}개</strong>를 골랐습니다.
+                  <span className="muted"> ({SORTS[sortMode].label}) 마음에 드는 것을 눌러 저장 목록에 담으세요.</span>
+                </p>
+
+                {raw.blockedOut.length > 0 && (
+                  <p className="wz-note">
+                    기피 시간 때문에 제외된 분반: {raw.blockedOut.map((b) => `${b.name} ${b.n}개`).join(', ')}
+                  </p>
+                )}
+                {slots && slots.existing >= MAX_PER_SEM && slots.empty.length === 0 && (
+                  <p className="wz-warn">
+                    이 학기 시간표가 이미 {MAX_PER_SEM}개입니다(상한). 홈에서 쓰지 않는 시간표를 지우고 다시 오세요.
+                  </p>
+                )}
+
+                <ul className="wz-cands">
+                  {view.list.map((c, i) => {
+                    const on = chosen.includes(c.sig);
+                    const full = !on && chosen.length >= maxSave;
+                    const manyProf = c.groups.some((g) => g.sections.length > 1);
+                    return (
+                      <li key={c.sig} className={`wz-cand${on ? ' is-on' : ''}`}>
                         <button
-                          className={`btn-sm ${on ? 'btn-remove' : 'btn-add'}`}
+                          type="button"
+                          className="wz-cand-head"
+                          aria-pressed={on}
                           disabled={full || maxSave === 0}
                           onClick={() => toggleChoose(c.sig)}
                         >
-                          {on ? `선택됨 ${names[c.sig] ?? CAND_NAME(idx)}` : full ? '가득참' : '저장 목록에'}
+                          <span className="wz-cand-rank">#{i + 1}</span>
+                          <CandChips stats={c.stats} />
+                          <span className={`wz-cand-box${on ? ' is-on' : ''}`} aria-hidden="true">
+                            {on ? '✓' : '＋'}
+                          </span>
                         </button>
-                      </div>
 
-                      <MiniGrid
-                        groups={c.groups}
-                        picked={pickedSection}
-                        periodNos={periodNos}
-                        days={days}
-                        colorOf={colorOf}
-                        noClass={noClass}
-                        blockLabel={blockLabel}
-                      />
+                        <MiniGrid
+                          groups={c.groups}
+                          picked={pickedSection}
+                          periodNos={periodNos}
+                          days={days}
+                          colorOf={colorOf}
+                          noClass={noClass}
+                          blockLabel={blockLabel}
+                        />
 
-                      {/* 담을 분반 — 같은 시간에 교수가 여럿이면 여기서 고른다(시간표는 그대로) */}
-                      <ul className="wz-cand-secs">
-                        {c.groups.map((g) => {
-                          const code = g.sections[0].course_code;
-                          const cur = pickedSection(g);
-                          return (
-                            <li key={g.key}>
-                              <span className="wz-dot" style={{ background: colorOf(code) }} aria-hidden="true" />
-                              <span className="wz-cand-course">{g.sections[0].course_name}</span>
-                              <span className="wz-cand-time">{formatTimes(g.times)}</span>
-                              {g.sections.length > 1 ? (
-                                <select
-                                  className="wz-prof-pick"
-                                  value={cur.id}
-                                  onChange={(e) =>
-                                    setProfPick((prev) => ({ ...prev, [pickKey(code, g.key)]: Number(e.target.value) }))
-                                  }
-                                >
-                                  {g.sections.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                      {s.section_no}분반 · {s.professor_name ?? '교수 미정'}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span className="muted">
-                                  {cur.section_no}분반 · {cur.professor_name ?? '교수 미정'}
-                                </span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                      {c.stats.unscheduled > 0 && (
-                        <p className="wz-note">강의시간이 없는 분반 {c.stats.unscheduled}개 — 격자에 표시되지 않습니다.</p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-              {result.combos.length > SHOW_LIMIT && (
+                        {on && <p className="wz-cand-tag">저장 목록에 담김 — ‘{names[c.sig]}’</p>}
+
+                        {/* 담을 분반 — 접어 둔다. 카드마다 펼쳐 두면 20개가 끝없이 길어진다.
+                            같은 시간에 교수가 여럿이면 여기서 고른다(시간표 그림은 그대로). */}
+                        <details className="wz-cand-more">
+                          <summary>
+                            담긴 분반 {c.groups.length}개{manyProf ? ' · 교수 고르기' : ''}
+                          </summary>
+                          <ul className="wz-cand-secs">
+                            {c.groups.map((g) => {
+                              const code = g.sections[0].course_code;
+                              const cur = pickedSection(g);
+                              return (
+                                <li key={g.key}>
+                                  <span className="wz-dot" style={{ background: colorOf(code) }} aria-hidden="true" />
+                                  <span className="wz-cand-course">{g.sections[0].course_name}</span>
+                                  <span className="wz-cand-time">{formatTimes(g.times)}</span>
+                                  {g.sections.length > 1 ? (
+                                    <select
+                                      className="wz-prof-pick"
+                                      value={cur.id}
+                                      onChange={(e) =>
+                                        setProfPick((prev) => ({ ...prev, [pickKey(code, g.key)]: Number(e.target.value) }))
+                                      }
+                                    >
+                                      {g.sections.map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                          {s.section_no}분반 · {s.professor_name ?? '교수 미정'}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="muted">
+                                      {cur.section_no}분반 · {cur.professor_name ?? '교수 미정'}
+                                    </span>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          {c.stats.unscheduled > 0 && (
+                            <p className="wz-note">강의시간이 없는 분반 {c.stats.unscheduled}개 — 격자에 표시되지 않습니다.</p>
+                          )}
+                        </details>
+                      </li>
+                    );
+                  })}
+                </ul>
+
                 <p className="account-note">
-                  상위 {SHOW_LIMIT}개만 보여줍니다({SORTS[sortMode].label}). 조건을 바꾸면 다른 후보가 올라옵니다.
+                  <strong>낀시간</strong> = 수업과 수업 사이에 뜨는 교시. 하루의 맨 앞·맨 뒤가 비는 것은
+                  오전·오후 공강으로 따로 셉니다. 다른 후보를 보려면 3단계에서 조건을 바꾸세요.
                 </p>
-              )}
-            </>
-          )}
-        </>
-      )}
+              </>
+            )}
+          </>
+        )}
+      </div>
 
-      {/* 4단계의 조작부는 result 유무와 무관하게 항상 붙는다 — 조합이 없다고 화면에 갇히면 안 된다 */}
-      {step === 4 && (
-        <>
-          <div className="wz-nav wz-nav-row">
-            <button className="btn-ghost" onClick={() => setStep(3)}>이전 — 조건</button>
-            <button className="btn-add" disabled={chosen.length === 0} onClick={() => setConfirming(true)}>
-              {chosen.length}개 저장하기
+      {/* 하단 조작부 — 화면에 붙어 따라온다. 후보 20장 밑까지 스크롤해야 '다음'을 누를 수 있으면
+          단계를 넘길 때마다 손가락이 화면을 두 번 훑어야 한다. */}
+      <div className="wz-bar">
+        {step === 4 && view && view.list.length > 0 && (
+          <p className="wz-bar-note">
+            {chosen.length > 0
+              ? `${chosen.length}개 선택됨 · 최대 ${maxSave}개`
+              : `저장할 후보를 고르세요 · 최대 ${maxSave}개`}
+          </p>
+        )}
+        <div className="wz-bar-row">
+          {step > 1 && (
+            <button className="btn-ghost wz-bar-back" onClick={() => setStep(step - 1)}>이전</button>
+          )}
+          {step === 1 && (
+            <button className="btn-add" disabled={items.length === 0} onClick={() => setStep(2)}>
+              다음 — 분반 고르기
             </button>
-          </div>
-
-          {confirming && (
-            <div className="wz-confirm">
-              <h3>이렇게 저장합니다</h3>
-              <ul className="wz-plan">
-                {plan.map((p) => (
-                  <li key={p.sig}>
-                    <input
-                      className="wz-plan-name"
-                      maxLength={NAME_MAX}
-                      value={p.name}
-                      onChange={(e) => setNames((prev) => ({ ...prev, [p.sig]: e.target.value }))}
-                    />
-                    <span className="wz-plan-how">
-                      {p.reuse ? `비어 있던 ‘${p.reuse.name}’ 을 채웁니다` : '새 시간표를 만듭니다'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="account-note">
-                강의가 담긴 기존 시간표는 건드리지 않습니다. 저장한 뒤 확정 시간표를 고릅니다.
-              </p>
-              <div className="wz-nav-row">
-                <button className="btn-ghost" disabled={saving} onClick={() => setConfirming(false)}>취소</button>
-                <button className="btn-add" disabled={saving} onClick={save}>
-                  {saving ? '저장 중…' : '저장하고 확정 고르기'}
-                </button>
-              </div>
-            </div>
           )}
-        </>
+          {step === 2 && (
+            <button className="btn-add" disabled={!canStep3} onClick={() => setStep(3)}>다음 — 조건</button>
+          )}
+          {step === 3 && (
+            <button className="btn-add" onClick={() => setStep(4)}>후보 만들기</button>
+          )}
+          {step === 4 && (
+            <button className="btn-add" disabled={chosen.length === 0} onClick={() => setConfirming(true)}>
+              {chosen.length > 0 ? `${chosen.length}개 저장하기` : '저장하기'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 저장 확인 — 앱의 다른 대화상자와 같은 관례(가운데 오버레이, z-index 200) */}
+      {confirming && (
+        <div className="wz-overlay" onClick={() => { if (!saving) setConfirming(false); }}>
+          <div className="wz-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h3>이렇게 저장합니다</h3>
+            <ul className="wz-plan">
+              {plan.map((p) => (
+                <li key={p.sig}>
+                  <input
+                    className="wz-plan-name"
+                    maxLength={NAME_MAX}
+                    value={p.name}
+                    onChange={(e) => setNames((prev) => ({ ...prev, [p.sig]: e.target.value }))}
+                  />
+                  <span className="wz-plan-how">
+                    {p.reuse ? `비어 있던 ‘${p.reuse.name}’ 을 채웁니다` : '새 시간표를 만듭니다'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="account-note">
+              강의가 담긴 기존 시간표는 건드리지 않습니다. 저장한 뒤 확정 시간표를 고릅니다.
+            </p>
+            {err && <p className="error-msg">{err}</p>}
+            <div className="wz-nav-row">
+              <button className="btn-ghost" disabled={saving} onClick={() => setConfirming(false)}>취소</button>
+              <button className="btn-add" disabled={saving} onClick={save}>
+                {saving ? '저장 중…' : '저장하고 확정 고르기'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -2,23 +2,58 @@
    시간표 마법사 (/wizard)
    - 색은 전부 토큰(var(--...)). 단, 과목 칸의 파스텔 배경은 데이터성 값이라
      JS 팔레트에서 인라인으로 들어오고 글자색은 --on-pastel 로 고정한다.
+   - 모바일 한 손 조작 기준: 누르는 것은 최소 44px, 조작부(다음·저장)는 하단에 붙여 둔다.
    ============================================================ */
 
+/* 세로로 꽉 채운 뒤 본문이 남은 높이를 먹는다 → 하단 조작부(.wz-bar)가 늘 화면 맨 아래에 앉는다.
+   (안 그러면 내용이 짧은 단계에서 조작부가 화면 한가운데에 뜨고 그 밑이 빈 띠로 남는다) */
+.wizard {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: 0;
+}
+
+/* 본문 — 다른 화면과 같은 좌우 여백(var(--pad)). 이게 없어서 내용이 화면 가장자리에 붙어 있었다. */
+.wz-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.6rem var(--pad) 1.2rem;
+}
+/* 이미 자기 여백을 가진 공용 조각들 — 본문 여백과 겹쳐 두 번 들여쓰지 않게 한다 */
+.wz-body .search-bar { padding: 0.5rem 0 0.4rem; }
+.wz-body .section-label { padding: 0; margin: 1rem 0 0.5rem; }
+.wz-body .error-msg { margin: 0 0 0.6rem; }
+
 .wizard .wz-lead {
-  margin: 0.6rem 0 0.9rem;
+  margin: 0.2rem 0 0.9rem;
   color: var(--text-2);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   line-height: 1.5;
 }
 .wizard .wz-lead strong { color: var(--text); }
 
+/* 경우의 수가 너무 많을 때 — 분반을 좁히라고 권한다 */
+.wz-hint {
+  margin: 0 0 0.7rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--r-md);
+  background: var(--warn-weak);
+  color: var(--warn);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.wz-hint strong { font-weight: 800; }
+
 /* 진행 표시 ① ② ③ ④ */
 .wz-steps {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.3rem;
   list-style: none;
-  margin: 0.2rem 0 0.4rem;
-  padding: 0;
+  margin: 0.6rem 0 0;
+  padding: 0 var(--pad);
 }
 .wz-step {
   flex: 1;
@@ -30,7 +65,7 @@
   border-radius: var(--r-full);
   background: var(--chip-bg);
   color: var(--text-3);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 .wz-step-n {
   display: inline-flex;
@@ -54,16 +89,9 @@
 .wz-step.is-done .wz-step-n { background: var(--success-weak); color: var(--success); }
 
 /* 학기 선택 */
-.wz-sem {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-.wz-sem label { font-size: 0.85rem; color: var(--text-2); }
-.wz-sem select { flex: 1; }
+.wz-sem { margin-bottom: 0.2rem; }
 
-/* 검색 결과 · 담은 과목 */
+/* ── 1단계: 검색 결과 · 담은 과목 ─────────────────────────────── */
 .wz-find, .wz-picked, .wz-courses, .wz-cands, .wz-saved, .wz-plan, .wz-pairs, .wz-cand-secs, .wz-secs {
   list-style: none;
   margin: 0;
@@ -72,16 +100,25 @@
 .wz-find-row, .wz-picked-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.6rem;
   padding: 0.6rem 0.75rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--card);
 }
-.wz-find-name { margin: 0; font-weight: 600; font-size: 0.92rem; color: var(--text); }
-.wz-find-sub { margin: 0.1rem 0 0; font-size: 0.78rem; color: var(--text-3); }
+.wz-find-body { flex: 1; min-width: 0; }        /* 긴 과목명이 버튼을 밀어내지 않게 */
+.wz-find-name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wz-find-sub { margin: 0.1rem 0 0; font-size: 0.76rem; color: var(--text-3); }
+.wz-find-row button, .wz-picked-row button { flex: none; }
 
 /* 과목 색 점 */
 .wz-dot {
@@ -105,41 +142,61 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.5rem;
 }
-.wz-course-name { font-weight: 700; font-size: 0.92rem; color: var(--text); }
+.wz-course-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .wz-count {
-  font-size: 0.72rem;
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: var(--text-3);
   padding: 0.1rem 0.4rem;
   border-radius: var(--r-full);
   background: var(--chip-bg);
 }
-.wz-count.is-narrow { color: var(--primary); background: var(--primary-weak); font-weight: 700; }
-.wz-course-ops { margin-left: auto; display: flex; gap: 0.35rem; }
+.wz-count.is-narrow { color: var(--primary); background: var(--primary-weak); }
+.wz-course-ops { margin-left: auto; display: flex; gap: 0.1rem; flex: none; }
 
-.wz-secs li { margin-bottom: 0.25rem; }
+/* 분반 줄 — 좁은 화면에서 '1·2·3분반 / 교수 3명 / 월1-2 · 수3-4' 를 한 줄에 밀어 넣으면
+   시간이 잘린다. 시간은 아랫줄로 내린다(사람이 제일 오래 보는 값이다). */
+.wz-secs li { margin-bottom: 0.3rem; }
 .wz-sec {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.5rem;
+  gap: 0.55rem;
+  min-height: 44px;
+  padding: 0.45rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   background: var(--surface);
-  font-size: 0.82rem;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .wz-sec.is-on { border-color: var(--primary-weak-border); background: var(--primary-weak); }
-.wz-sec input { flex: none; accent-color: var(--primary); }
-.wz-sec-no { font-weight: 700; color: var(--text); flex: none; }
-.wz-sec-prof { color: var(--text-2); flex: none; }
-.wz-sec-time { margin-left: auto; color: var(--text-3); font-size: 0.76rem; text-align: right; }
+.wz-sec input { flex: none; width: 1.05rem; height: 1.05rem; accent-color: var(--primary); }
+.wz-sec-body { display: flex; flex-direction: column; gap: 0.12rem; min-width: 0; }
+.wz-sec-top { display: flex; align-items: baseline; gap: 0.4rem; min-width: 0; }
+.wz-sec-no { font-weight: 700; font-size: 0.84rem; color: var(--text); flex: none; }
+.wz-sec-prof {
+  font-size: 0.78rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wz-sec-time { font-size: 0.74rem; color: var(--text-3); line-height: 1.3; }
 
 /* 같은 시간 안의 교수(분반)들 — 못 듣는 교수를 여기서 끈다 */
 .wz-profs {
   list-style: none;
-  margin: 0.25rem 0 0.35rem 1.6rem;
+  margin: 0.3rem 0 0.4rem 1.6rem;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
@@ -149,24 +206,25 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.2rem 0.45rem;
+  min-height: 32px;
+  padding: 0.25rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--r-full);
   background: var(--surface);
   color: var(--text-3);
   font-size: 0.75rem;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .wz-prof.is-on { border-color: var(--primary-weak-border); background: var(--primary-weak); color: var(--text-2); }
 .wz-prof input { accent-color: var(--primary); }
 
 .wz-note {
-  margin: 0.4rem 0 0;
+  margin: 0.5rem 0 0;
   font-size: 0.76rem;
   color: var(--text-3);
-  line-height: 1.4;
+  line-height: 1.45;
 }
-.wz-noclass-note { margin-bottom: 0.5rem; }
 .wz-warn {
   margin: 0.4rem 0 0;
   font-size: 0.78rem;
@@ -175,28 +233,42 @@
 }
 
 /* ── 3단계: 기피 시간 격자 ────────────────────────────────────── */
-.wz-block-wrap { overflow-x: auto; }
+.wz-block-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .wz-block {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
-.wz-block th {
-  font-size: 0.75rem;
+.wz-block th { padding: 0; }
+.wz-block td { padding: 1.5px; }
+/* 요일·교시 머리 = 그 줄을 통째로 칠하는 버튼(한 칸씩 여덟 번 두드리게 하지 않는다) */
+.wz-block-head {
+  width: 100%;
+  min-height: 30px;
+  padding: 0.25rem 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
   color: var(--text-3);
-  font-weight: 600;
-  padding: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-.wz-block td { padding: 1px; }
+.wz-block-head:active { background: var(--card-active); color: var(--text); }
 .wz-block-cell {
   display: block;
   width: 100%;
-  height: 1.9rem;
+  height: 2.15rem;                 /* 손끝으로 정확히 짚을 수 있는 최소치 */
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   background: var(--card);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
+.wz-block-cell:active { transform: scale(0.94); }
 .wz-block-cell.is-on {
   background: var(--danger-weak);
   border-color: var(--danger-border);
@@ -211,6 +283,7 @@
   cursor: default;
   overflow: hidden;
 }
+.wz-block-cell.is-noclass:active { transform: none; }
 .wz-block-label {
   display: block;
   font-size: 0.5rem;
@@ -221,79 +294,196 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.wz-clear { display: block; margin: 0.5rem auto 0; }
 
+/* 격자 범례 */
+.wz-block-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.55rem;
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+.wz-block-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.wz-key {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.wz-key.is-on { background: var(--danger-weak); border-color: var(--danger-border); }
+.wz-key.is-noclass {
+  background: repeating-linear-gradient(
+    45deg, var(--chip-bg), var(--chip-bg) 3px, transparent 3px, transparent 6px
+  );
+  border-style: dashed;
+}
+.wz-clear { margin-left: auto; }
+
+/* 정렬 기준 — 2×2 로 깔아 한 손으로 고르게 한다 */
 .wz-sortbox {
   margin-top: 1rem;
-  padding: 0.7rem 0.75rem;
+  padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--card);
 }
-.wz-sort-label { margin: 0 0 0.45rem; font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.wz-sort-label { margin: 0 0 0.55rem; font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.wz-sorts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
 .wz-sort {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.1rem;
-  font-size: 0.84rem;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: 0.8rem;
   color: var(--text-2);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.wz-sort.is-on { color: var(--primary); font-weight: 600; }
-.wz-sort input { accent-color: var(--primary); }
+.wz-sort.is-on {
+  border-color: var(--primary-weak-border);
+  background: var(--primary-weak);
+  color: var(--primary);
+  font-weight: 700;
+}
+.wz-sort input { flex: none; accent-color: var(--primary); }
 
 /* ── 4단계: 후보 ──────────────────────────────────────────────── */
 .wz-cand {
-  padding: 0.7rem 0.75rem;
-  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.6rem 0.6rem;
+  margin-bottom: 0.7rem;
   border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--card);
 }
 .wz-cand.is-on {
   border-color: var(--primary);
   box-shadow: 0 0 0 1px var(--primary), var(--shadow-sm);
 }
+
+/* 카드 머리 전체가 '이 후보 담기' 버튼 — 작은 버튼 하나를 겨냥하게 하지 않는다 */
 .wz-cand-head {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.3rem 0.1rem 0.45rem;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.wz-cand-head:disabled { opacity: 0.45; cursor: not-allowed; }
+.wz-cand-head:active:not(:disabled) { transform: scale(0.99); }
 .wz-cand-rank {
-  font-weight: 800;
-  font-size: 0.8rem;
-  color: var(--text-3);
   flex: none;
+  font-weight: 800;
+  font-size: 0.78rem;
+  color: var(--text-3);
 }
-.wz-cand-stats {
-  font-size: 0.76rem;
-  color: var(--text-2);
-  line-height: 1.3;
+.wz-cand-box {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
 }
-.wz-cand-head button { margin-left: auto; flex: none; }
+.wz-cand-box.is-on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
 
-.wz-cand-secs { margin-top: 0.5rem; }
+/* 후보의 성격 — 문장 대신 칩. 좁은 화면에서 줄바꿈이 깔끔하다. */
+.wz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.wz-chip {
+  padding: 0.12rem 0.4rem;
+  border-radius: var(--r-full);
+  background: var(--chip-bg);
+  color: var(--chip-fg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wz-chip.is-good { background: var(--success-weak); color: var(--success); font-weight: 700; }
+
+.wz-cand-tag {
+  margin: 0.5rem 0 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* 담긴 분반 — 접어 둔다(펼쳐 두면 후보 20장이 끝없이 길어진다) */
+.wz-cand-more { margin-top: 0.5rem; }
+.wz-cand-more > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 34px;
+  padding: 0.2rem 0.1rem;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.wz-cand-more > summary::-webkit-details-marker { display: none; }
+.wz-cand-more > summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+.wz-cand-more[open] > summary::before { transform: rotate(90deg); }
+
 .wz-cand-secs li {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   font-size: 0.78rem;
   color: var(--text-2);
-  padding: 0.14rem 0;
+  padding: 0.22rem 0;
+  min-width: 0;
 }
-.wz-cand-secs b { color: var(--text); }
-.wz-cand-course { font-weight: 600; color: var(--text); }
-.wz-cand-time { color: var(--text-3); font-size: 0.72rem; }
+.wz-cand-course {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wz-cand-time { flex: none; color: var(--text-3); font-size: 0.72rem; }
 /* 같은 시간에 교수가 여럿일 때 — 시간표는 그대로 두고 담을 분반만 고른다 */
 .wz-prof-pick {
+  flex: none;
   margin-left: auto;
-  max-width: 55%;
+  max-width: 52%;
   font-size: 0.74rem;
-  padding: 0.15rem 0.3rem;
+  padding: 0.2rem 0.3rem;
 }
-.wz-cand-secs .muted { margin-left: auto; font-size: 0.74rem; }
+.wz-cand-secs .muted { flex: none; margin-left: auto; font-size: 0.73rem; }
 
 .wz-pairs { margin: 0.5rem 0; font-size: 0.82rem; color: var(--danger); }
 .wz-pairs li { padding: 0.15rem 0; }
@@ -310,10 +500,10 @@
   font-weight: 600;
   padding: 0.15rem 0;
 }
-.wz-mini-corner { width: 1.2rem; }
-.wz-mini-p { width: 1.2rem; }
+.wz-mini-corner { width: 1.15rem; }
+.wz-mini-p { width: 1.15rem; }
 .wz-mini td {
-  height: 1.55rem;
+  height: 1.7rem;
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 0;
@@ -331,7 +521,7 @@
   padding: 0 1px;
 }
 .wz-mini-cell b {
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -347,49 +537,95 @@
   border-style: dashed;
 }
 
-/* 저장 확인 */
-.wz-confirm {
-  margin-top: 0.9rem;
-  padding: 0.8rem 0.85rem;
-  border: 1px solid var(--primary-weak-border);
-  border-radius: var(--r-md);
-  background: var(--primary-weak);
+/* ── 하단 조작부 — 화면 아래에 붙어 따라온다(상단바와 같은 프로스티드 표면) ── */
+.wz-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  padding: 0.6rem var(--pad) calc(0.6rem + env(safe-area-inset-bottom));
+  background: var(--bar-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-top: 1px solid var(--bar-border);
 }
-.wz-confirm h3 { margin: 0 0 0.6rem; font-size: 0.95rem; color: var(--text); }
-.wz-plan li {
+.wz-bar-note {
+  margin: 0 0 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: center;
+}
+.wz-bar-row { display: flex; gap: 0.5rem; }
+.wz-bar-row button { flex: 1; min-height: 46px; }
+.wz-bar-back { flex: 0 0 5.5rem; }        /* '이전'은 좁게 — 주 동선은 오른쪽 버튼이다 */
+
+/* ── 저장 확인 — 앱의 다른 대화상자와 같은 관례(가운데 오버레이, z-index 200) ── */
+.wz-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.5);
 }
-.wz-plan-name {
-  flex: none;
-  width: 8.5rem;
-  font-size: 0.85rem;
+.wz-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 1rem 1.1rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
 }
-.wz-plan-how { font-size: 0.76rem; color: var(--text-2); }
+.wz-modal h3 { margin: 0 0 0.7rem; font-size: 1rem; color: var(--text); }
+.wz-plan li {
+  display: flex;
+  flex-direction: column;      /* 이름 칸과 설명을 한 줄에 밀어 넣으면 좁은 화면에서 둘 다 잘린다 */
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+}
+.wz-plan-name { width: 100%; font-size: 0.88rem; }
+.wz-plan-how { font-size: 0.74rem; color: var(--text-2); }
+.wz-modal .account-note { margin: 0.2rem 0 0; }
+.wz-modal .error-msg { margin: 0.5rem 0 0; }
+.wz-nav-row { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
+.wz-nav-row button { flex: 1; min-height: 44px; }
 
-/* 확정 지정 */
-.wz-saved li { margin-bottom: 0.4rem; }
+/* ── 확정 지정 ────────────────────────────────────────────────── */
+.wz-saved li { margin-bottom: 0.45rem; }
 .wz-saved-row {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  min-height: 48px;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--card);
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.wz-saved-row input { accent-color: var(--primary); }
-.wz-saved-name { font-weight: 600; color: var(--text); }
-.wz-saved-row .muted { margin-left: auto; font-size: 0.78rem; }
+.wz-saved-row.is-on { border-color: var(--primary-weak-border); background: var(--primary-weak); }
+.wz-saved-row input { flex: none; width: 1.1rem; height: 1.1rem; accent-color: var(--primary); }
+.wz-saved-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wz-saved-row .muted { flex: none; margin-left: auto; font-size: 0.76rem; }
 
-/* 하단 버튼 */
-.wz-nav { margin-top: 1rem; }
-.wz-nav-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
+/* 아주 좁은 기기(≤360px) — 칩과 격자 글자를 한 단계 줄인다 */
+@media (max-width: 360px) {
+  .wz-step-t { display: none; }             /* 번호만 남긴다 */
+  .wz-chip { font-size: 0.67rem; padding: 0.1rem 0.35rem; }
+  .wz-mini-cell b { font-size: 0.58rem; }
+  .wz-block-cell { height: 2rem; }
+  .wz-sorts { grid-template-columns: 1fr; }
+  .wz-bar-back { flex: 0 0 4.5rem; }
 }
-.wz-nav-row button { flex: 1; }

@@ -204,6 +204,34 @@ export function sortCombos(combos, mode = 'free') {
   });
 }
 
+// ---------------------------------------------------------------------
+//  보여줄 후보 고르기 — '좋은 순 상위 20개'를 그냥 자르면 안 된다.
+//
+//  정렬 기준(공강일·낀시간…)이 같은 후보는 수백 개씩 나온다. 그래서 상위를 그냥 자르면
+//  20개가 전부 '같은 시간표에서 분반 하나만 다른' 것들로 채워진다 — 스무 번 스크롤해도
+//  고를 게 하나뿐인 셈이다. 사람이 고를 수 있으려면 20개가 서로 달라야 한다.
+//
+//  그래서 후보의 '성격'(공강일 · 반일공강 · 1교시 · 낀시간 · 등교일수)이 겹치지 않는 것부터
+//  좋은 순으로 채우고, 그래도 20개가 안 되면 남은 것으로 메운다.
+// ---------------------------------------------------------------------
+const shapeKey = (s) =>
+  [s.freeDays.join('·'), s.amFree.join('·'), s.pmFree.join('·'), s.early, s.gaps, s.dayCount].join('|');
+
+export function pickDiverse(combos, mode = 'free', limit = 20) {
+  const sorted = sortCombos(combos, mode);
+  const seen = new Set();
+  const fresh = [];      // 성격이 처음 나온 후보(= 서로 다른 시간표)
+  const dup = [];        // 이미 나온 성격 — 자리가 남을 때만 쓴다
+  for (const c of sorted) {
+    const k = shapeKey(c.stats);
+    if (seen.has(k)) dup.push(c);
+    else { seen.add(k); fresh.push(c); }
+  }
+  const list = fresh.slice(0, limit);
+  if (list.length < limit) list.push(...dup.slice(0, limit - list.length));
+  return { list: sortCombos(list, mode), shapes: seen.size };   // 화면 순서는 다시 '좋은 순'
+}
+
 // 두 과목이 '고른 분반으로는 절대 함께 못 듣는' 사이인지 — 조합이 0일 때 이유를 알려주려고.
 function conflictPairs(prepared) {
   const out = [];
