@@ -2,10 +2,20 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// 산출물 세대(epoch). 청크 파일명은 '내용 해시'라 내용이 안 바뀌면 URL 도 그대로다 —
+// 그래서 엣지 캐시가 특정 청크 URL 을 오염시키면(2026-07-13: JS 자리에 index.html 이
+// immutable 로 1년 눌러앉았다) 재배포만으로는 그 URL 을 벗어날 수 없다. 이 숫자를 올리면
+// 전 청크가 새 경로로 옮겨가 오염된 URL 을 통째로 버린다 — 캐시 퍼지 없이 쓰는 탈출구.
+// (오염이 또 생기면 e3, e4 … 로 올릴 것. 평상시엔 건드리지 않는다.)
+const ASSET_EPOCH = 'e2';
+
 export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        entryFileNames: `assets/${ASSET_EPOCH}/[name]-[hash].js`,
+        chunkFileNames: `assets/${ASSET_EPOCH}/[name]-[hash].js`,
+        assetFileNames: `assets/${ASSET_EPOCH}/[name]-[hash].[ext]`,
         // 자주 바뀌는 앱 코드와 거의 안 바뀌는 벤더를 분리 → 재배포 시 벤더 청크는 캐시 재사용
         // (재방문 사용자의 다운로드량 감소). 초기 총량은 비슷하되 캐시 효율이 오른다.
         manualChunks: {

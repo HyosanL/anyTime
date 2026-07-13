@@ -1,10 +1,11 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
 import { syncPush, consumePendingNav } from './lib/push';
 import Home from './pages/Home';
 import Login from './pages/Login';
+import ErrorBoundary from './components/ErrorBoundary';
 import InstallGate from './components/InstallGate';
 import PushPrompt from './components/PushPrompt';
 import UpdatePrompt from './components/UpdatePrompt';
@@ -135,6 +136,12 @@ function PushNavigator() {
   return null;
 }
 
+// 경로가 바뀌면 경계를 새로 세운다(key) — 한 화면이 죽었다고 다른 화면까지 못 열면 안 된다.
+function RouteBoundary({ children }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary key={pathname}>{children}</ErrorBoundary>;
+}
+
 // 이미 로그인했으면 홈으로 (가입/로그인 화면 가드).
 function PublicOnly({ children }) {
   const { session, loading } = useAuthContext();
@@ -153,6 +160,8 @@ export default function App() {
         <PushNavigator />
         <PushPrompt />
         <GeoBanner />
+        {/* 청크 로딩 실패(배포·캐시·네트워크)를 여기서 잡는다 — 없으면 그대로 검은 화면 */}
+        <RouteBoundary>
         <Suspense fallback={<div className="page-center">로딩 중...</div>}>
         <Routes>
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
@@ -179,6 +188,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
+        </RouteBoundary>
         </InstallGate>
       </div>
     </AuthProvider>

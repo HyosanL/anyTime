@@ -1,1 +1,7 @@
+# SPA: 어떤 경로로 새로고침해도 앱 셸을 준다(딥링크·공유링크 /s/*).
+#
+# ⚠️ 이 폴백은 /assets/* 에도 걸린다(없는 청크 → index.html 200). 거기에 _headers 의
+#    immutable 이 붙으면 HTML 이 JS 자리에 1년 눌러앉아 화면이 영구히 죽는다(2026-07-13 장애).
+#    Pages 의 _redirects 는 404 상태를 지원하지 않으므로, 그 차단은 functions/assets/[[path]].js
+#    가 맡는다. 셋(_redirects·_headers·그 Function)은 한 몸이니 함께 볼 것.
 /*    /index.html   200
