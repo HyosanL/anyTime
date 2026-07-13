@@ -290,22 +290,26 @@ export default function Home() {
   }, [refreshList, selectedId]);
 
   // 요약표: 지금 보고 있는 시간표면 이미 손에 있는 것을 그대로 쓴다(요청 0회).
-  // 다른 시간표면 그 자리에서 받아오고, 오프라인이면 캐시 스냅샷으로 보여 준다.
+  // 다른 시간표는 캐시 스냅샷을 먼저 띄우고(즉시) 서버 값이 오면 갈아끼운다 — 화면의 다른 경로와 같다.
+  // 네트워크를 기다렸다 그리면, 전파가 약할 때 손에 있는 답을 두고도 몇 초씩 빈 화면을 본다.
   const handleSummary = useCallback(async (t) => {
     if (t.id === selectedId) {
       setSummary({ tt: t, entries, customs: customClasses, loading: false });
       return;
     }
-    setSummary({ tt: t, entries: [], customs: [], loading: true });
-    let rows;
+    const mine = (s) => s?.tt.id === t.id;   // 그 사이에 닫았거나 다른 시간표를 열었으면 덮어쓰지 않는다
+    setSummary({ tt: t, entries: [], customs: readCustomCache(t.id), loading: true });
+    // 캐시를 읽은 순간 그것이 답이다 — 여기서 로딩을 끝낸다.
+    // (네트워크 실패는 몇 초씩 걸릴 수 있다. 그때까지 '불러오는 중'을 붙들면 담긴 강의가 없는
+    //  시간표는 오프라인에서 영영 로딩처럼 보인다.) 서버 응답이 오면 조용히 갈아끼운다.
+    const cached = await readEntriesCache(t.id);
+    setSummary((s) => (mine(s) ? { ...s, entries: cached, loading: false, syncing: true } : s));
     try {
-      rows = await listEntries(t.id);
+      const [fresh, customs] = await Promise.all([listEntries(t.id), listCustomClasses(uid, t.id)]);
+      setSummary((s) => (mine(s) ? { tt: t, entries: fresh, customs, loading: false } : s));
     } catch {
-      rows = await readEntriesCache(t.id);
+      setSummary((s) => (mine(s) ? { ...s, syncing: false } : s));   // 오프라인 → 캐시 스냅샷 그대로
     }
-    const customs = await listCustomClasses(uid, t.id);   // 실패해도 내부에서 캐시로 폴백
-    // 그 사이에 사용자가 닫았거나 다른 시간표를 열었으면 덮어쓰지 않는다.
-    setSummary((s) => (s?.tt.id === t.id ? { tt: t, entries: rows, customs, loading: false } : s));
   }, [selectedId, entries, customClasses, uid]);
 
   // '새 시간표 만들기'를 열 때만 학기 목록을 서버에서 갱신한다
@@ -463,6 +467,7 @@ export default function Home() {
           entries={summary.entries}
           customClasses={summary.customs}
           loading={summary.loading}
+          syncing={summary.syncing}
           onClose={() => setSummary(null)}
         />
       )}

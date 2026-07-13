@@ -11,6 +11,28 @@ import { minToHM } from '../lib/customClass';
 // "08:10:00" → "08:10"
 const hm = (t) => (t ? String(t).slice(0, 5) : '');
 
+// 클립보드. writeText 는 문서에 포커스가 없거나 구형 사파리면 거부한다 —
+// 그때는 임시 textarea 를 선택해 복사한다(사용자 탭 안에서 실행되므로 허용된다).
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch { /* 아래 폴백 */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function toMin(t) {
   const [h, m] = String(t ?? '').split(':').map(Number);
   return Number.isFinite(h) ? h * 60 + (m || 0) : null;
@@ -35,7 +57,8 @@ export default function TimetableSummary({
   timetable,
   entries = [],
   customClasses = [],
-  loading = false,
+  loading = false,   // 캐시조차 아직 안 읽었다(수 ms)
+  syncing = false,   // 캐시를 띄운 채 서버 값을 기다리는 중
   onClose,
 }) {
   const [copied, setCopied] = useState(false);
@@ -93,14 +116,16 @@ export default function TimetableSummary({
         r.course,
         r.custom ? '직접추가' : r.section,
         r.custom ? '-' : r.prof,
-        r.slots.map((s) => (s.clock ? `${s.period} (${s.clock})` : s.period)).join(', ') || '시간 미정',
+        r.slots.map((s) => {
+          if (!s.clock) return s.period;
+          return r.custom ? `${s.period} ${s.clock}` : `${s.period} (${s.clock})`;
+        }).join(', ') || '시간 미정',
       ].join(' | ')),
     ].join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyToClipboard(text)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
+    } else {
       alert('복사하지 못했습니다. 화면의 표를 그대로 보고 입력해 주세요.');
     }
   }, [rows, timetable]);
@@ -123,6 +148,7 @@ export default function TimetableSummary({
         <p className="tt-sum-sub">
           수강신청용 요약 · 강의 {courseCount}개
           {rows.length > courseCount && ` (직접 추가 ${rows.length - courseCount}개 포함)`}
+          {syncing && ' · 갱신 중…'}
         </p>
 
         {!catalog ? (
