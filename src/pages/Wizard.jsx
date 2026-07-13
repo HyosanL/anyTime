@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import BackButton from '../components/BackButton';
@@ -10,6 +10,7 @@ import {
   addSections, findEmptyTimetables, writeSelectedId, isOverlapError,
 } from '../lib/timetable';
 import { generateCombos, pickDiverse, groupByTime, deriveNoClass, SORTS } from '../lib/wizard';
+import { readDraft, writeDraft, clearDraft } from '../lib/wizardDraft';
 import '../styles/wizard.css';
 import '../styles/course.css';
 
@@ -142,25 +143,63 @@ export default function Wizard() {
   const [primaryId, setPrimaryId] = useState(null);   // null = 기존 확정을 그대로 둔다
   const [keepPrimary, setKeepPrimary] = useState(null);  // 후보가 아닌, 강의가 담긴 기존 확정
 
+  const [resumed, setResumed] = useState(false);      // 초안을 되살렸다 — 그 사실을 한 번 알린다
+  const hydrated = useRef(false);                     // 복원 전에는 임시저장하지 않는다(빈 값 덮어쓰기 방지)
+
   // ── 카탈로그·시간표 목록 ────────────────────────────────────────────
   useEffect(() => {
     let active = true;
+
+    // 지난번에 짜다 만 것을 되살린다. 카탈로그가 온 뒤라야 한다 — 그 사이 폐강된 과목이나
+    // 사라진 학기를 되살려 놓으면, 화면에는 뜨지도 않는 것이 목록에만 남는다.
+    const restoreDraft = (cat) => {
+      const draft = readDraft(uid);
+      const known = new Set(semesterList(cat).map((s) => `${s.year}-${s.term}`));
+      if (draft && known.has(draft.semKey)) {
+        const [y, t] = draft.semKey.split('-').map(Number);
+        const codes = new Set(buildSections(cat, { year: y, term: t }).sections.map((s) => s.course_code));
+        const picked = draft.picked.filter((p) => codes.has(p.code));
+        if (picked.length > 0) {
+          setSemKey(draft.semKey);
+          setPicked(picked);
+          setBlocked(draft.blocked);
+          setSortMode(draft.sortMode);
+          setProfPick(draft.profPick);
+          setStep(draft.step);
+          setResumed(true);
+          return;
+        }
+      }
+      if (draft) clearDraft();                  // 되살릴 수 없는 초안은 붙들고 있어 봐야 소용없다
+      const cur = currentSemester(cat);
+      if (cur) setSemKey(`${cur.year}-${cur.term}`);
+    };
+
     (async () => {
       try {
         const [cat, list] = await Promise.all([getCatalog(), listTimetables().catch(() => [])]);
         if (!active) return;
         setCatalog(cat);
         setTimetables(list);
-        const cur = currentSemester(cat);
-        if (cur) setSemKey(`${cur.year}-${cur.term}`);
+        restoreDraft(cat);
+        hydrated.current = true;      // 이 뒤로 오는 변경만 초안이다
       } catch {
+        // 카탈로그를 못 읽었으면 hydrated 는 false 로 둔다 — 빈 화면이 초안을 덮어쓰면
+        // 오프라인으로 한 번 들어온 것만으로 짜 두었던 것이 날아간다.
         if (active) setErr('강의 정보를 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
       } finally {
         if (active) setLoading(false);
       }
     })();
     return () => { active = false; };
-  }, []);
+  }, [uid]);
+
+  // 자동 임시저장 — 담을 때마다 로컬에 적어 둔다. 서버 요청은 늘지 않는다(저장은 마지막에 한 번).
+  // 저장을 끝낸 뒤(saved)에는 적지 않는다 — 이미 시간표가 된 것을 초안으로 다시 남길 이유가 없다.
+  useEffect(() => {
+    if (!hydrated.current || saved) return;
+    writeDraft(uid, { step, semKey, picked, blocked, sortMode, profPick });
+  }, [uid, step, semKey, picked, blocked, sortMode, profPick, saved]);
 
   // 단계를 넘길 때마다 맨 위로 — 아래쪽 버튼을 누른 자리에서 다음 화면 중간이 열리면 길을 잃는다.
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
@@ -329,6 +368,23 @@ export default function Wizard() {
     setChosen([]);
     setNames({});
     setConfirming(false);
+    setResumed(false);       // 이어서 손을 대기 시작했으면 '불러왔다'는 안내는 할 일을 다했다
+  }
+
+  const goStep = (n) => { setResumed(false); setStep(n); };
+
+  // 지난 초안을 버리고 처음부터. 되살리기가 반가운 만큼, 버리는 길도 한 번에 보여야 한다.
+  function startOver() {
+    clearDraft();
+    setResumed(false);
+    setPicked([]);
+    setBlocked(new Set());
+    setProfPick({});
+    setSlots(null);
+    setStep(1);
+    const cur = currentSemester(catalog);
+    if (cur) setSemKey(`${cur.year}-${cur.term}`);
+    resetResults();
   }
 
   function addCourse(c) {
@@ -477,6 +533,7 @@ export default function Wizard() {
   // 그것을 유지하는 선택지를 함께 준다 — 마법사가 남의 확정을 말없이 끌어내리면
   // 그 시간표로 얻은 강의평·수업메모 자격이 끊긴다.
   async function afterSave(done) {
+    clearDraft();          // 시간표가 됐다 — 초안은 여기서 수명을 다한다
     const list = await listTimetables().catch(() => timetables);
     setTimetables(list);
     const cur = list.find((t) => t.year === sem.year && t.term === sem.term && t.is_primary);
@@ -587,6 +644,17 @@ export default function Wizard() {
 
       <div className="wz-body">
         {err && <p className="error-msg">{err}</p>}
+
+        {/* 되살렸다는 사실은 알려야 한다 — 말없이 채워 두면 '내가 언제 이걸 담았지?' 가 된다.
+            손을 대는 순간(단계 이동·과목 추가…) 사라진다. */}
+        {resumed && (
+          <div className="wz-resume">
+            <p className="wz-resume-t">
+              💾 짜다 만 것을 불러왔습니다 — 담은 과목·분반·기피 시간이 그대로입니다.
+            </p>
+            <button className="btn-ghost btn-sm" onClick={startOver}>새로 시작</button>
+          </div>
+        )}
 
         {/* ── 1. 과목 담기 ─────────────────────────────────────────────── */}
         {step === 1 && (
@@ -1016,18 +1084,18 @@ export default function Wizard() {
         )}
         <div className="wz-bar-row">
           {step > 1 && (
-            <button className="btn-ghost wz-bar-back" onClick={() => setStep(step - 1)}>이전</button>
+            <button className="btn-ghost wz-bar-back" onClick={() => goStep(step - 1)}>이전</button>
           )}
           {step === 1 && (
-            <button className="btn-add" disabled={items.length === 0} onClick={() => setStep(2)}>
+            <button className="btn-add" disabled={items.length === 0} onClick={() => goStep(2)}>
               다음 — 분반 고르기
             </button>
           )}
           {step === 2 && (
-            <button className="btn-add" disabled={!canStep3} onClick={() => setStep(3)}>다음 — 조건</button>
+            <button className="btn-add" disabled={!canStep3} onClick={() => goStep(3)}>다음 — 조건</button>
           )}
           {step === 3 && (
-            <button className="btn-add" onClick={() => setStep(4)}>후보 만들기</button>
+            <button className="btn-add" onClick={() => goStep(4)}>후보 만들기</button>
           )}
           {step === 4 && (
             <button className="btn-add" disabled={chosen.length === 0} onClick={() => setConfirming(true)}>
