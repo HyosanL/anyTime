@@ -24,18 +24,23 @@ function buildBlocks({ mine = [], periods = [], customClasses = [] }) {
   let ci = 0;
   const colorFor = (k) => (colorByKey[k] ??= PALETTE[ci++ % PALETTE.length]);
 
+  // meta = 강의실 · 교수명(화면 격자와 같은 한 줄)
   const blocks = [];
   (mine || []).forEach((s) =>
     (s.times || []).forEach((t) => {
       const startMin = parseHM(periodByNo[t.start_period]?.start_time);
       const endMin = parseHM(periodByNo[t.end_period]?.end_time);
       if (startMin == null || endMin == null || endMin <= startMin) return;
-      blocks.push({ day: t.day_of_week, startMin, endMin, title: s.course_name, room: t.room, color: colorFor('c:' + s.course_code) });
+      blocks.push({
+        day: t.day_of_week, startMin, endMin, title: s.course_name,
+        meta: [t.room, s.professor_name].filter(Boolean).join(' · '),
+        color: colorFor('c:' + s.course_code),
+      });
     })
   );
   (customClasses || []).forEach((c) => {
     if (c.startMin == null || c.endMin == null || c.endMin <= c.startMin) return;
-    blocks.push({ day: c.day, startMin: c.startMin, endMin: c.endMin, title: c.title, room: c.room, color: colorFor('x:' + c.id) });
+    blocks.push({ day: c.day, startMin: c.startMin, endMin: c.endMin, title: c.title, meta: c.room || '', color: colorFor('x:' + c.id) });
   });
   return blocks;
 }
@@ -176,16 +181,16 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
     ctx.textAlign = 'left';
     ctx.fillStyle = b.noClass ? '#94a3b8' : '#1f2937';
     ctx.font = `600 12.5px ${FONT}`;
-    const roomLines = b.room ? 1 : 0;
-    const maxTitleLines = Math.max(1, Math.min(3, Math.floor((h - 12) / 16) - roomLines));
+    const metaLines = b.meta ? 1 : 0;
+    const maxTitleLines = Math.max(1, Math.min(3, Math.floor((h - 12) / 16) - metaLines));
     const titleLines = wrapText(ctx, b.title, innerW, maxTitleLines);
     let ty = y + 8;
     titleLines.forEach((ln) => { ctx.fillText(ln, innerX, ty); ty += 16; });
-    if (b.room && ty + 14 <= y + h) {
+    if (b.meta && ty + 14 <= y + h) {
       ctx.fillStyle = '#4b5563';
       ctx.font = `500 11px ${FONT}`;
-      const roomLine = wrapText(ctx, b.room, innerW, 1)[0] || '';
-      ctx.fillText(roomLine, innerX, ty);
+      const metaLine = wrapText(ctx, b.meta, innerW, 1)[0] || '';
+      ctx.fillText(metaLine, innerX, ty);
     }
   });
 

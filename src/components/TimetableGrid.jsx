@@ -22,7 +22,9 @@ const pad2 = (n) => String(n).padStart(2, '0');
 // commonBlocks = 전 생도 공통 비수업 시간(생도대·군사훈련·자율선택형교과).
 //   [{ day, startMin, endMin, label }] — 카탈로그(common_block)에서 계산해 온다.
 //   DB에 담기지 않는다(생도마다 저장할 이유가 없다) — 격자에만 깔린다.
-function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], onDeleteCustom, onHideBlock }) {
+// showProfessor = 칸에 교수명을 함께 적는다. 교수 상세(한 교수의 담당 시간표)에서는
+//   모든 칸이 같은 이름이라 잡음일 뿐이므로 끈다.
+function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], showProfessor = true, onDeleteCustom, onHideBlock }) {
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
   // (부모 Home 이 시작 중 여러 번 리렌더돼도 데이터가 그대로면 재계산하지 않음)
   const grid = useMemo(() => {
@@ -33,7 +35,8 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
     let ci = 0;
     const colorFor = (k) => (colorByKey[k] ??= PALETTE[ci++ % PALETTE.length]);
 
-    // 모든 강의를 통합 블록으로: { day, startMin, endMin, title, room, color, memoTo?|custom,id }
+    // 모든 강의를 통합 블록으로: { day, startMin, endMin, title, meta, color, memoTo?|custom,id }
+    // meta = 강의실·교수명(칸이 좁으니 한 줄로 합친다. 전체 문구는 title 속성에 남긴다).
     const blocks = [];
     (mine || []).forEach((s) =>
       (s.times || []).forEach((t) => {
@@ -45,7 +48,7 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
           startMin,
           endMin,
           title: s.course_name,
-          room: t.room,
+          meta: [t.room, showProfessor ? s.professor_name : null].filter(Boolean).join(' · '),
           color: colorFor('c:' + s.course_code),
           memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
         });
@@ -58,7 +61,7 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
         startMin: c.startMin,
         endMin: c.endMin,
         title: c.title,
-        room: c.room,
+        meta: c.room || '',
         color: colorFor('x:' + c.id),
         custom: true,
         id: c.id,
@@ -126,7 +129,7 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
     });
 
     return { empty: false, days, hours, periodNoByHour, cells };
-  }, [mine, periods, customClasses, commonBlocks]);
+  }, [mine, periods, customClasses, commonBlocks, showProfessor]);
 
   if (grid.empty) {
     return (
@@ -189,13 +192,14 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
                           onClick={() => onDeleteCustom?.(c.id, c.title)}
                         >
                           <span className="tt-course">{c.title}</span>
-                          {c.room && <span className="tt-room">{c.room}</span>}
+                          {c.meta && <span className="tt-meta">{c.meta}</span>}
                           <span className="tt-custom-tag">직접</span>
                         </button>
                       ) : (
-                        <Link className="tt-cell" to={c.memoTo} title="수업 메모">
+                        /* 칸이 좁아 강의실·교수명은 말줄임될 수 있다 — 전체 문구는 title 로 남긴다 */
+                        <Link className="tt-cell" to={c.memoTo} title={`${[c.title, c.meta].filter(Boolean).join(' · ')} — 수업 메모`}>
                           <span className="tt-course">{c.title}</span>
-                          {c.room && <span className="tt-room">{c.room}</span>}
+                          {c.meta && <span className="tt-meta">{c.meta}</span>}
                         </Link>
                       ))}
                   </td>

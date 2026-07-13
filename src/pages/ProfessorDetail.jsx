@@ -158,7 +158,7 @@ export default function ProfessorDetail() {
         ) : sections.length === 0 ? (
           <p className="muted center">이번 학기에 개설된 수업이 없습니다.</p>
         ) : (
-          <TimetableGrid mine={sections} periods={periods} />
+          <TimetableGrid mine={sections} periods={periods} showProfessor={false} />
         )}
       </section>
 
