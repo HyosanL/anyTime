@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import { useAuthContext } from '../contexts/AuthContext';
@@ -325,7 +325,10 @@ export default function Admin() {
   const [newWord, setNewWord] = useState('');
 
   // 폼 상태
-  const [q, setQ] = useState('');
+  // 과목 검색어는 URL(?q=)에 함께 남긴다 — 과목 화면(하위)에서 뒤로 나오면 결과가 그대로 있어야 한다.
+  const [sp, setSp] = useSearchParams();
+  const [q, setQ] = useState(sp.get('q') ?? '');
+  const searchCourse = (v) => { setQ(v); setSp(v.trim() ? { q: v } : {}, { replace: true }); };
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
   const [newCourse, setNewCourse] = useState('');   // 새 과목명 (수정은 /admin/courses/:code 에서)
@@ -663,10 +666,10 @@ export default function Admin() {
         )}
 
         {section === 'courses' && (
-          <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 고르면 그 과목만 다루는 화면이 새 탭으로 열립니다 — 분반·담당 교수·강의시간은 거기서 고칩니다. 여기서는 새 과목만 추가합니다(과목코드 자동 부여).">
+          <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 고르면 그 과목만 다루는 화면으로 들어갑니다 — 분반·담당 교수·강의시간은 거기서 고치고, 뒤로가기로 이 목록으로 돌아옵니다. 여기서는 새 과목만 추가합니다(과목코드 자동 부여).">
             <div className="search-bar adm-inline-search">
               <input type="search" placeholder="과목 검색 (이름 또는 코드)" value={q}
-                onChange={(e) => setQ(e.target.value)} />
+                onChange={(e) => searchCourse(e.target.value)} />
             </div>
 
             {q.trim() === '' ? (
@@ -675,17 +678,18 @@ export default function Admin() {
               <ul className="list adm-list">
                 {filtered.map((c) => (
                   <li key={c.code} className="adm-item">
-                    {/* 새 탭 — 여러 과목을 오가며 고쳐도 어느 과목을 만지는 중인지 헷갈리지 않는다 */}
-                    <a className="adm-item-row adm-course-link" target="_blank" rel="noreferrer"
-                      href={`/admin/courses/${encodeURIComponent(c.code)}`}>
+                    {/* 허브 → 기능 화면과 같은 결: 하위 화면으로 들어갔다 뒤로가기로 나온다.
+                        검색어는 ?q= 에 담아 두어, 돌아왔을 때 결과가 그대로 있다. */}
+                    <Link className="adm-item-row adm-course-link"
+                      to={`/admin/courses/${encodeURIComponent(c.code)}`}>
                       <div className="adm-item-body">
                         <div className="adm-item-title">{c.name}</div>
                         <div className="adm-item-sub">
                           {[c.code, c.department].filter(Boolean).join(' · ')} · 분반 {secOf(c.code).length}개
                         </div>
                       </div>
-                      <span className="adm-course-open">새 탭 ↗</span>
-                    </a>
+                      <span className="row-chevron">›</span>
+                    </Link>
                   </li>
                 ))}
                 {filtered.length === 0 && <li className="note adm-empty-row">검색 결과가 없습니다.</li>}

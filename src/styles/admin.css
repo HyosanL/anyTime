@@ -216,20 +216,15 @@
 }
 
 /* ====================== 과목 → 분반 편집 ======================
-   과목 검색 결과는 그 과목만 다루는 화면(/admin/courses/:code)으로 가는 새 탭 링크다.
-   분반은 그 화면 안에서 펼쳐 고친다 — 화면 전체가 한 과목이라 헷갈릴 여지가 없다. */
+   과목 검색 결과는 그 과목만 다루는 하위 화면(/admin/courses/:code)으로 들어가는 행이다
+   (허브 → 기능 화면과 같은 결). 분반은 그 화면 안에서 펼쳐 고친다 — 화면 전체가 한 과목이라
+   어느 과목을 만지는 중인지 헷갈릴 여지가 없다. */
 .adm-course-link {
   text-decoration: none;
   color: inherit;
 }
 .adm-course-link:hover { background: var(--primary-weak); }
-.adm-course-open {
-  flex: none;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--primary);
-  white-space: nowrap;
-}
+.adm-course-link .row-chevron { flex: none; }
 
 /* 과목 화면 머리말 아래 과목코드·학과 */
 .adm-course-sub {
