@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
-import { getCatalog, buildSections, formatTimes } from '../lib/cache';
+import { getCatalog, subscribeCatalog, buildSections, formatTimes } from '../lib/cache';
 import {
   listTimetables, listEntries, addSection, removeSection,
   readSelectedId, writeSelectedId, pickTimetable, isOverlapError,
@@ -72,6 +72,10 @@ export default function CourseSearch() {
     loadTimetables();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
+
+  // 관리자가 강의 정보를 고치면(카탈로그 버전 변경) 재동기화가 걸리고, 그 결과가 여기로 온다 —
+  // 이 화면을 켜 둔 채로도 검색 결과가 새 강의 정보로 바뀐다.
+  useEffect(() => subscribeCatalog((cat) => { setCatalog(cat); setMeta(correctionMeta(cat)); }), []);
 
   // 대상 시간표가 바뀌면 담긴 분반을 다시 읽는다.
   useEffect(() => {

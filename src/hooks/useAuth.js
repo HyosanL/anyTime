@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
 import { logout as authLogout } from '../lib/auth';
+import { fetchBootInfo } from '../lib/appInfo';
+import { noteCatalogVersion } from '../lib/cache';
 
 // 본인 cadet 프로필 캐시(오프라인·즉시 표시용). 세션 유무와 무관하게 마지막 프로필을 보관.
 const CADET_CACHE = 'anytime:cadetCache';
@@ -37,12 +39,15 @@ export function useAuth() {
   // fetchCadet 은 setter·supabase(모두 안정)만 참조 → 정체성 고정([]).
   const fetchCadet = useCallback(async (uid) => {
     // 순차 왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
-    const [{ data }, { data: vd }] = await Promise.all([
+    const [{ data }, boot] = await Promise.all([
       supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin').eq('id', uid).maybeSingle(),
-      supabase.rpc('get_geo_valid_days'),
+      fetchBootInfo(),
     ]);
     if (data) { setCadet(data); writeCadetCache(data); } // 오프라인이면 data=null → 캐시 유지
-    const validDays = vd ?? 90;
+    // 같은 응답에 실려 온 카탈로그 버전. 기기 캐시와 다르면 여기서 재동기화가 걸리고
+    // 열려 있는 화면은 subscribeCatalog 로 갱신된다(관리자 대규모 수정의 자동 반영).
+    noteCatalogVersion(boot.catalogVersion);
+    const validDays = boot.geoValidDays;
     const gv = data?.geo_verified_at;
     if (gv) {
       const expiresAt = new Date(gv).getTime() + validDays * 86400000;

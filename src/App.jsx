@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
 import { syncPush, consumePendingNav } from './lib/push';
+import { fetchBootInfo } from './lib/appInfo';
+import { noteCatalogVersion } from './lib/cache';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import InstallGate from './components/InstallGate';
@@ -96,6 +98,28 @@ function PushSync() {
   return null;
 }
 
+// 관리자가 강의 정보를 대규모로 고쳤을 때, 앱이 다시 앞으로 나오는 순간 자동으로 반영한다.
+// 부팅 때는 useAuth 가 이미 확인하지만(요청 0 증가), PWA 는 배경에 며칠씩 살아 있어
+// 그것만으로는 다시 켜기 전까지 옛 카탈로그를 계속 보게 된다.
+// 확인 비용은 설정 한 행(수십 바이트)이고, 7개 테이블을 실제로 다시 받는 건 버전이 바뀐 경우뿐이다.
+const CATALOG_CHECK_MS = 10 * 60 * 1000;   // 복귀할 때마다는 과하다 — 10분에 한 번으로 묶는다
+function CatalogSync() {
+  const { session } = useAuthContext();
+  useEffect(() => {
+    if (!session) return undefined;
+    let last = Date.now();   // 방금 부팅 RPC 가 확인했다
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - last < CATALOG_CHECK_MS) return;
+      last = Date.now();
+      fetchBootInfo().then((i) => noteCatalogVersion(i.catalogVersion)).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [session]);
+  return null;
+}
+
 // 알림 클릭 딥링크: 앱이 떠 있으면 SW 의 postMessage 로, 콜드스타트면 SW 가 캐시에
 // 남긴 목적지(consumePendingNav)로 해당 글로 이동한다. SW 의 client.navigate()/
 // openWindow(경로)가 플랫폼(WebAPK·iOS PWA)에 따라 경로를 무시하는 문제의 우회로.
@@ -148,6 +172,7 @@ export default function App() {
         <UpdatePrompt />
         <InstallGate>
         <PushSync />
+        <CatalogSync />
         <PushNavigator />
         <PushPrompt />
         <GeoBanner />

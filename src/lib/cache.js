@@ -1,25 +1,34 @@
 // =====================================================================
 //  카탈로그 IndexedDB 캐싱 (idb)
-//  - 대상: professor / semester / course / period / section / section_time
-//  - 정책: cache-first. 캐시가 없으면 서버에서 받아오고,
-//          6시간 이상 지났으면(stale) 백그라운드로 갱신하며 캐시를 즉시 반환.
+//  - 대상: professor / semester / course / period / common_block / section / section_time
+//  - 정책: cache-first + 서버 버전 대조.
+//      관리자가 강의 정보를 고치면 DB 트리거가 app_setting.catalog_version 을 +1 한다.
+//      앱은 부팅·복귀 때 그 숫자만 확인하고(get_boot_info — 원래 부르던 RPC 자리),
+//      기기에 찍힌 버전과 다를 때만 7개 테이블을 다시 받아 화면에 밀어 넣는다(subscribeCatalog).
+//      → 관리자의 대규모 수정이 사용자 조작 없이 반영되고,
+//        바뀐 게 없으면 아예 내려받지 않는다(예전엔 변경이 없어도 24시간마다 전원이 통째로 재다운로드).
 //  - 오프라인: 서버 fetch 실패 시 캐시가 있으면 그대로 사용.
 // =====================================================================
 import { openDB } from 'idb';
 import { supabase } from '../supabase';
+import { fetchBootInfo } from './appInfo';
 
 const DB_NAME = 'anytime-cache';
 const DB_VERSION = 1;
 const STORE = 'kv';
 const SYNCED_KEY = '_syncedAt';
 const SCHEMA_KEY = '_schema';
+const CATVER_KEY = '_catalogVersion';   // 이 캐시가 어느 catalog_version 의 사본인가
 // 캐시된 행의 모양이 바뀌면(또는 옛 캐시를 강제로 버려야 하면) 올린다 → 서버에서 다시 받는다.
 //   2: section.id(대체키) 추가 — 시간표가 분반을 id 로 참조(2026-07-12)
 //   3: common_block(전 생도 비수업 시간 이름) 추가 — 시간표 마법사(2026-07-13)
 //   4: 강제 재동기화 — common_block 이 아직 비었을 때 캐시한 기기는 이름을 붙인 뒤에도
 //      24시간(STALE_MS) 동안 공통 공강 시간이 격자에 안 떴다(2026-07-13)
 const SCHEMA_VERSION = 4;
-const STALE_MS = 24 * 60 * 60 * 1000; // 24시간 (강의 데이터는 학기당 거의 불변 → egress 절감. 관리자 수정 시 당겨서 새로고침으로 즉시 반영)
+// 버전 대조가 실제 무효화를 맡으므로, 이 시한은 그 확인이 한 번도 못 닿은 기기를 위한 안전망일 뿐이다
+// (예: 부팅 RPC 가 계속 실패). 24시간이던 것을 7일로 늘려 '변경 없는데도 전원이 매일 통째로
+// 재다운로드' 하던 것을 없앤다 — 무료 요금제에서 유일한 제약인 egress 가 여기서 크게 준다.
+const STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // 캐시할 카탈로그 테이블 (공용 읽기 전용 데이터)
 const TABLES = ['professor', 'semester', 'course', 'period', 'common_block', 'section', 'section_time'];
@@ -35,16 +44,36 @@ function getDB() {
 async function readCache() {
   const db = await getDB();
   const out = {};
-  // 8개 키를 병렬로 읽는다(직렬 await → 1회).
-  const [rows, synced, schema] = await Promise.all([
+  // 키들을 병렬로 읽는다(직렬 await → 1회).
+  const [rows, synced, schema, ver] = await Promise.all([
     Promise.all(TABLES.map((t) => db.get(STORE, t))),
     db.get(STORE, SYNCED_KEY),
     db.get(STORE, SCHEMA_KEY),
+    db.get(STORE, CATVER_KEY),
   ]);
   TABLES.forEach((t, i) => { out[t] = rows[i] ?? []; });
   // 스키마가 바뀌었으면 캐시를 없는 셈 친다(행 모양이 달라 조립이 깨진다).
   out[SYNCED_KEY] = schema === SCHEMA_VERSION ? (synced ?? 0) : 0;
+  out[CATVER_KEY] = ver ?? null;
   return out;
+}
+
+// ---------------------------------------------------------------------
+//  카탈로그 갱신 구독: 백그라운드 재동기화가 끝나면 화면에 바로 밀어 넣는다.
+//  이게 없으면 갱신분은 '다음 실행'에나 보인다 — 관리자가 고친 카탈로그를
+//  보려고 사용자가 앱을 한 번 더 켜야 하는 셈.
+// ---------------------------------------------------------------------
+const listeners = new Set();
+
+export function subscribeCatalog(cb) {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
+function emitCatalog(catalog) {
+  for (const cb of listeners) {
+    try { cb(catalog); } catch { /* 한 화면의 오류가 다른 화면 갱신을 막지 않게 */ }
+  }
 }
 
 // PostgREST 는 한 요청에 최대 1000행만 준다(기본 max-rows). 한 학기 편람만 올려도 section_time 은
@@ -83,28 +112,66 @@ async function fetchFromServer() {
   return result;
 }
 
+// 이번 세션에서 서버가 알려준 최신 카탈로그 버전. 부팅 RPC(useAuth)·복귀 확인(App)이 채운다.
+let serverVersion = null;
+// 같은 동기화가 겹쳐 도는 것을 막는다(부팅 확인과 화면 진입이 동시에 걸릴 수 있다).
+let syncing = null;
+
 // 서버에서 받아 IndexedDB 에 통째로 저장하고 반환.
-export async function syncCatalog() {
-  const fresh = await fetchFromServer();
-  const db = await getDB();
-  const tx = db.transaction(STORE, 'readwrite');
-  for (const t of TABLES) tx.store.put(fresh[t], t);
-  const now = Date.now();
-  tx.store.put(now, SYNCED_KEY);
-  tx.store.put(SCHEMA_VERSION, SCHEMA_KEY);
-  await tx.done;
-  return { ...fresh, [SYNCED_KEY]: now };
+// version: 방금 서버에서 확인한 버전(있으면 그대로 찍고, 없으면 본문과 함께 받아 온다).
+//   본문과 버전을 반드시 같이 찍어야 한다 — 따로 찍으면 방금 받은 데이터에 옛 버전이 남아
+//   다음 부팅에서 바뀐 게 없는데도 7개 테이블을 한 번 더 통째로 받는다.
+export function syncCatalog({ version = null, notify = false } = {}) {
+  if (syncing) return syncing;
+  syncing = (async () => {
+    const [fresh, ver] = await Promise.all([
+      fetchFromServer(),
+      version != null ? Promise.resolve(version) : fetchBootInfo().then((i) => i.catalogVersion),
+    ]);
+    const db = await getDB();
+    const tx = db.transaction(STORE, 'readwrite');
+    for (const t of TABLES) tx.store.put(fresh[t], t);
+    const now = Date.now();
+    tx.store.put(now, SYNCED_KEY);
+    tx.store.put(SCHEMA_VERSION, SCHEMA_KEY);
+    tx.store.put(ver, CATVER_KEY);
+    await tx.done;
+    if (ver != null) serverVersion = ver;
+    const result = { ...fresh, [SYNCED_KEY]: now, [CATVER_KEY]: ver };
+    if (notify) emitCatalog({ ...result, fromCache: false });
+    return result;
+  })().finally(() => { syncing = null; });
+  return syncing;
 }
 
-// cache-first 로 카탈로그를 반환. { ...tables, _syncedAt, fromCache }
-// onFresh(catalog) = 캐시를 먼저 돌려준 뒤 백그라운드 갱신이 끝나면 부른다. 이게 없으면
-// 갱신분은 '다음 실행'에나 보인다 — 관리자가 고친 카탈로그가 한 번 더 켜야 뜨는 셈.
-export async function getCatalog({ force = false, onFresh = null } = {}) {
+// 서버가 알려준 카탈로그 버전을 반영한다(부팅 RPC / 앱 복귀 확인).
+// 기기에 찍힌 버전과 다르면 그 자리에서 다시 받아 열려 있는 화면에 밀어 넣는다
+// → 관리자가 편람을 대규모로 고쳐도 사용자는 아무것도 하지 않는다.
+export async function noteCatalogVersion(v) {
+  if (v == null) return;
+  const seen = serverVersion;
+  if (seen === v) return;                       // 이번 세션에서 이미 확인·처리한 버전
+  serverVersion = v;
+  const [stored, synced] = await Promise.all([kvGet(CATVER_KEY), kvGet(SYNCED_KEY)]);
+  if (synced == null) return;                   // 캐시 자체가 없다 → getCatalog 가 어차피 받는다
+  if (stored === v) return;                     // 캐시가 이미 최신
+  try {
+    await syncCatalog({ version: v, notify: true });
+  } catch {
+    // 오프라인 → 캐시 유지. '확인했다'는 표시를 되돌려 놔야 다음 복귀 때 다시 시도한다
+    // (안 되돌리면 같은 버전이라는 이유로 영영 건너뛰어, 온라인이 돼도 옛 강의 정보에 머문다).
+    serverVersion = seen;
+  }
+}
+
+// cache-first 로 카탈로그를 반환. { ...tables, _syncedAt, _catalogVersion, fromCache }
+// 갱신분은 subscribeCatalog 로 화면에 밀려 온다(버전이 바뀌었을 때 + 안전망 시한이 지났을 때).
+export async function getCatalog({ force = false } = {}) {
   const cached = await readCache();
   const hasCache = cached[SYNCED_KEY] > 0;
   const stale = Date.now() - cached[SYNCED_KEY] > STALE_MS;
 
-  // 강제 새로고침: 서버 우선, 실패하면 캐시로 폴백.
+  // 강제 새로고침(당겨서 새로고침·관리자 반영 직후): 서버 우선, 실패하면 캐시로 폴백.
   if (force) {
     try {
       return { ...(await syncCatalog()), fromCache: false };
@@ -119,22 +186,24 @@ export async function getCatalog({ force = false, onFresh = null } = {}) {
     return { ...(await syncCatalog()), fromCache: false };
   }
 
-  // 캐시 오래됨: 즉시 캐시 반환 + 백그라운드 갱신(끝나면 onFresh 로 화면에 반영).
+  // 버전 확인이 한 번도 못 닿은 기기(부팅 RPC 실패 등)를 위한 안전망:
+  // 즉시 캐시를 반환하고 뒤에서 갱신한다.
   if (stale) {
-    syncCatalog()
-      .then((fresh) => onFresh?.({ ...fresh, fromCache: false }))
-      .catch(() => {});
+    syncCatalog({ notify: true }).catch(() => {});
   }
   return { ...cached, fromCache: true };
 }
 
-// 캐시 비우기 (학기 변경 등).
+// 캐시 비우기 (학기 변경 등). 버전 도장도 함께 지운다 — 안 지우면 다음 확인에서
+// '버전 같음'으로 보여 빈 캐시를 다시 채우지 않는다.
 export async function clearCatalog() {
   const db = await getDB();
   const tx = db.transaction(STORE, 'readwrite');
   for (const t of TABLES) tx.store.delete(t);
   tx.store.delete(SYNCED_KEY);
+  tx.store.delete(CATVER_KEY);
   await tx.done;
+  serverVersion = null;
 }
 
 // ---------------------------------------------------------------------

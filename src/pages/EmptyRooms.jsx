@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import BackButton from '../components/BackButton';
-import { getCatalog, dayLabel } from '../lib/cache';
+import { getCatalog, subscribeCatalog, dayLabel } from '../lib/cache';
 
 // =====================================================================
 //  빈 강의실 찾기 — 시간표 격자에서 요일·교시 칸들을 선택하면, 그 시간에
@@ -42,6 +42,9 @@ export default function EmptyRooms() {
       .catch(() => { if (active) setErr(true); });
     return () => { active = false; };
   }, []);
+
+  // 관리자가 강의 정보를 고치면 재동기화 결과가 여기로 온다 — 켜 둔 화면도 새 강의실 배치로 다시 그린다.
+  useEffect(() => subscribeCatalog(setCatalog), []);
 
   // 현재 학기 강의시간 → 요일·교시별 사용 중 강의실 + 전체 강의실 목록
   const model = useMemo(() => {

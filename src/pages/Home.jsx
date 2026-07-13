@@ -7,7 +7,7 @@ import NoticePopup from '../components/NoticePopup';
 import PullToRefresh from '../components/PullToRefresh';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSwitcher from '../components/TimetableSwitcher';
-import { getCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
+import { getCatalog, subscribeCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
 import { buildCommonBlocks, blockKey, readHidden, hideBlock, unhideAll } from '../lib/commonBlock';
 import { boardEnabled } from '../lib/board';
 import { saveTimetableImage } from '../lib/timetableImage';
@@ -148,9 +148,9 @@ export default function Home() {
     let active = true;
     (async () => {
       const [cat, cachedList] = await Promise.all([
-        // cache-first → 대개 즉시. 캐시가 오래됐으면 뒤에서 갱신되고, 끝나면 onFresh 로 격자에 반영한다
-        // (관리자가 붙인 공통 공강 시간 이름 등이 '다음 실행'까지 안 뜨는 일을 막는다).
-        getCatalog({ onFresh: (fresh) => { if (active) setCatalog(fresh); } }).catch(() => null),
+        // cache-first → 대개 즉시. 관리자가 강의 정보를 고쳤으면 뒤에서 다시 받고,
+        // 끝나면 아래 subscribeCatalog 가 격자에 밀어 넣는다.
+        getCatalog().catch(() => null),
         readTimetablesCache(),
       ]);
       if (!active) return;
@@ -185,6 +185,10 @@ export default function Home() {
     return () => { active = false; };
   }, [uid]);
 
+  // 관리자가 강의 정보를 고치면(카탈로그 버전 변경) 재동기화가 걸리고, 그 결과가 여기로 온다.
+  // 홈을 켜 둔 채로도 격자가 새 강의 정보로 다시 그려진다 — 사용자가 새로고침할 필요가 없다.
+  useEffect(() => subscribeCatalog(setCatalog), []);
+
   // ── 선택한 시간표의 내용(담긴 분반 + 직접추가) ───────────────────────
   useEffect(() => {
     if (!selectedId) { setEntries([]); setCustomClasses([]); return; }
@@ -209,9 +213,9 @@ export default function Home() {
     return () => { active = false; };
   }, [selectedId, uid]);
 
-  // 당겨서 새로고침 — 홈에서 카탈로그를 강제로 다시 받는 유일한 길이다.
-  // (카탈로그 캐시는 24시간이라, 관리자가 방금 고친 강의·교시·공통 공강 시간이 기기에 따라
-  //  하루까지 안 뜰 수 있다. 시간표 목록·내용도 함께 서버 기준으로 맞춘다.)
+  // 당겨서 새로고침 — 카탈로그를 무조건 다시 받는다(버전 대조를 건너뛰는 수동 경로).
+  // 관리자 수정은 이제 버전 대조로 알아서 반영되므로 이건 보험이고, 시간표 목록·내용까지
+  // 한 번에 서버 기준으로 맞추는 것이 본래 값어치다.
   const handleRefresh = useCallback(async () => {
     try {
       const cat = await getCatalog({ force: true });
@@ -279,7 +283,7 @@ export default function Home() {
   }, [refreshList, selectedId]);
 
   // '새 시간표 만들기'를 열 때만 학기 목록을 서버에서 갱신한다
-  // (관리자가 방금 연 다음 학기가 24시간 캐시에 막혀 안 보이는 일을 막는다).
+  // (관리자가 방금 연 다음 학기를, 다음 버전 확인을 기다리지 않고 그 자리에서 보여 준다).
   const refreshSemesters = useCallback(async () => {
     const cat = await getCatalog({ force: true });
     setCatalog(cat);
