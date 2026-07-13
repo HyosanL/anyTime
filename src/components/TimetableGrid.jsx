@@ -178,7 +178,7 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
                       <button
                         type="button"
                         className="tt-cell tt-cell-block"
-                        title="전 생도 비수업 시간 — 탭하여 숨기기"
+                        title="공통 공강 시간 — 탭하여 숨기기"
                         onClick={() => onHideBlock?.(c.src)}
                       >
                         <span className="tt-course">{c.title}</span>

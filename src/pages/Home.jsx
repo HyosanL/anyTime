@@ -118,7 +118,7 @@ export default function Home() {
 
   const handleHideBlock = useCallback((b) => {
     if (!selected) return;
-    if (!confirm(`'${b.label}' 은(는) 전 생도 공통 비수업 시간입니다.\n이 시간표에서 숨길까요? (이 기기에서만 숨겨집니다)`)) return;
+    if (!confirm(`'${b.label}' 은(는) 전 생도 공통 공강 시간입니다.\n이 시간표에서 숨길까요? (이 기기에서만 숨겨집니다)`)) return;
     setHiddenBlocks(new Set(hideBlock(selected, b)));
   }, [selected]);
 
@@ -345,7 +345,7 @@ export default function Home() {
           {/* 숨긴 공통 비수업 시간은 되돌릴 길이 있어야 한다 — 안 그러면 실수로 지우고 영영 못 찾는다 */}
           {hiddenCount > 0 && (
             <p className="tt-draft-note">
-              공통 비수업 시간 {hiddenCount}개를 숨겼습니다(이 기기에서만).
+              공통 공강 시간 {hiddenCount}개를 숨겼습니다(이 기기에서만).
               {' '}
               <button type="button" className="link-btn" onClick={handleUnhideBlocks}>되돌리기</button>
             </p>

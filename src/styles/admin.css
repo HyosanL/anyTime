@@ -546,7 +546,38 @@ code {
   border-radius: var(--r-md);
 }
 
-/* 전 생도 비수업 시간에 이름 붙이기(편람 일괄등록 미리보기) */
+/* ── 공통 공강 시간 관리(모바일 우선) ─────────────────────────────────
+   좁은 표에 숫자 입력을 우겨넣으면 손가락으로 못 만진다. 블록 하나를 카드 한 장으로
+   펼치고, 교시는 드롭다운으로 고른다. 요일·시작·끝·이름 전부 그 자리에서 고쳐진다. */
+.adm-blk-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.adm-blk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.adm-blk.is-dirty { border-color: var(--primary-weak-border); background: var(--primary-weak); }
+.adm-blk-new { border-style: dashed; background: var(--surface); }
+
+.adm-blk-time {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.adm-blk-time select {
+  flex: 1;
+  min-width: 0;      /* 좁은 화면에서 셀렉트가 넘치지 않게 */
+}
+.adm-blk-tilde { flex: none; color: var(--text-3); }
+.adm-blk-label { width: 100%; }
+
+.adm-blk-acts { display: flex; gap: 0.4rem; }
+.adm-blk-acts button { flex: 1; }
+
+/* 공통 공강 시간에 이름 붙이기(편람 일괄등록 미리보기) */
 .syl-blocks { display: flex; flex-direction: column; gap: 0.3rem; }
 .syl-block {
   display: flex;

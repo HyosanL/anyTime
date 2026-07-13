@@ -187,52 +187,92 @@ function PeriodRow({ p, run }) {
 }
 
 // 교시 표 맨 아래: 새 교시 추가 행.
-// ── 공통 비수업 시간(생도대·군사훈련·공통연구 …) ──────────────────────
+// ── 공통 공강 시간(생도대·군사훈련·공통연구 …) ────────────────────────
 // 시각(요일·교시)은 편람 격자에서 자동으로 읽어 오지만(AI 호출 0회), 여기서 학기별로
 // 손보고 새 학기 것을 미리 넣을 수 있게 한다. 생도 시간표·마법사 격자에 회색으로 깔리고,
-// 마법사는 이 시간을 '빈 시간(공강)'으로 세지 않는다.
+// 마법사는 이 시간을 '빈 시간(낀 시간)'으로 세지 않는다.
+//
+// 모바일에서 쓰는 화면이다 — 좁은 표(4열 그리드)에 숫자 입력을 우겨넣으면 손가락으로
+// 못 만진다. 한 블록을 카드 한 장으로 펼치고, 교시는 드롭다운으로 고른다.
 const DAY_NAMES = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 const BLOCK_NAMES = ['생도대', '군사훈련', '공통연구', '자율선택형교과', '전 생도 연구시간'];
 
-function BlockRow({ b, run }) {
-  const [end, setEnd] = useState(b.end_period);
-  const [label, setLabel] = useState(b.label);
-  const dirty = end !== b.end_period || label !== b.label;
-  const key = { year: b.year, term: b.term, day_of_week: b.day_of_week, start_period: b.start_period };
+// 요일·시작·끝·이름을 모두 고칠 수 있는 한 줄. periods = 교시 번호 목록.
+function BlockFields({ f, setF, periods }) {
+  const ps = periods.length ? periods : [1, 2, 3, 4, 5, 6, 7, 8];
   return (
-    <div className="adm-pt-row">
-      <span className="adm-pt-no">{DAY_NAMES[b.day_of_week]}{b.start_period}</span>
-      <input className="adm-pt-no-input" type="number" min="1" max="12" value={end}
-        onChange={(e) => setEnd(+e.target.value)} title="종료 교시" />
-      <input list="adm-block-names" maxLength={20} value={label} onChange={(e) => setLabel(e.target.value)} />
-      <div className="adm-pt-acts">
-        <button className="btn-add btn-sm" disabled={!dirty || !label.trim() || end < b.start_period}
-          onClick={() => run('set_common_block', { ...key, end_period: end, label: label.trim() },
-            `${DAY_NAMES[b.day_of_week]}${b.start_period}교시 저장`)}>저장</button>
-        <button className="rev-del-btn" title="삭제"
-          onClick={() => run('delete_catalog', { table: 'common_block', key }, '비수업 시간 삭제')}>×</button>
+    <>
+      <div className="adm-blk-time">
+        <select aria-label="요일" value={f.day} onChange={(e) => setF({ ...f, day: +e.target.value })}>
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{DAY_NAMES[d]}요일</option>)}
+        </select>
+        <select aria-label="시작 교시" value={f.start}
+          onChange={(e) => {
+            const start = +e.target.value;
+            setF({ ...f, start, end: Math.max(start, f.end) });   // 끝이 시작보다 앞서지 않게
+          }}>
+          {ps.map((p) => <option key={p} value={p}>{p}교시</option>)}
+        </select>
+        <span className="adm-blk-tilde">~</span>
+        <select aria-label="종료 교시" value={f.end} onChange={(e) => setF({ ...f, end: +e.target.value })}>
+          {ps.filter((p) => p >= f.start).map((p) => <option key={p} value={p}>{p}교시</option>)}
+        </select>
+      </div>
+      <input className="adm-blk-label" list="adm-block-names" maxLength={20}
+        placeholder="이름 (예: 생도대)" value={f.label}
+        onChange={(e) => setF({ ...f, label: e.target.value })} />
+    </>
+  );
+}
+
+function BlockRow({ b, run, periods }) {
+  const [f, setF] = useState({ day: b.day_of_week, start: b.start_period, end: b.end_period, label: b.label });
+  const dirty = f.day !== b.day_of_week || f.start !== b.start_period
+    || f.end !== b.end_period || f.label !== b.label;
+  const valid = f.label.trim() && f.end >= f.start;
+  const when = `${DAY_NAMES[f.day]}${f.start}${f.end > f.start ? `~${f.end}` : ''}교시`;
+
+  // 요일·시작교시는 PK 다 — 자리를 옮기면 옛 행을 지우고 새 자리에 넣어야 한다(old 로 알려준다).
+  const save = () => run('set_common_block', {
+    year: b.year, term: b.term,
+    day_of_week: f.day, start_period: f.start, end_period: f.end, label: f.label.trim(),
+    old: { day_of_week: b.day_of_week, start_period: b.start_period },
+  }, `${when} 저장`);
+
+  const remove = () => {
+    if (!confirm(`${DAY_NAMES[b.day_of_week]}${b.start_period}교시 ‘${b.label}’ 을(를) 삭제할까요?`)) return;
+    run('delete_catalog', {
+      table: 'common_block',
+      key: { year: b.year, term: b.term, day_of_week: b.day_of_week, start_period: b.start_period },
+    }, '공통 공강 시간 삭제');
+  };
+
+  return (
+    <div className={`adm-blk${dirty ? ' is-dirty' : ''}`}>
+      <BlockFields f={f} setF={setF} periods={periods} />
+      <div className="adm-blk-acts">
+        <button className="btn-add btn-sm" disabled={!dirty || !valid} onClick={save}>
+          {dirty ? '저장' : '저장됨'}
+        </button>
+        <button className="btn-remove btn-sm" onClick={remove}>삭제</button>
       </div>
     </div>
   );
 }
 
-function NewBlockRow({ run, year, term }) {
-  const [f, setF] = useState({ day_of_week: 1, start_period: 7, end_period: 8, label: '' });
-  const ok = f.label.trim() && f.end_period >= f.start_period;
+function NewBlockRow({ run, year, term, periods }) {
+  const [f, setF] = useState({ day: 1, start: 7, end: 8, label: '' });
+  const valid = f.label.trim() && f.end >= f.start;
   return (
-    <div className="adm-pt-row adm-pt-new">
-      <select value={f.day_of_week} onChange={(e) => setF({ ...f, day_of_week: +e.target.value })}>
-        {[1, 2, 3, 4, 5].map((d) => <option key={d} value={d}>{DAY_NAMES[d]}</option>)}
-      </select>
-      <input className="adm-pt-no-input" type="number" min="1" max="12" value={f.start_period}
-        onChange={(e) => setF({ ...f, start_period: +e.target.value })} title="시작 교시" />
-      <input className="adm-pt-no-input" type="number" min="1" max="12" value={f.end_period}
-        onChange={(e) => setF({ ...f, end_period: +e.target.value })} title="종료 교시" />
-      <input list="adm-block-names" maxLength={20} placeholder="이름 (예: 생도대)" value={f.label}
-        onChange={(e) => setF({ ...f, label: e.target.value })} />
-      <div className="adm-pt-acts">
-        <button className="btn-add btn-sm" disabled={!ok}
-          onClick={() => run('set_common_block', { year, term, ...f, label: f.label.trim() }, '비수업 시간 추가')}>추가</button>
+    <div className="adm-blk adm-blk-new">
+      <BlockFields f={f} setF={setF} periods={periods} />
+      <div className="adm-blk-acts">
+        <button className="btn-add btn-sm btn-block" disabled={!valid}
+          onClick={() => run('set_common_block', {
+            year, term, day_of_week: f.day, start_period: f.start, end_period: f.end, label: f.label.trim(),
+          }, '공통 공강 시간 추가')}>
+          ＋ 추가
+        </button>
       </div>
     </div>
   );
@@ -331,7 +371,7 @@ const SECTIONS = [
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
   { key: 'professors-sync', icon: '🔄', title: '교수 명단 동기화', sub: '공식 홈페이지에서 교수 명단 자동 갱신' },
   { key: 'semesters', icon: '🗓️', title: '학기 · 교시', sub: '현재 학기와 교시 시각 설정' },
-  { key: 'blocks', icon: '⛔', title: '공통 비수업 시간', sub: '학기별 생도대·군사훈련·공통연구 시간 관리' },
+  { key: 'blocks', icon: '⛔', title: '공통 공강 시간', sub: '학기별 생도대·군사훈련·공통연구 시간 관리' },
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
   { key: 'settings', icon: '⚙️', title: '계정 위치 인증 및 인증 기간', sub: '캠퍼스 위치·반경, 위치 재인증·자격 기간' },
   { key: 'thresholds', icon: '🎚️', title: '기준값 설정', sub: 'HOT 승격·신고 자동삭제·강의평 작성 자격 기준' },
@@ -412,6 +452,12 @@ export default function Admin() {
       .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period)
   ), [cat, blockSemYT]);
 
+  // 교시 드롭다운의 선택지(등록된 교시 번호). 교시가 없으면 1~8 로 폴백한다.
+  const periodNos = useMemo(
+    () => [...(cat?.period ?? [])].map((p) => p.no).sort((a, b) => a - b),
+    [cat]
+  );
+
   // 학기 삭제는 이 앱에서 가장 파괴적인 버튼이다. (year,term) 은 section·common_block·timetable 이
   // 모두 ON DELETE CASCADE 로 물고 있어서, 칩의 × 한 번이 그 학기의 분반·강의시간은 물론
   // 생도들이 저장해 둔 시간표까지 통째로 지운다 — 실제로 2026-2 학기가 이렇게 날아갔다.
@@ -424,7 +470,7 @@ export default function Admin() {
       + `함께 사라지는 것:\n`
       + `  · 이 학기 분반 ${n}개와 강의시간 전부\n`
       + `  · 생도들이 저장한 ${key} 시간표 전부 (담긴 강의·직접추가 포함)\n`
-      + `  · 이 학기의 비수업 시간 설정\n\n`
+      + `  · 이 학기의 공통 공강 시간 설정\n\n`
       + `강의 정보만 다시 올리고 싶은 것이라면 학기를 지울 필요가 없습니다 —\n`
       + `CSV·편람 일괄등록이 기존 분반을 대조해 갱신합니다.\n\n`
       + `정말 지우려면 "${key}" 를 그대로 입력하세요.`
@@ -750,8 +796,8 @@ export default function Admin() {
         )}
 
         {section === 'blocks' && (
-          <Card icon="⛔" title="공통 비수업 시간"
-            desc="전 생도가 수업이 없는 시간(생도대·군사훈련·공통연구 …). 생도 시간표와 시간표 마법사 격자에 회색으로 깔리고, 마법사가 이 시간을 '빈 시간(공강)'으로 세지 않습니다. 편람(PDF) 일괄등록 시 주간 격자에서 자동으로 읽어 오므로 보통은 손댈 일이 없습니다 — 여기서는 학기별로 확인·수정하거나 새 학기 것을 미리 넣습니다.">
+          <Card icon="⛔" title="공통 공강 시간"
+            desc="전 생도가 수업이 없는 시간(생도대·군사훈련·공통연구 …). 생도 시간표와 시간표 마법사 격자에 회색으로 깔리고, 마법사가 이 시간을 '낀 시간(공강)'으로 세지 않습니다. 편람(PDF) 일괄등록 시 주간 격자에서 자동으로 읽어 오므로 보통은 손댈 일이 없습니다 — 여기서는 학기별로 확인·수정하거나 새 학기 것을 미리 넣습니다.">
             <div className="adm-form-grid">
               <label className="field"><span className="field-label">학기</span>
                 <select value={blockSem} onChange={(e) => setBlockSem(e.target.value)}>
@@ -767,21 +813,20 @@ export default function Admin() {
               </label>
             </div>
 
-            {blockSemYT && (
-              <div className="adm-period-table">
-                <div className="adm-pt-head"><span>요일·시작</span><span>끝</span><span>이름</span><span /></div>
-                {blocksOfSem.map((b) => (
-                  <BlockRow key={`${b.day_of_week}-${b.start_period}`} b={b} run={run} />
-                ))}
-                <NewBlockRow key={`new-${blockSem}-${blocksOfSem.length}`} run={run}
-                  year={blockSemYT.year} term={blockSemYT.term} />
-              </div>
-            )}
             {blockSemYT && blocksOfSem.length === 0 && (
               <p className="note">
-                이 학기에 등록된 비수업 시간이 없습니다. 편람 PDF를 일괄등록하면 주간 격자에서
-                자동으로 채워집니다(AI 호출 없음). 아래 줄에서 직접 넣을 수도 있습니다.
+                이 학기에 등록된 공통 공강 시간이 없습니다. 편람 PDF를 일괄등록하면 주간 격자에서
+                자동으로 채워집니다(AI 호출 없음). 아래에서 직접 넣을 수도 있습니다.
               </p>
+            )}
+            {blockSemYT && (
+              <div className="adm-blk-list">
+                {blocksOfSem.map((b) => (
+                  <BlockRow key={`${b.day_of_week}-${b.start_period}`} b={b} run={run} periods={periodNos} />
+                ))}
+                <NewBlockRow key={`new-${blockSem}-${blocksOfSem.length}`} run={run}
+                  year={blockSemYT.year} term={blockSemYT.term} periods={periodNos} />
+              </div>
             )}
             <datalist id="adm-block-names">
               {BLOCK_NAMES.map((n) => <option key={n} value={n} />)}

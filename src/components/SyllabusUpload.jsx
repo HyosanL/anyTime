@@ -107,7 +107,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       const cleaned = r.removed
         ? ` 편람에 없던 기존 분반 ${r.removed.sections}개 삭제${r.removed.entries ? ` (생도 시간표 ${r.removed.entries}건에서 함께 제거됨)` : ''}.`
         : '';
-      const named = r.blocks ? ` 비수업 시간 이름 ${r.blocks}개 저장.` : '';
+      const named = r.blocks ? ` 공통 공강 시간 이름 ${r.blocks}개 저장.` : '';
       setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.${cleaned}${named}`);
       setPlan(null); setFile(null); setPaste('');
       onApplied?.();
@@ -252,7 +252,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
             {conflicts.length > 0 && <span className="tag tag-warn">시간 충돌 {conflicts.length}</span>}
-            {plan.stats.commonBlocks > 0 && <span className="tag">비수업 시간 {plan.stats.commonBlocks}</span>}
+            {plan.stats.commonBlocks > 0 && <span className="tag">공통 공강 {plan.stats.commonBlocks}</span>}
             {plan.stats.gridWarnings > 0 && <span className="tag tag-warn">격자와 어긋남 {plan.stats.gridWarnings}</span>}
           </div>
 
@@ -326,7 +326,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           {plan.commonBlocks?.length > 0 && (
             <div className="syl-blocks">
               <div className="section-label adm-sub-label">
-                전 생도 비수업 시간 ({plan.commonBlocks.length}) — 이름 붙이기
+                공통 공강 시간 ({plan.commonBlocks.length}) — 이름 붙이기
               </div>
               <p className="note">
                 이 편람에서 <b>어떤 분반도 열리지 않는</b> 시간입니다. 이름은 <b>주간 격자에서 자동으로</b>

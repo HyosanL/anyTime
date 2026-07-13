@@ -208,10 +208,21 @@ Deno.serve(async (req) => {
         }
         return json({ status: 'OK' })
       }
-      // 전 생도 공통 비수업 시간 한 칸 추가/수정. PK=(year,term,day_of_week,start_period) 로 upsert.
+      // 공통 공강 시간 한 칸 추가/수정. PK=(year,term,day_of_week,start_period).
+      // 요일·시작교시는 PK 라 '수정'이 upsert 만으로 안 된다 — old(원래 자리)를 함께 받아
+      // 자리가 바뀌었으면 옛 행을 지우고 새 자리에 넣는다(관리자가 요일까지 고칠 수 있어야 한다).
       // (편람 일괄등록은 apply_common_blocks 로 그 학기를 통째로 교체한다 — 이건 낱개 편집용)
       case 'set_common_block': {
         await ensureSemester(admin, payload.year, payload.term)
+        const old = payload.old as { day_of_week?: number; start_period?: number } | undefined
+        const moved = old?.day_of_week != null
+          && (old.day_of_week !== payload.day_of_week || old.start_period !== payload.start_period)
+        if (moved) {
+          await admin.from('common_block').delete().match({
+            year: payload.year, term: payload.term,
+            day_of_week: old!.day_of_week, start_period: old!.start_period,
+          }).throwOnError()
+        }
         await admin.from('common_block').upsert({
           year: payload.year,
           term: payload.term,
