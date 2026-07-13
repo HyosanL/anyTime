@@ -6,7 +6,8 @@ import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSwitcher from '../components/TimetableSwitcher';
-import { getCatalog, buildMyTimetable, buildCommonBlocks, currentSemester, semesterList } from '../lib/cache';
+import { getCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
+import { buildCommonBlocks, readHidden, hideBlock, unhideAll } from '../lib/commonBlock';
 import { boardEnabled } from '../lib/board';
 import { saveTimetableImage } from '../lib/timetableImage';
 import {
@@ -97,13 +98,32 @@ export default function Home() {
     return buildMyTimetable(catalog, entries, selected);
   }, [catalog, entries, selected]);
 
-  // 전 생도 공통 비수업 시간(생도대·군사훈련·자율선택형교과) — 격자에 함께 깐다.
+  // 전 생도 공통 비수업 시간(생도대·군사훈련·공통연구) — 격자에 함께 깐다.
   // 생도마다 DB에 담지 않는다: 모두에게 똑같은 시간이라 저장할 이유가 없고(계정당 쓰기 0),
-  // 학기가 바뀌면 카탈로그를 따라 저절로 바뀐다. 관리자가 편람 등록 때 이름을 붙인다.
+  // 학기가 바뀌면 카탈로그를 따라 저절로 바뀐다. 이름은 편람 격자에서 자동으로 온다.
+  // 탭하면 숨길 수 있고, 숨김은 기기(localStorage)에만 남는다 — 서버 쓰기 0.
+  const [hiddenBlocks, setHiddenBlocks] = useState(() => new Set());
+  useEffect(() => { setHiddenBlocks(readHidden(selected)); }, [selected]);
+
   const commonBlocks = useMemo(
-    () => (catalog && selected ? buildCommonBlocks(catalog, selected) : []),
-    [catalog, selected]
+    () => (catalog && selected ? buildCommonBlocks(catalog, selected, hiddenBlocks) : []),
+    [catalog, selected, hiddenBlocks]
   );
+  const hiddenCount = useMemo(
+    () => (catalog && selected ? buildCommonBlocks(catalog, selected).length - commonBlocks.length : 0),
+    [catalog, selected, commonBlocks]
+  );
+
+  const handleHideBlock = useCallback((b) => {
+    if (!selected) return;
+    if (!confirm(`'${b.label}' 은(는) 전 생도 공통 비수업 시간입니다.\n이 시간표에서 숨길까요? (이 기기에서만 숨겨집니다)`)) return;
+    setHiddenBlocks(new Set(hideBlock(selected, b)));
+  }, [selected]);
+
+  const handleUnhideBlocks = useCallback(() => {
+    if (!selected) return;
+    setHiddenBlocks(unhideAll(selected));
+  }, [selected]);
 
   useEffect(() => {
     boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
@@ -310,9 +330,24 @@ export default function Home() {
             {loading ? (
               <p className="muted center">불러오는 중…</p>
             ) : (
-              <TimetableGrid mine={mine} periods={periods} customClasses={customClasses} commonBlocks={commonBlocks} onDeleteCustom={handleDeleteCustom} />
+              <TimetableGrid
+                mine={mine}
+                periods={periods}
+                customClasses={customClasses}
+                commonBlocks={commonBlocks}
+                onDeleteCustom={handleDeleteCustom}
+                onHideBlock={handleHideBlock}
+              />
             )}
           </div>
+          {/* 숨긴 공통 비수업 시간은 되돌릴 길이 있어야 한다 — 안 그러면 실수로 지우고 영영 못 찾는다 */}
+          {hiddenCount > 0 && (
+            <p className="tt-draft-note">
+              공통 비수업 시간 {hiddenCount}개를 숨겼습니다(이 기기에서만).
+              {' '}
+              <button type="button" className="link-btn" onClick={handleUnhideBlocks}>되돌리기</button>
+            </p>
+          )}
           {selected && !selected.is_primary && (
             <p className="tt-draft-note">
               초안 시간표입니다. 강의평·수업메모는 <strong>확정</strong> 시간표에 담긴 강의만 열립니다.

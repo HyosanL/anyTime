@@ -22,7 +22,7 @@ const pad2 = (n) => String(n).padStart(2, '0');
 // commonBlocks = 전 생도 공통 비수업 시간(생도대·군사훈련·자율선택형교과).
 //   [{ day, startMin, endMin, label }] — 카탈로그(common_block)에서 계산해 온다.
 //   DB에 담기지 않는다(생도마다 저장할 이유가 없다) — 격자에만 깔린다.
-function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], onDeleteCustom }) {
+function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], onDeleteCustom, onHideBlock }) {
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
   // (부모 Home 이 시작 중 여러 번 리렌더돼도 데이터가 그대로면 재계산하지 않음)
   const grid = useMemo(() => {
@@ -111,7 +111,8 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
       for (let h = sH; h < eH; h++) {
         if (cells[`${b.day}-${h}`] || h < minH || h >= maxH) { run = null; continue; }
         if (run && run.endH === h) { run.endH = h + 1; continue; }
-        run = { day: b.day, startH: h, endH: h + 1, title: b.label };
+        // src = 원래 블록. 수업이 가운데를 차지해 조각나도 '숨기기'는 블록 전체에 걸린다.
+        run = { day: b.day, startH: h, endH: h + 1, title: b.label, src: b };
         runs.push(run);
       }
     });
@@ -119,7 +120,7 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
       const span = r.endH - r.startH;
       for (let h = r.startH; h < r.endH; h++) {
         cells[`${r.day}-${h}`] = {
-          block: true, title: r.title, span: h === r.startH ? span : 0, skip: h !== r.startH,
+          block: true, title: r.title, src: r.src, span: h === r.startH ? span : 0, skip: h !== r.startH,
         };
       }
     });
@@ -171,9 +172,14 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
                     style={c && !c.block ? { background: c.color } : undefined}
                   >
                     {c && c.block ? (
-                      <span className="tt-cell tt-cell-block" title="전 생도 비수업 시간">
+                      <button
+                        type="button"
+                        className="tt-cell tt-cell-block"
+                        title="전 생도 비수업 시간 — 탭하여 숨기기"
+                        onClick={() => onHideBlock?.(c.src)}
+                      >
                         <span className="tt-course">{c.title}</span>
-                      </span>
+                      </button>
                     ) : c &&
                       (c.custom ? (
                         <button

@@ -219,7 +219,7 @@
 }
 .tt-cell-block {
   color: var(--text-3);
-  cursor: default;
+  cursor: pointer;   /* 탭하면 숨긴다(기기에만 기억) */
 }
 .tt-cell-block .tt-course {
   font-weight: 600;

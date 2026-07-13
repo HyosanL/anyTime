@@ -218,27 +218,7 @@ export function buildMyTimetable(catalog, entries, sem = null) {
   return { current, mine, periods };
 }
 
-// 전 생도 공통 비수업 시간(common_block) → 격자가 쓰는 분(minute) 구간으로.
-// [{ day, startMin, endMin, label }]. 교시 시각(period)이 없으면 그릴 수 없으니 건너뛴다.
-export function buildCommonBlocks(catalog, sem) {
-  if (!sem) return [];
-  const periodByNo = Object.fromEntries((catalog?.period ?? []).map((p) => [p.no, p]));
-  const toMin = (t) => {
-    if (!t) return null;
-    const [h, m] = String(t).split(':').map(Number);
-    return Number.isFinite(h) ? h * 60 + (m || 0) : null;
-  };
-  return (catalog?.common_block ?? [])
-    .filter((b) => b.year === sem.year && b.term === sem.term)
-    .map((b) => {
-      const startMin = toMin(periodByNo[b.start_period]?.start_time);
-      const endMin = toMin(periodByNo[b.end_period]?.end_time);
-      if (startMin == null || endMin == null || endMin <= startMin) return null;
-      return { day: b.day_of_week, startMin, endMin, label: b.label };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.day - b.day || a.startMin - b.startMin);
-}
+// (전 생도 공통 비수업 시간 조립은 lib/commonBlock.js — 숨김 상태까지 함께 다룬다)
 
 // "월1, 수1" 같은 강의시간 요약 문자열
 export function formatTimes(times) {
