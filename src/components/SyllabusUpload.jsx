@@ -186,6 +186,14 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       .filter((c) => c.sections.length > 1);
   }, [plan]);
 
+  // 담당교수를 못 읽은 분반(적용할 과목에 한해). 원본에 원래 없으면 정상이지만,
+  // 파싱이 교수 칸을 놓친 것이면 조용히 '교수 미정'으로 들어가 버린다 — 적용 전에 눈에 띄게 한다.
+  const noProf = useMemo(() => (plan?.courses ?? [])
+    .filter((c) => c.include !== false)
+    .flatMap((c) => c.sections.filter((s) => !s.professorName)
+      .map((s) => ({ courseName: c.name, sectionNo: s.sectionNo, times: s.times }))),
+  [plan]);
+
   return (
     <div className="syl">
       {isCsv ? (
@@ -260,6 +268,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
             {plan.stats.similar > 0 && <span className="tag tag-warn">비슷한 이름 {plan.stats.similar}</span>}
+            {plan.stats.noProfessor > 0 && <span className="tag tag-warn">교수 미정 {plan.stats.noProfessor}</span>}
             {conflicts.length > 0 && <span className="tag tag-warn">시간 충돌 {conflicts.length}</span>}
             {plan.stats.commonBlocks > 0 && <span className="tag">공통 공강 {plan.stats.commonBlocks}</span>}
             {plan.stats.gridWarnings > 0 && <span className="tag tag-warn">격자와 어긋남 {plan.stats.gridWarnings}</span>}
@@ -308,6 +317,29 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   <div className="syl-conflict" key={`${c.professorName}-${c.day}-${c.period}`}>
                     <b>{c.professorName}</b> · {DAY[c.day]}{c.period}교시
                     <span className="muted"> — {c.sections.map((s) => `${s.courseName} ${s.sectionNo}분반`).join(', ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 교수를 못 읽은 분반. 원본이 원래 빈칸이면 그대로 두면 되지만, 파싱이 교수 칸을
+              놓친 것이면 여기서 잡아야 한다 — 2026-2 영어회화Ⅳ 는 12분반 중 9개가 이렇게 비어
+              들어갔고, 적용 화면 어디에도 표시되지 않아 한참 뒤에야 발견됐다. */}
+          {noProf.length > 0 && (
+            <div className="syl-conflicts">
+              <div className="section-label adm-sub-label">⚠️ 교수 미정 분반 ({noProf.length})</div>
+              <p className="note">
+                담당교수를 읽지 못한 분반입니다. 원본의 교수 칸이 <b>원래 비어 있으면</b> 그대로 적용해도 됩니다(교수 미정으로 저장).
+                {isCsv
+                  ? ' CSV 에 교수를 적어 두었는데도 여기 뜬다면 그 행의 열이 밀린 것입니다.'
+                  : ' 편람에는 교수가 적혀 있는데 여기 뜬다면 AI 가 그 칸을 놓친 것입니다 — ‘캐시 무시하고 다시 분석’ 하거나 CSV 로 올리세요.'}
+              </p>
+              <div className="syl-list">
+                {noProf.map((s) => (
+                  <div className="syl-conflict" key={`${s.courseName}-${s.sectionNo}`}>
+                    <b>{s.courseName}</b> {s.sectionNo}분반
+                    <span className="muted"> — {fmtTimes(s.times)}</span>
                   </div>
                 ))}
               </div>

@@ -634,6 +634,9 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
       newProfessors: professors.filter((p) => p.action === 'create').length,
       ambiguous: professors.filter((p) => p.action === 'ambiguous').length,
       similar: professors.filter((p) => p.action === 'similar').length,   // 짧은 이름으로 기존 교수와 이어붙임 — 확인 필요
+      // 담당교수를 못 읽은 분반. AI 가 표에서 교수 칸을 통째로 놓쳐도 조용히 '교수 미정'으로
+      // 들어가 버려 눈에 안 띄었다(2026-2 영어회화Ⅳ: 12분반 중 9개가 그렇게 비었다) — 세어서 경고한다.
+      noProfessor: courseList.reduce((n, c) => n + c.sections.filter((s) => !s.professorName).length, 0),
       reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
       staleSections: stale.length,
       conflicts: conflicts.length,
