@@ -246,7 +246,20 @@ Deno.serve(async (req) => {
           capacity: payload.capacity ?? null,
         }).throwOnError()
         return json({ status: 'OK' })
-      case 'set_section_time':
+      // 강의시간 추가/수정. PK=(분반키, day_of_week, start_period) 라 요일·시작교시를 바꾸면
+      // upsert 만으로는 옛 행이 유령으로 남는다 — old(원래 자리)를 받아 먼저 지운다.
+      // (common_block 과 같은 함정. 수정 제안 경로(apply_correction_row)는 DELETE+재삽입이라 무관)
+      case 'set_section_time': {
+        const old = payload.old as { day_of_week?: number; start_period?: number } | undefined
+        const moved = old?.day_of_week != null
+          && (old.day_of_week !== payload.day_of_week || old.start_period !== payload.start_period)
+        if (moved) {
+          await admin.from('section_time').delete().match({
+            course_code: payload.course_code, year: payload.year, term: payload.term,
+            section_no: payload.section_no,
+            day_of_week: old!.day_of_week, start_period: old!.start_period,
+          }).throwOnError()
+        }
         await admin.from('section_time').upsert({
           course_code: payload.course_code, year: payload.year, term: payload.term,
           section_no: payload.section_no, day_of_week: payload.day_of_week,
@@ -254,6 +267,7 @@ Deno.serve(async (req) => {
           room: payload.room ?? null,
         }).throwOnError()
         return json({ status: 'OK' })
+      }
       case 'delete_post': {
         const table = String(payload.table)
         if (!POST_TABLES.has(table)) return json({ status: 'BAD_REQUEST' }, 400)

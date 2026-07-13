@@ -293,12 +293,70 @@ function NewPeriodRow({ run, nextNo }) {
   );
 }
 
+// 강의시간 한 줄 — 요일·시작·끝·강의실을 그 자리에서 고친다(모바일에서 손가락으로 고를 수 있게).
+// 요일·시작교시는 PK 라, 자리를 옮기면 옛 행을 지우고 새 자리에 넣어야 한다(old 로 알려준다).
+// 지금까지는 '수정'이 아예 없어서 지우고 다시 넣어야 했다.
+function SectionTimeRow({ t, base, run, periods }) {
+  const [f, setF] = useState({
+    day: t.day_of_week, start: t.start_period, end: t.end_period, room: t.room || '',
+  });
+  const ps = periods.length ? periods : [1, 2, 3, 4, 5, 6, 7, 8];
+  const dirty = f.day !== t.day_of_week || f.start !== t.start_period
+    || f.end !== t.end_period || (f.room || '') !== (t.room || '');
+  const valid = f.end >= f.start;
+
+  const save = () => run('set_section_time', {
+    ...base,
+    day_of_week: f.day, start_period: f.start, end_period: f.end, room: f.room.trim() || null,
+    old: { day_of_week: t.day_of_week, start_period: t.start_period },
+  }, '강의시간 저장');
+
+  const remove = () => {
+    if (!confirm(`${DAY_KO[t.day_of_week]} ${t.start_period}교시 강의시간을 삭제할까요?`)) return;
+    run('delete_catalog', {
+      table: 'section_time',
+      key: { ...base, day_of_week: t.day_of_week, start_period: t.start_period },
+    }, '강의시간 삭제');
+  };
+
+  return (
+    <div className={`adm-blk${dirty ? ' is-dirty' : ''}`}>
+      <div className="adm-blk-time">
+        <select aria-label="요일" value={f.day} onChange={(e) => setF({ ...f, day: +e.target.value })}>
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{DAY_KO[d]}요일</option>)}
+        </select>
+        <select aria-label="시작교시" value={f.start}
+          onChange={(e) => {
+            const start = +e.target.value;
+            setF({ ...f, start, end: Math.max(start, f.end) });
+          }}>
+          {ps.map((p) => <option key={p} value={p}>{p}교시</option>)}
+        </select>
+        <span className="adm-blk-tilde">~</span>
+        <select aria-label="끝교시" value={f.end} onChange={(e) => setF({ ...f, end: +e.target.value })}>
+          {ps.filter((p) => p >= f.start).map((p) => <option key={p} value={p}>{p}교시</option>)}
+        </select>
+      </div>
+      <input className="adm-blk-label" placeholder="강의실 (예: 본관 201)" value={f.room}
+        onChange={(e) => setF({ ...f, room: e.target.value })} />
+      <div className="adm-blk-acts">
+        <button className="btn-add btn-sm" disabled={!dirty || !valid} onClick={save}>
+          {dirty ? '저장' : '저장됨'}
+        </button>
+        <button className="btn-remove btn-sm" onClick={remove}>삭제</button>
+      </div>
+    </div>
+  );
+}
+
 // 한 분반의 교수·정원·강의시간을 한 곳에서 인라인 편집.
 function SectionEditor({ s, cat, run }) {
   const [profCode, setProfCode] = useState(s.professor_code || '');
   const [capacity, setCapacity] = useState(s.capacity ?? '');
-  const [nt, setNt] = useState({ day_of_week: 1, start_period: 1, end_period: 1, room: '' });
+  const [nt, setNt] = useState({ day: 1, start: 1, end: 1, room: '' });
   const base = { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no };
+  const periods = [...(cat.period ?? [])].map((p) => p.no).sort((a, b) => a - b);
+  const ps = periods.length ? periods : [1, 2, 3, 4, 5, 6, 7, 8];
   const times = (cat.section_time ?? [])
     .filter((t) => t.course_code === s.course_code && t.year === s.year && t.term === s.term && t.section_no === s.section_no)
     .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period);
@@ -317,21 +375,38 @@ function SectionEditor({ s, cat, run }) {
 
       <div className="section-label adm-sub-label">강의시간</div>
       {times.length === 0 && <p className="note">등록된 강의시간이 없습니다. 아래에서 추가하세요.</p>}
-      {times.map((t) => (
-        <div key={t.day_of_week + '-' + t.start_period} className="adm-chip-row">
-          <span className="adm-chip-text">{DAY_KO[t.day_of_week]} {t.start_period}{t.end_period !== t.start_period ? `-${t.end_period}` : ''}교시{t.room ? ` · ${t.room}` : ''}</span>
-          <button className="rev-del-btn" onClick={() => run('delete_catalog', { table: 'section_time', key: { ...base, day_of_week: t.day_of_week, start_period: t.start_period } }, '강의시간 삭제')}>삭제</button>
+      <div className="adm-blk-list">
+        {times.map((t) => (
+          <SectionTimeRow key={`${t.day_of_week}-${t.start_period}`} t={t} base={base} run={run} periods={periods} />
+        ))}
+        <div className="adm-blk adm-blk-new">
+          <div className="adm-blk-time">
+            <select aria-label="요일" value={nt.day} onChange={(e) => setNt({ ...nt, day: +e.target.value })}>
+              {[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{DAY_KO[d]}요일</option>)}
+            </select>
+            <select aria-label="시작교시" value={nt.start}
+              onChange={(e) => {
+                const start = +e.target.value;
+                setNt({ ...nt, start, end: Math.max(start, nt.end) });
+              }}>
+              {ps.map((p) => <option key={p} value={p}>{p}교시</option>)}
+            </select>
+            <span className="adm-blk-tilde">~</span>
+            <select aria-label="끝교시" value={nt.end} onChange={(e) => setNt({ ...nt, end: +e.target.value })}>
+              {ps.filter((p) => p >= nt.start).map((p) => <option key={p} value={p}>{p}교시</option>)}
+            </select>
+          </div>
+          <input className="adm-blk-label" placeholder="강의실 (예: 본관 201)" value={nt.room}
+            onChange={(e) => setNt({ ...nt, room: e.target.value })} />
+          <div className="adm-blk-acts">
+            <button className="btn-add btn-sm btn-block"
+              onClick={() => run('set_section_time', {
+                ...base, day_of_week: nt.day, start_period: nt.start, end_period: nt.end,
+                room: nt.room.trim() || null,
+              }, '강의시간 추가')}>＋ 강의시간 추가</button>
+          </div>
         </div>
-      ))}
-      <div className="adm-form-grid">
-        <label className="field"><span className="field-label">요일</span>
-          <select value={nt.day_of_week} onChange={(e) => setNt({ ...nt, day_of_week: +e.target.value })}>{[1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{DAY_KO[d]}</option>)}</select>
-        </label>
-        <label className="field"><span className="field-label">강의실</span><input placeholder="예: 본관 201" value={nt.room} onChange={(e) => setNt({ ...nt, room: e.target.value })} /></label>
-        <label className="field"><span className="field-label">시작교시</span><input type="number" value={nt.start_period} onChange={(e) => setNt({ ...nt, start_period: +e.target.value })} /></label>
-        <label className="field"><span className="field-label">끝교시</span><input type="number" value={nt.end_period} onChange={(e) => setNt({ ...nt, end_period: +e.target.value })} /></label>
       </div>
-      <button className="btn-add btn-block btn-sm" onClick={() => run('set_section_time', { ...base, ...nt }, '강의시간 추가')}>강의시간 추가</button>
     </div>
   );
 }
