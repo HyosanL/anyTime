@@ -7,7 +7,7 @@ import NoticePopup from '../components/NoticePopup';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSwitcher from '../components/TimetableSwitcher';
 import { getCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
-import { buildCommonBlocks, readHidden, hideBlock, unhideAll } from '../lib/commonBlock';
+import { buildCommonBlocks, blockKey, readHidden, hideBlock, unhideAll } from '../lib/commonBlock';
 import { boardEnabled } from '../lib/board';
 import { saveTimetableImage } from '../lib/timetableImage';
 import {
@@ -105,14 +105,16 @@ export default function Home() {
   const [hiddenBlocks, setHiddenBlocks] = useState(() => new Set());
   useEffect(() => { setHiddenBlocks(readHidden(selected)); }, [selected]);
 
+  // 한 번만 조립하고, 숨김은 그 위에서 걸러 센다(같은 계산을 두 번 돌리지 않는다).
+  const allBlocks = useMemo(
+    () => (catalog && selected ? buildCommonBlocks(catalog, selected) : []),
+    [catalog, selected]
+  );
   const commonBlocks = useMemo(
-    () => (catalog && selected ? buildCommonBlocks(catalog, selected, hiddenBlocks) : []),
-    [catalog, selected, hiddenBlocks]
+    () => allBlocks.filter((b) => !hiddenBlocks.has(blockKey(b))),
+    [allBlocks, hiddenBlocks]
   );
-  const hiddenCount = useMemo(
-    () => (catalog && selected ? buildCommonBlocks(catalog, selected).length - commonBlocks.length : 0),
-    [catalog, selected, commonBlocks]
-  );
+  const hiddenCount = allBlocks.length - commonBlocks.length;
 
   const handleHideBlock = useCallback((b) => {
     if (!selected) return;
