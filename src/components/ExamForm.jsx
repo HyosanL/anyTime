@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
 import { uploadExamFiles, EXAM_RETENTION_YEARS } from '../lib/storage';
-import { maskProfanity } from '../lib/moderation';
+import { maskText, prefetchMask } from '../lib/mask';
 
 const TYPES = ['중간고사', '기말고사', '퀴즈', '과제', '기타'];
 const CUR_YEAR = new Date().getFullYear();
@@ -51,9 +51,9 @@ export default function ExamForm({ courseCode, onDone }) {
         p_course_code: courseCode,
         p_src_year: srcYear,
         p_src_term: srcTerm ? Number(srcTerm) : null,
-        p_title: maskProfanity(title.trim()),
+        p_title: await maskText(title.trim()),
         p_exam_type: examType,
-        p_description: maskProfanity(description.trim()) || null,
+        p_description: (await maskText(description.trim())) || null,
         p_files: uploaded,   // 서버가 exam_file 릴레이션으로 정규화 저장
       });
       if (error) {
@@ -72,7 +72,8 @@ export default function ExamForm({ courseCode, onDone }) {
     <form className="rev-form" onSubmit={handleSubmit}>
       <label className="field rev-form-field">
         <span className="field-label">제목</span>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 2025-2 중간 정리" />
+        {/* 입력창에 손을 대면 그때 비속어 사전을 미리 받는다(제출 때 기다리지 않도록) */}
+        <input value={title} onFocus={prefetchMask} onChange={(e) => setTitle(e.target.value)} placeholder="예: 2025-2 중간 정리" />
       </label>
 
       <div className="exam-row">

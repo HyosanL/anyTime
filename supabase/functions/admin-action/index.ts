@@ -68,7 +68,10 @@ Deno.serve(async (req) => {
   }
   const { action, payload = {} } = body
 
-  try {
+  // 액션 하나를 처리한다. 아래 'batch' 가 이걸 여러 번 불러 한 번의 호출로 묶는다
+  // (파라미터 이름이 바깥 action/payload 를 가리므로 switch 본문은 그대로다).
+  const handle = async (action: string, payload: Record<string, unknown>): Promise<Response> => {
+   try {
     switch (action) {
       case 'get_app_setting': {
         const { data } = await admin.from('app_setting')
@@ -699,7 +702,24 @@ Deno.serve(async (req) => {
       default:
         return json({ status: 'BAD_REQUEST', detail: 'unknown action' }, 400)
     }
-  } catch (e) {
+   } catch (e) {
     return json({ status: 'ERROR', detail: (e as Error).message }, 500)
+   }
   }
+
+  // 검열 대시보드는 목록 5개를 한 화면에서 함께 본다. 예전엔 그걸 5번의 Edge Function 호출로 받아
+  // 15초 폴링 동안 시간당 1,200회를 썼다 — 목록만 한 번의 호출로 묶는다(부수효과 없는 읽기 전용만 허용).
+  if (action === 'batch') {
+    const list = Array.isArray(payload.actions) ? payload.actions : []
+    if (list.length > 8) return json({ status: 'BAD_REQUEST', detail: 'too many actions' }, 400)
+    const results = await Promise.all(list.map(async (a) => {
+      const act = String((a as Record<string, unknown>).action ?? '')
+      if (!act.startsWith('list_')) return { action: act, ok: false, data: { status: 'BAD_REQUEST' } }
+      const res = await handle(act, ((a as Record<string, unknown>).payload ?? {}) as Record<string, unknown>)
+      return { action: act, ok: res.status === 200, data: await res.json() }
+    }))
+    return json({ status: 'OK', results })
+  }
+
+  return handle(String(action), payload as Record<string, unknown>)
 })

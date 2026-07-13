@@ -6,11 +6,10 @@ import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
 import PullToRefresh from '../components/PullToRefresh';
 import TimetableGrid from '../components/TimetableGrid';
+import TimetableSummary from '../components/TimetableSummary';
 import TimetableSwitcher from '../components/TimetableSwitcher';
 import { getCatalog, subscribeCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
 import { buildCommonBlocks, blockKey, readHidden, hideBlock, unhideAll } from '../lib/commonBlock';
-import { boardEnabled } from '../lib/board';
-import { saveTimetableImage } from '../lib/timetableImage';
 import {
   listTimetables, readTimetablesCache, listEntries, readEntriesCache,
   createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
@@ -68,7 +67,7 @@ function CustomClassForm({ onAdd }) {
 // 시간표는 학기마다 여러 개 가질 수 있고(지난 학기·다음 학기 초안), 학기별 1개가 '확정'이다.
 // 강의평·메모 자격은 확정 시간표만 인정한다(서버 RPC가 강제).
 export default function Home() {
-  const { cadet, session, logout } = useAuthContext();
+  const { cadet, session, settings, logout } = useAuthContext();
   const navigate = useNavigate();
   const uid = session?.user?.id;
   const count = cadet?.post_count ?? 0;
@@ -85,7 +84,10 @@ export default function Home() {
 
   const [customClasses, setCustomClasses] = useState([]);
   const [adding, setAdding] = useState(false);
-  const [boardOn, setBoardOn] = useState(true);
+  // 수강신청용 요약표(어느 시간표든 목록에서 바로) — { tt, entries, customs, loading }
+  const [summary, setSummary] = useState(null);
+  // 게시판 활성 여부는 부팅 RPC 로 이미 와 있다 — 홈 진입마다 board_enabled() 를 따로 부르지 않는다.
+  const boardOn = settings.boardEnabled;
 
   const selected = useMemo(
     () => timetables.find((t) => t.id === selectedId) ?? null,
@@ -117,6 +119,15 @@ export default function Home() {
   );
   const hiddenCount = allBlocks.length - commonBlocks.length;
 
+  // 캔버스 렌더러(lib/timetableImage)는 버튼을 누른 사람만 쓴다 → 첫 화면 번들에서 빼고 그때 받는다.
+  const handleSaveImage = useCallback(async () => {
+    const { saveTimetableImage } = await import('../lib/timetableImage');
+    saveTimetableImage({
+      mine, periods, customClasses, commonBlocks,
+      title: selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표',
+    });
+  }, [mine, periods, customClasses, commonBlocks, selected]);
+
   const handleHideBlock = useCallback((b) => {
     if (!selected) return;
     if (!confirm(`'${b.label}' 은(는) 전 생도 공통 공강 시간입니다.\n이 시간표에서 숨길까요? (이 기기에서만 숨겨집니다)`)) return;
@@ -127,10 +138,6 @@ export default function Home() {
     if (!selected) return;
     setHiddenBlocks(unhideAll(selected));
   }, [selected]);
-
-  useEffect(() => {
-    boardEnabled().then((v) => setBoardOn(v !== false)).catch(() => setBoardOn(true));
-  }, []);
 
   // 시간표 목록 새로 받아 반영(생성·이름변경·확정·삭제 후 공통).
   const refreshList = useCallback(async (preferId = null) => {
@@ -282,6 +289,25 @@ export default function Home() {
     await refreshList(id === selectedId ? null : selectedId);
   }, [refreshList, selectedId]);
 
+  // 요약표: 지금 보고 있는 시간표면 이미 손에 있는 것을 그대로 쓴다(요청 0회).
+  // 다른 시간표면 그 자리에서 받아오고, 오프라인이면 캐시 스냅샷으로 보여 준다.
+  const handleSummary = useCallback(async (t) => {
+    if (t.id === selectedId) {
+      setSummary({ tt: t, entries, customs: customClasses, loading: false });
+      return;
+    }
+    setSummary({ tt: t, entries: [], customs: [], loading: true });
+    let rows;
+    try {
+      rows = await listEntries(t.id);
+    } catch {
+      rows = await readEntriesCache(t.id);
+    }
+    const customs = await listCustomClasses(uid, t.id);   // 실패해도 내부에서 캐시로 폴백
+    // 그 사이에 사용자가 닫았거나 다른 시간표를 열었으면 덮어쓰지 않는다.
+    setSummary((s) => (s?.tt.id === t.id ? { tt: t, entries: rows, customs, loading: false } : s));
+  }, [selectedId, entries, customClasses, uid]);
+
   // '새 시간표 만들기'를 열 때만 학기 목록을 서버에서 갱신한다
   // (관리자가 방금 연 다음 학기를, 다음 버전 확인을 기다리지 않고 그 자리에서 보여 준다).
   const refreshSemesters = useCallback(async () => {
@@ -345,16 +371,14 @@ export default function Home() {
               onRename={handleRename}
               onSetPrimary={handleSetPrimary}
               onDelete={handleDelete}
+              onSummary={handleSummary}
               onOpenCreate={refreshSemesters}
             />
             <div className="home-tt-actions">
               {offline && <span className="cache-tag">오프라인</span>}
               {(mine.length > 0 || customClasses.length > 0) && (
                 <button className="btn-ghost btn-sm" title="시간표를 이미지로 저장"
-                  onClick={() => saveTimetableImage({
-                    mine, periods, customClasses, commonBlocks,
-                    title: selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표',
-                  })}>🖼️ 이미지 저장</button>
+                  onClick={handleSaveImage}>🖼️ 이미지 저장</button>
               )}
               <button className="btn-ghost btn-sm" disabled={!selected} onClick={() => setAdding((v) => !v)}>{adding ? '닫기' : '＋ 직접 추가'}</button>
             </div>
@@ -431,6 +455,17 @@ export default function Home() {
           )}
         </nav>
       </div>
+
+      {summary && (
+        <TimetableSummary
+          catalog={catalog}
+          timetable={summary.tt}
+          entries={summary.entries}
+          customClasses={summary.customs}
+          loading={summary.loading}
+          onClose={() => setSummary(null)}
+        />
+      )}
     </PullToRefresh>
   );
 }

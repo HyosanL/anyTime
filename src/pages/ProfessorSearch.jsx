@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { getCatalog, buildSections } from '../lib/cache';
+import { getCatalog, buildSections, kvGet, kvSet } from '../lib/cache';
 import { listPrimarySectionIds } from '../lib/timetable';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/course.css';
 
 // 교수 검색: 교수명·학과로 찾아 교수 상세(강의평·시간표)로 이동.
 // - 내 확정시간표 담당 교수를 상단에 노출(검색 전에도).
@@ -19,9 +20,28 @@ export default function ProfessorSearch() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // 교수 평점 집계(professor_rating)는 review 테이블 전체를 GROUP BY 하는 뷰다. 검색 화면을 열 때마다
+  // 이걸 부르면 강의평이 쌓일수록 느려지고 비싸진다. 별점은 '검색 결과에 곁들이는 정보'라 조금 낡아도
+  // 무방하므로 SWR: 캐시가 있으면 즉시 쓰고, 하루가 지났을 때만 뒤에서 다시 받는다.
+  const RATINGS_KEY = 'prof:ratings';
+  const RATINGS_TTL = 24 * 60 * 60 * 1000;
+
+  async function loadRatings(force = false) {
+    const cached = await kvGet(RATINGS_KEY);
+    const fresh = cached && Date.now() - cached.at < RATINGS_TTL;
+    if (cached) setRatings(cached.byCode);
+    if (fresh && !force) return;
+    const { data } = await supabase
+      .from('professor_rating').select('professor_code, review_count, avg_overall');
+    if (!data) return;   // 오프라인 → 캐시 유지
+    const byCode = Object.fromEntries(data.map((r) => [r.professor_code, r]));
+    setRatings(byCode);
+    kvSet(RATINGS_KEY, { at: Date.now(), byCode });
+  }
+
   // silent: 당겨서 새로고침 때는 화면을 '불러오는 중…'으로 갈아치우지 않는다
-  async function load(silent = false) {
-    if (!silent) setLoading(true);
+  async function load(force = false) {
+    if (!force) setLoading(true);
     setError('');
     let sections = [];
     try {
@@ -31,19 +51,17 @@ export default function ProfessorSearch() {
     } catch {
       setError('교수 목록을 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
     }
-    // 내 확정시간표(담당 교수 코드용)와 강의평 집계는 서로 독립 → 병렬 1왕복.
+    // 내 확정시간표(담당 교수 코드용)와 강의평 집계는 서로 독립 → 병렬.
     // 초안 시간표는 세지 않는다(확정에 담은 강의 = 내가 듣는 강의).
-    const [regIds, { data }] = await Promise.all([
+    const [regIds] = await Promise.all([
       listPrimarySectionIds().catch(() => new Set()),
-      supabase.from('professor_rating').select('professor_code, review_count, avg_overall'),
+      loadRatings(force),   // 당겨서 새로고침이면 캐시를 무시하고 다시 받는다
     ]);
     if (regIds.size && sections.length) {
       const codes = new Set();
       sections.forEach((s) => { if (regIds.has(s.id) && s.professor_code) codes.add(s.professor_code); });
       setMyProfCodes([...codes]);
     }
-    // 강의평 집계(있으면 검색 결과에 별점·후기수 표시)
-    if (data) setRatings(Object.fromEntries(data.map((r) => [r.professor_code, r])));
     setLoading(false);
   }
 

@@ -7,6 +7,7 @@ import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHo
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
 import BackButton from '../components/BackButton';
+import '../styles/share.css';
 
 const TIERS = [
   { key: 'bronze', label: '브론즈', min: 0 },

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import BackButton from '../components/BackButton';
 import { getCatalog, subscribeCatalog, dayLabel } from '../lib/cache';
+import '../styles/rooms.css';
 
 // =====================================================================
 //  빈 강의실 찾기 — 시간표 격자에서 요일·교시 칸들을 선택하면, 그 시간에

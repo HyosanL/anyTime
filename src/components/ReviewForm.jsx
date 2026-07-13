@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabase';
-import { maskProfanity } from '../lib/moderation';
+import { maskText, prefetchMask } from '../lib/mask';
 
 const SCORES = [
   ['overall', '종합', true],
@@ -63,8 +63,8 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
       p_progress: scores.progress,
       p_difficulty: scores.difficulty,
       p_class_time: scores.class_time,
-      p_prof_comment: maskProfanity(profComment.trim()) || null,
-      p_course_comment: maskProfanity(courseComment.trim()) || null,
+      p_prof_comment: (await maskText(profComment.trim())) || null,
+      p_course_comment: (await maskText(courseComment.trim())) || null,
       p_fail: fail,
       p_teamplay: teamplay,
       p_presentation: presentation,
@@ -116,11 +116,12 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
 
       <label className="field rev-form-field">
         <span className="field-label">교수 평</span>
-        <textarea value={profComment} onChange={(e) => setProfComment(e.target.value)} rows={2} placeholder="수업 스타일, 성적 등" />
+        {/* 입력창에 손을 대면 그때 비속어 사전을 미리 받는다(제출 때 기다리지 않도록) */}
+        <textarea value={profComment} onFocus={prefetchMask} onChange={(e) => setProfComment(e.target.value)} rows={2} placeholder="수업 스타일, 성적 등" />
       </label>
       <label className="field rev-form-field">
         <span className="field-label">과목 평</span>
-        <textarea value={courseComment} onChange={(e) => setCourseComment(e.target.value)} rows={2} placeholder="난이도, 과제 등" />
+        <textarea value={courseComment} onFocus={prefetchMask} onChange={(e) => setCourseComment(e.target.value)} rows={2} placeholder="난이도, 과제 등" />
       </label>
 
       <label className="field rev-form-field">

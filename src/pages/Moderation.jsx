@@ -3,15 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
 import { clearCatalog, kvGet, kvSet } from '../lib/cache';
+import { useAuthContext } from '../contexts/AuthContext';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/admin.css';
+import '../styles/correction.css';
+import '../styles/course.css';
+import '../styles/board.css';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과', office: '연구실' };
 // 현행 사유는 'threshold'(누적)·'burst'(15분 급증). 기준값은 관리자 설정이라 라벨엔 수치 미표기(정확한 수치는 신고수 배지로 표시).
 // burst_10/threshold_30/burst_3/threshold_10 은 구 기준 아카이브 행 표시용으로 유지.
 const REASON_LABEL = { threshold: '누적 신고', burst: '단시간 급증(15분)', burst_10: '15분 10건', threshold_30: '누적 30건', burst_3: '30분 3건(구)', threshold_10: '누적 10건(구)' };
-const POLL_MS = 15000;
+// 폴링 주기. 신고·수정제안은 초 단위로 다투는 일이 아니고, 화면이 열려 있는 내내 도는 유일한
+// 상시 요청이라 그대로 비용이 된다(15초 → 60초, 게다가 이제 호출은 한 번으로 묶인다).
+// 급할 땐 당겨서 새로고침이 있다.
+const POLL_MS = 60000;
 // 파급이 큰 항목(과목명/교수명/학과)은 자동반영 대상이 아니며, 3건↑ 쌓이면 수동 검토 강조.
 const HIGH_RISK = new Set(['course:name', 'professor:name', 'professor:department']);
 // 대상 키는 정규화된 단순 속성(professor_code/course_code/year/term/section_no)으로 묶는다.
@@ -23,6 +31,19 @@ async function call(action, payload = {}) {
   let status = data?.status;
   if (error) { try { status = (await error.context?.json?.())?.status; } catch { /* ignore */ } }
   return { ok: status === 'OK', status, data };
+}
+
+// 목록 여러 개를 Edge Function 호출 '한 번'으로 받는다. 예전엔 대시보드가 열려 있는 동안
+// 15초마다 5번씩 불러 시간당 1,200회를 썼다. 반환은 요청한 순서대로 [{ok, data}, …].
+async function callBatch(actions) {
+  const { data } = await supabase.functions.invoke('admin-action', {
+    body: { action: 'batch', payload: { actions } },
+  });
+  const results = data?.results ?? [];
+  return actions.map((_, i) => ({
+    ok: results[i]?.ok === true,
+    data: results[i]?.data ?? {},
+  }));
 }
 
 // 항목 → 실제 콘텐츠 화면 경로(삭제 판단 전 원문·맥락 확인용). 못 만드는 유형은 null.
@@ -65,7 +86,10 @@ function Highlighted({ text }) {
 // 화면9-2: 실시간 모더레이션 대시보드 — 3탭(게시글·댓글 / 신고 / 수정 제안).
 export default function Moderation() {
   const navigate = useNavigate();
-  const [isAdmin, setIsAdmin] = useState(null);
+  // 관리자 여부는 cadet 프로필에 이미 실려 온다(useAuth) — is_admin RPC 를 따로 부르지 않는다.
+  // 프로필이 아직 없으면(null) '확인 중'. 어차피 모든 관리자 액션은 서버(admin-action)가 다시 검증한다.
+  const { cadet } = useAuthContext();
+  const isAdmin = cadet ? !!cadet.is_admin : null;
   const [tab, setTab] = useState('posts'); // 'posts' | 'reports' | 'corr'
   const [items, setItems] = useState([]);       // 게시글·댓글(list_recent)
   const [reported, setReported] = useState([]);  // 신고 누적 글(list_reported)
@@ -78,17 +102,13 @@ export default function Moderation() {
   const timer = useRef(null);
   const freshRef = useRef(false); // 서버 응답 도착 후 늦게 온 캐시가 덮어쓰지 않도록
 
-  useEffect(() => {
-    supabase.rpc('is_admin').then(({ data }) => setIsAdmin(!!data));
-  }, []);
-
   const load = useCallback(async () => {
-    const [r, rc, rr, ra, rd] = await Promise.all([
-      call('list_recent', { limit: 100 }),
-      call('list_corrections', { status: 'pending' }),
-      call('list_reported'),
-      call('list_auto_notices'),
-      call('list_deleted'),
+    const [r, rc, rr, ra, rd] = await callBatch([
+      { action: 'list_recent', payload: { limit: 100 } },
+      { action: 'list_corrections', payload: { status: 'pending' } },
+      { action: 'list_reported' },
+      { action: 'list_auto_notices' },
+      { action: 'list_deleted' },
     ]);
     freshRef.current = true;
     if (rc.ok) setCorrs(rc.data.items ?? []);

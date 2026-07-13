@@ -4,6 +4,7 @@ import { listBoards, createBoard, listFavoriteIds, addFavorite, removeFavorite }
 import { kvGet, kvSet } from '../lib/cache';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/board.css';
 
 export default function Boards() {
   const navigate = useNavigate();

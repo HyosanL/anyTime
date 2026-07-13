@@ -7,6 +7,7 @@ import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage'
 import ExamForm from '../components/ExamForm';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/course.css';
 
 // 파일 크기 표기(1.2MB 등)
 function fmtSize(bytes) {
@@ -50,11 +51,14 @@ export default function Exams() {
     const course = catalog?.course?.find((c) => c.code === courseCode);
     if (course) setCourseName(course.name);
 
+    // 비밀번호 해시(bcrypt)는 받지 않는다 — 삭제 UI 는 has_password 로만 분기한다('*' 금지).
     const { data } = await supabase
       .from('exam_archive')
-      .select('*, exam_file(seq, object_key, file_name, file_size, mime_type)')
+      .select('id, course_code, src_year, src_term, title, exam_type, description, created_at, '
+        + 'has_password, exam_file(seq, object_key, file_name, file_size, mime_type)')
       .eq('course_code', courseCode)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
     setExams(data ?? []);
     setLoading(false);
   }
@@ -170,7 +174,7 @@ export default function Exams() {
               )}
 
               <div className="rev-card-bottom exam-card-bottom">
-                {ex.post_password_hash && !isAdmin ? (
+                {ex.has_password && !isAdmin ? (
                   delTarget === ex.id ? (
                     <span className="rev-del">
                       <input

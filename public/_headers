@@ -17,4 +17,10 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
   Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=(), interest-cohort=()
-  Strict-Transport-Security: max-age=31536000
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# 해시가 박힌 산출물(assets/index-a1b2c3.js …)은 내용이 바뀌면 파일명이 바뀐다 → 영구 캐시해도 안전하다.
+# 이 헤더가 없으면 브라우저가 방문 때마다 '안 바뀌었나' 재검증(304)을 왕복한다 — 특히 서비스워커
+# 캐시가 없는 방문자(카톡 공유 링크로 처음 들어온 사람)가 그 지연을 그대로 맞는다.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

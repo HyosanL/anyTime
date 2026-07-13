@@ -3,9 +3,11 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog } from '../lib/cache';
+import { summarize, REVIEW_COLS, REVIEW_LIMIT } from '../lib/reviews';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/course.css';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -38,7 +40,6 @@ export default function Reviews() {
 
   const [courseName, setCourseName] = useState(courseCode);
   const [professors, setProfessors] = useState([]); // [{code,name}]
-  const [summary, setSummary] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,13 +69,11 @@ export default function Reviews() {
       setProfessors(codes.map((code) => ({ code, name: profByCode[code] ?? code })));
     }
 
-    // 집계뷰 + 리뷰 목록
-    const [sumRes, revRes] = await Promise.all([
-      supabase.from('course_professor_rating').select('*').eq('course_code', courseCode),
-      supabase.from('review').select('*').eq('course_code', courseCode).order('created_at', { ascending: false }),
-    ]);
-    setSummary(sumRes.data ?? []);
-    setReviews(revRes.data ?? []);
+    // 강의평 목록 1회. 교수별 집계는 이 행들로 아래에서 만든다(집계뷰 요청 없음).
+    const { data } = await supabase
+      .from('review').select(REVIEW_COLS).eq('course_code', courseCode)
+      .order('created_at', { ascending: false }).limit(REVIEW_LIMIT);
+    setReviews(data ?? []);
     setLoading(false);
   }
 
@@ -84,14 +83,12 @@ export default function Reviews() {
   }, [courseCode]);
 
   // profFilter/데이터가 바뀔 때만 필터(삭제 비번 입력 등 무관한 키 입력마다 재필터하지 않도록).
-  const shownSummary = useMemo(
-    () => (profFilter ? summary.filter((s) => s.professor_code === profFilter) : summary),
-    [summary, profFilter]
-  );
   const shownReviews = useMemo(
     () => (profFilter ? reviews.filter((r) => r.professor_code === profFilter) : reviews),
     [reviews, profFilter]
   );
+  // 교수별 집계 — 보고 있는 강의평에서 바로 계산한다(서버 집계뷰 왕복 없음).
+  const shownSummary = useMemo(() => summarize(shownReviews, (r) => r.professor_code), [shownReviews]);
 
   async function like(id) {
     const { data } = await supabase.rpc('like_review', { p_id: id });
@@ -161,9 +158,9 @@ export default function Reviews() {
           </div>
         ) : (
           shownSummary.map((s) => (
-            <div key={s.professor_code ?? 'none'} className="rev-sum-card">
+            <div key={s.key ?? 'none'} className="rev-sum-card">
               <div className="rev-sum-top">
-                <strong>{s.professor_name ?? profNameByCode[s.professor_code] ?? '교수 미정'}</strong>
+                <strong>{profNameByCode[s.key] ?? '교수 미정'}</strong>
                 <span className="tag tag-primary">{s.review_count}개</span>
               </div>
               <Stars value={s.avg_overall} />
@@ -201,7 +198,7 @@ export default function Reviews() {
         {shownReviews.map((r) => (
           <li key={r.id} className="rev-card">
             <div className="rev-card-top">
-              <strong>{r.professor_name ?? profNameByCode[r.professor_code] ?? '교수 미정'}</strong>
+              <strong>{profNameByCode[r.professor_code] ?? '교수 미정'}</strong>
               <Stars value={r.overall} />
             </div>
             {(r.fail || r.teamplay || r.presentation) && (
@@ -220,7 +217,7 @@ export default function Reviews() {
                   ? <span className="rev-reported">🚨 신고됨</span>
                   : <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>}
               </span>
-              {r.post_password_hash && !isAdmin ? (
+              {r.has_password && !isAdmin ? (
                 delTarget === r.id ? (
                   <span className="rev-del">
                     <input

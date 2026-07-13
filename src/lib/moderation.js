@@ -78,9 +78,9 @@ export async function loadBannedWords() {
   } catch { /* 오프라인 등: 캐시/내장 목록으로 동작 */ }
 }
 
-// 이 모듈이 로드되는 시점(=작성 화면 진입)에 관리자 금지어를 미리 당겨온다.
-// maskProfanity 는 제출 시 동기 호출되므로, 화면 진입~제출 사이에 로드가 끝나 반영된다.
-loadBannedWords();
+// 이 모듈이 로드되는 시점(= lib/mask.js 가 제출·입력 시작에 맞춰 동적 import 하는 때)에 금지어를 당겨온다.
+// maskText 가 이 약속을 기다린 뒤 마스킹하므로, 사전이 늦게 와서 그냥 통과하는 일이 없다.
+export const bannedWordsReady = loadBannedWords();
 
 // korcen 이 플래그한 토큰에서 "욕설 부분"만 찾아 마스킹(가장 짧은 비속어 substring부터).
 function findBadSpan(w) {

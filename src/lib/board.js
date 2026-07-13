@@ -91,10 +91,15 @@ export const listBoards = (q) =>
 export const createBoard = (name) => supabase.rpc('create_board', { p_name: name }).then((r) => r.data);
 export const getBoard = (id) => supabase.from('board').select('*').eq('id', id).maybeSingle().then((r) => r.data);
 export const PAGE_SIZE = 15;
-const POST_SELECT = '*, board_post_image(seq, object_key)';
+// ⚠️ '*' 를 쓰지 않는다. 게시글 비밀번호(bcrypt)는 컬럼 권한으로 회수돼 있어 '*' 는 권한 오류가 나고,
+//    무엇보다 해시를 목록마다 뿌리면 오프라인 크래킹으로 남의 글을 지울 수 있다.
+//    삭제 UI 분기는 has_password(유도 컬럼)로 한다. 실제 비번 검증은 서버(delete_post RPC)에서만.
+const POST_COLS = 'id, board_id, title, content, like_count, dislike_count, comment_count, '
+  + 'report_count, view_count, hot, created_at, has_password';
+const POST_SELECT = `${POST_COLS}, board_post_image(seq, object_key)`;
 // HOT 목록·상세는 원 게시판 이름을 함께 붙인다(여러 게시판이 섞이므로 출처 표시용).
 // board_post.board_id → board(FK) 임베드. authenticated 는 read_board 정책으로 board 읽기 가능.
-const POST_SELECT_B = '*, board_post_image(seq, object_key), board(name)';
+const POST_SELECT_B = `${POST_COLS}, board_post_image(seq, object_key), board(name)`;
 export const listPosts = (boardId, page = 0) =>
   supabase.from('board_post').select(POST_SELECT).eq('board_id', boardId)
     .order('created_at', { ascending: false }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
@@ -117,16 +122,16 @@ export const addFavorite = (boardId) => supabase.auth.getSession().then(({ data 
   supabase.from('board_favorite').insert({ cadet_id: data.session.user.id, board_id: boardId }));
 export const removeFavorite = (boardId) => supabase.auth.getSession().then(({ data }) =>
   supabase.from('board_favorite').delete().match({ cadet_id: data.session.user.id, board_id: boardId }));
-// 게시판 활성 여부(관리자 긴급 차단 스위치) — 즉시 반영돼야 하므로 세션 캐시하지 않는다.
-// 진입마다의 재요청은 호출부(Board 는 마운트당 1회 [] 이펙트)에서 이미 최소화돼 있다.
-export const boardEnabled = () => supabase.rpc('board_enabled').then((r) => r.data !== false);
+// (게시판 활성 여부는 부팅 RPC 로 함께 온다 — useAuthContext().settings.boardEnabled.
+//  화면마다 board_enabled() 를 따로 부르지 않는다. 관리자가 잠그면 앱 복귀 확인에서 10분 내 반영된다.)
 // 게시글 상세: get_post_b RPC(SETOF board_post)라 기존 SELECT 와 동일한 1요청·같은 응답 형태.
 // view=true 면 서버가 조회수 +1 — 호출부(Post 화면)가 기기당 1회만 넘긴다.
 export const getPost = (id, view = false) =>
   supabase.rpc('get_post_b', { p_id: Number(id), p_view: !!view })
     .select(POST_SELECT_B).maybeSingle().then((r) => r.data);
 export const listComments = (postId) =>
-  supabase.from('board_comment').select('*').eq('post_id', postId).order('created_at').then((r) => r.data || []);
+  supabase.from('board_comment').select('id, post_id, parent_id, content, created_at, has_password')
+    .eq('post_id', postId).order('created_at').then((r) => r.data || []);
 export const react = (postId, kind) => supabase.rpc('board_react', { p_post_id: postId, p_kind: kind }).then((r) => r.data);
 export const addComment = (postId, parentId, content, password) =>
   supabase.rpc('create_comment_b', { p_post_id: postId, p_parent: parentId || null, p_content: content, p_password: password }).then((r) => r.data);

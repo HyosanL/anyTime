@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '../supabase';
+import '../styles/correction.css';
 
 // 정보 수정 제안 모달 (익명). options: [{label, target, targetKey, field, placeholder, current, kind?, periods?, professors?}]
 //  - kind:'time'      → 요일·교시 빌더(사용자가 양식을 못 맞춰도 정규 문자열 "수3-4 금1" 생성)

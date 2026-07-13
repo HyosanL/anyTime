@@ -3,22 +3,26 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, formatTimes } from '../lib/cache';
-import { maskProfanity } from '../lib/moderation';
+import { maskText, prefetchMask } from '../lib/mask';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/course.css';
 
 // 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
 export default function Memo() {
   const { courseCode, year, term, sectionNo } = useParams();
-  const { cadet } = useAuthContext();
+  const { cadet, settings } = useAuthContext();
   const isAdmin = !!cadet?.is_admin;
   const y = Number(year);
   const t = Number(term);
   const sn = Number(sectionNo);
 
   const [header, setHeader] = useState({ name: courseCode, prof: '', profCode: '', times: '' });
-  const [rev, setRev] = useState({ minDays: 30, daysHeld: null }); // 강의평 자격
+  // 자격 기준일(minDays)은 부팅 RPC 로 이미 와 있다 — 메모 화면마다 get_review_min_days() 를 부르지 않는다.
+  // 보유일수(daysHeld)만 서버가 이 분반에 대해 판정해 준다.
+  const minDays = settings.reviewMinDays;
+  const [daysHeld, setDaysHeld] = useState(null);
   const [memos, setMemos] = useState([]);
   const [allowed, setAllowed] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -52,13 +56,10 @@ export default function Memo() {
 
   // 보유일수는 서버가 판정한다 — 확정(is_primary) 시간표에 담긴 것만 인정(초안은 제외).
   async function loadReviewEligibility() {
-    const [{ data: held }, { data: md }] = await Promise.all([
-      supabase.rpc('timetable_held_days', {
-        p_course_code: courseCode, p_year: y, p_term: t, p_section_no: sn,
-      }),
-      supabase.rpc('get_review_min_days'),
-    ]);
-    setRev({ minDays: md ?? 30, daysHeld: held ?? null });
+    const { data: held } = await supabase.rpc('timetable_held_days', {
+      p_course_code: courseCode, p_year: y, p_term: t, p_section_no: sn,
+    });
+    setDaysHeld(held ?? null);
   }
 
   // silent: 당겨서 새로고침 때는 목록을 '불러오는 중…'으로 갈아치우지 않는다
@@ -100,7 +101,7 @@ export default function Memo() {
       p_year: y,
       p_term: t,
       p_section_no: sn,
-      p_content: maskProfanity(content.trim()),
+      p_content: await maskText(content.trim()),
     });
     setSubmitting(false);
     if (error) {
@@ -161,7 +162,7 @@ export default function Memo() {
       {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화(눌러서 새 화면으로) */}
       <section className="memo-review">
         {(() => {
-          const eligible = rev.daysHeld != null && rev.daysHeld >= rev.minDays;
+          const eligible = daysHeld != null && daysHeld >= minDays;
           if (eligible) {
             return (
               <Link to={`/review-write/${courseCode}/${y}/${t}/${sn}`} className="btn-add btn-block">
@@ -173,9 +174,9 @@ export default function Memo() {
             <button
               className="btn-add btn-block"
               disabled
-              title={`확정시간표에 ${rev.minDays}일 이상 보유 후 작성 가능`}
+              title={`확정시간표에 ${minDays}일 이상 보유 후 작성 가능`}
             >
-              ✍️ 강의평 쓰기{rev.daysHeld == null ? ' (미등록)' : ` (앞으로 ${rev.minDays - rev.daysHeld}일)`}
+              ✍️ 강의평 쓰기{daysHeld == null ? ' (미등록)' : ` (앞으로 ${minDays - daysHeld}일)`}
             </button>
           );
         })()}
@@ -193,8 +194,10 @@ export default function Memo() {
       ) : (
         <>
           <form className="memo-form card" onSubmit={submit}>
+            {/* 메모창에 손을 대면 그때 비속어 사전을 미리 받는다 — 읽기만 하는 사람은 받지 않는다. */}
             <textarea
               value={content}
+              onFocus={prefetchMask}
               onChange={(e) => setContent(e.target.value)}
               rows={2}
               placeholder="이번 수업 공지·과제·시험범위 등을 공유하세요"
@@ -230,7 +233,7 @@ export default function Memo() {
                     {getReacted('memo', m.id).report
                       ? <span className="rev-reported">🚨 신고됨</span>
                       : <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>}
-                    {m.post_password_hash && !isAdmin ? (
+                    {m.has_password && !isAdmin ? (
                       delTarget === m.id ? (
                         <span className="rev-del">
                           <input

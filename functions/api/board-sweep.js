@@ -8,7 +8,8 @@ const GRACE_MS = 48 * 60 * 60 * 1000;
 export async function onRequest(context) {
   const { env } = context;
 
-  // 1) 현재 참조 중인 key 집합 (SECURITY DEFINER RPC, anon)
+  // 1) 현재 참조 중인 key 집합 (SECURITY DEFINER RPC, anon 키 + 서버-서버 시크릿).
+  //    시크릿이 없으면 anon 키를 가진 누구나 R2 이미지 key 전체를 열람할 수 있으므로 RPC 가 거부한다.
   const refRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/board_referenced_keys`, {
     method: 'POST',
     headers: {
@@ -16,7 +17,7 @@ export async function onRequest(context) {
       Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: '{}',
+    body: JSON.stringify({ p_secret: env.PUSH_SECRET }),
   });
   if (!refRes.ok) return Response.json({ status: 'ERROR', step: 'refs' }, { status: 500 });
   const referenced = new Set((await refRes.json()) || []);

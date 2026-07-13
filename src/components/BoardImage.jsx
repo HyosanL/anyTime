@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { boardImageObjectUrl } from '../lib/board';
+import '../styles/board.css';
 
 // 원본을 전체화면 오버레이로. 열릴 때만 원본을 로드(에그레스 절감). ESC·배경 탭으로 닫기.
 function ImageLightbox({ imageKey, onClose, loader = boardImageObjectUrl }) {

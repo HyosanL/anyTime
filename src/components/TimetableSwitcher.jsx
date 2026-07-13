@@ -13,6 +13,7 @@ export default function TimetableSwitcher({
   onRename,
   onSetPrimary,
   onDelete,
+  onSummary,        // 수강신청용 요약표 열기(지금 보고 있지 않은 시간표도 그 자리에서)
   onOpenCreate,     // 새로 열린 학기(관리자가 방금 추가한 다음 학기)를 그 자리에서 받아오기
 }) {
   const [open, setOpen] = useState(false);
@@ -125,6 +126,10 @@ export default function TimetableSwitcher({
                   {t.is_primary && <span className="tt-badge-primary">확정</span>}
                 </button>
                 <span className="tt-switch-ops">
+                  {/* 수강신청 때 과목명·분반·교수·시간을 한눈에 — 격자를 눈으로 옮겨 적지 않게 */}
+                  <button type="button" className="link-btn" disabled={busy}
+                    title="수강신청용 요약표 보기"
+                    onClick={() => { onSummary(t); close(); }}>요약</button>
                   {!t.is_primary && (
                     <button type="button" className="link-btn" disabled={busy}
                       title="이 학기의 확정 시간표로 지정"

@@ -10,6 +10,8 @@ import {
   addSections, findEmptyTimetables, writeSelectedId, isOverlapError,
 } from '../lib/timetable';
 import { generateCombos, pickDiverse, groupByTime, deriveNoClass, SORTS } from '../lib/wizard';
+import '../styles/wizard.css';
+import '../styles/course.css';
 
 // 과목별 파스텔 색(TimetableGrid 와 같은 팔레트) — 데이터성 값이라 다크모드와 무관.
 const PALETTE = [

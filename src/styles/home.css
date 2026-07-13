@@ -97,8 +97,9 @@
   top: calc(100% + 0.4rem);
   left: 0;
   z-index: 30;
-  width: max(15rem, 78vw);
-  max-width: 20rem;
+  /* 한 줄에 요약·확정·이름·삭제 넉 개가 들어간다 — 이름이 지나치게 잘리지 않을 만큼 넓힌다 */
+  width: max(17rem, 86vw);
+  max-width: 22rem;
   padding: 0.35rem;
   background: var(--card);
   border: 1px solid var(--border);
@@ -181,6 +182,96 @@
 }
 .tt-switch-new-row { display: flex; gap: 0.4rem; }
 .tt-switch-new-row button { flex: 1; }
+
+/* ── 수강신청용 요약표 (시간표 목록 → 요약) ──────────────────────── */
+.tt-sum-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+}
+.tt-sum-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 88vh;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.tt-sum-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.tt-sum-x {
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-2);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.tt-sum-sub { margin: 0; font-size: 0.78rem; color: var(--text-3); }
+
+/* 표는 좁은 화면에서 가로로만 흐른다(본문은 절대 가로 스크롤되지 않게) */
+.tt-sum-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.tt-sum {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.tt-sum th,
+.tt-sum td {
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tt-sum thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-3);
+}
+.tt-sum tbody tr:last-child td { border-bottom: 0; }
+.tt-sum-course { font-weight: 600; color: var(--text); white-space: normal; }
+.tt-sum-prof { white-space: normal; }
+/* 한 분반이 여러 요일에 열리면 줄을 나눠 적는다(월 1~2교시 / 목 3교시).
+   교시와 시각도 줄을 나눈다 — 한 줄로 붙이면 폰 화면에서 표가 가로로 넘친다. */
+.tt-sum-time { color: var(--text-2); }
+.tt-sum-time span { display: block; }
+.tt-sum-time span + span { margin-top: 0.25rem; }
+.tt-sum-clock {
+  display: block;
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+.tt-sum tr.is-custom td { color: var(--text-3); }
+.tt-sum-tag {
+  display: inline-block;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.tt-sum-foot { display: flex; gap: 0.4rem; }
+.tt-sum-foot button { flex: 1; }
 
 /* 초안 시간표 안내(확정이 아닐 때) */
 .tt-draft-note {

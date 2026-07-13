@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getBoard, listPosts, listHot, createPost, uploadBoardImages, postImageKeys, PAGE_SIZE, boardEnabled } from '../lib/board';
-import { maskProfanity } from '../lib/moderation';
+import { getBoard, listPosts, listHot, createPost, uploadBoardImages, postImageKeys, PAGE_SIZE } from '../lib/board';
+import { maskText, prefetchMask } from '../lib/mask';
 import { pushEnabled, watchPost } from '../lib/push';
 import { kvGet, kvSet } from '../lib/cache';
+import { useAuthContext } from '../contexts/AuthContext';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/board.css';
+import '../styles/course.css';
 
 const MAX_IMAGES = 10;
 
@@ -37,7 +40,9 @@ export default function Board() {
   const hasMoreRef = useRef(true);  // 옵서버 클로저에서 최신값 참조
   const sentinelRef = useRef(null); // 하단 감지용 센티넬
   const [writing, setWriting] = useState(false);
-  const [enabled, setEnabled] = useState(true);
+  // 게시판 활성 여부는 부팅 RPC 로 이미 와 있다(마운트마다 board_enabled() 를 부르지 않는다).
+  const { settings } = useAuthContext();
+  const enabled = settings.boardEnabled;
   const [pTitle, setPTitle] = useState('');
   const [content, setContent] = useState('');
   const [password, setPassword] = useState('');
@@ -104,8 +109,6 @@ export default function Board() {
     finally { if (seq.current === my) { loadingRef.current = false; setLoadingMore(false); } }
   }
 
-  useEffect(() => { boardEnabled().then(setEnabled); }, []); // 전역 플래그 — 마운트당 1회
-
   // 게시판 진입/변경: 상태 초기화 후 첫 페이지부터.
   useEffect(() => {
     setPosts(null); pageRef.current = 0; hasMoreRef.current = true; setHasMore(true);
@@ -134,7 +137,8 @@ export default function Board() {
     try {
       let keys = [];
       if (files.length) keys = await uploadBoardImages(files);
-      const newId = await createPost(Number(id), maskProfanity(pTitle.trim()), maskProfanity(content.trim()), password, keys);
+      const [title, body] = await Promise.all([maskText(pTitle.trim()), maskText(content.trim())]);
+      const newId = await createPost(Number(id), title, body, password, keys);
       // 푸시를 쓰는 기기면 내가 쓴 글을 조용히 지켜보기(댓글 알림).
       // 서버는 "watch 한 기기"만 알 뿐 작성자는 저장하지 않는다.
       if (newId && pushEnabled()) watchPost(newId, 'post').catch(() => {});
@@ -151,7 +155,8 @@ export default function Board() {
       <header className="page-header">
         <BackButton fallback="/boards" />
         <h2>{title}</h2>
-        {!isHot && enabled && <button className="link-btn" onClick={() => setWriting((v) => !v)}>{writing ? '닫기' : '글쓰기'}</button>}
+        {/* 글쓰기를 열면 그때 비속어 사전을 미리 받는다 — 읽기만 하는 사람은 받지 않는다. */}
+        {!isHot && enabled && <button className="link-btn" onClick={() => { setWriting((v) => !v); prefetchMask(); }}>{writing ? '닫기' : '글쓰기'}</button>}
       </header>
 
       {!enabled && (

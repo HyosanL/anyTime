@@ -7,6 +7,8 @@ import { stashPendingNav } from '../lib/push';
 import { appUrl } from '../lib/share';
 import { isIos, isMobile, isStandalone } from '../components/InstallGate';
 import BoardImage from '../components/BoardImage';
+import '../styles/board.css';
+import '../styles/share.css';
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜 (Post.jsx 와 동일한 파일 로컬 유틸)
 function timeAgo(iso) {

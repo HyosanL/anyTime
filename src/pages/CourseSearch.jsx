@@ -10,6 +10,7 @@ import CorrectionModal from '../components/CorrectionModal';
 import { correctionMeta, sectionCorrectionOptions, sectionSubject } from '../lib/correction';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/course.css';
 
 // 화면4: 강의 검색 → 시간표 추가. 카탈로그는 IndexedDB 캐시 우선(오프라인 가능).
 // 어느 시간표에 담는지는 홈에서 고른 시간표를 따르고, 여기서도 바꿀 수 있다.

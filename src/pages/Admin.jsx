@@ -2,9 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
+import { useAuthContext } from '../contexts/AuthContext';
 import { dupProfessorGroups, isPlaceholderProf } from '../lib/profname';
 import SyllabusUpload from '../components/SyllabusUpload';
 import BackButton from '../components/BackButton';
+import '../styles/admin.css';
+import '../styles/course.css';
+import '../styles/board.css';
 
 // 화면9: 관리자. is_admin 게이트. 작업은 admin-action Edge Function(service-role).
 // 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx).
@@ -458,7 +462,10 @@ const TITLE_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title]));
 
 export default function Admin() {
   const { section } = useParams();
-  const [isAdmin, setIsAdmin] = useState(null);
+  // 관리자 여부는 cadet 프로필에 이미 실려 온다(useAuth) — is_admin RPC 를 따로 부르지 않는다.
+  // 프로필이 아직 없으면(null) '확인 중'. 모든 관리자 액션은 서버(admin-action)가 다시 검증한다.
+  const { cadet } = useAuthContext();
+  const isAdmin = cadet ? !!cadet.is_admin : null;
   const [cat, setCat] = useState(null);
   const [msg, setMsg] = useState('');
 
@@ -506,8 +513,9 @@ export default function Admin() {
   function reloadWithCatalog() { loadMeta(); loadCatalog(true); }
 
   useEffect(() => {
-    supabase.rpc('is_admin').then(({ data }) => { setIsAdmin(!!data); if (data) loadAll(); });
-  }, []);
+    if (isAdmin) loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   // 섹션이 바뀌면 메시지를 비워 깔끔하게 시작
   useEffect(() => { setMsg(''); }, [section]);

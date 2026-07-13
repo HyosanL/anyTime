@@ -6,11 +6,12 @@ import { shareLink, appUrl } from '../lib/share';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { hasViewed, markViewed } from '../lib/views';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
-import { maskProfanity } from '../lib/moderation';
+import { maskText, prefetchMask } from '../lib/mask';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/board.css';
 
 // 상대시간: 방금 전 / N분 전 / N시간 전 / N일 전, 그 이상은 날짜
 function timeAgo(iso) {
@@ -135,7 +136,7 @@ export default function Post() {
   async function submitComment(e) {
     e.preventDefault();
     if (!cText.trim()) return;
-    await addComment(Number(id), replyTo, maskProfanity(cText.trim()), cPw);
+    await addComment(Number(id), replyTo, await maskText(cText.trim()), cPw);
     setCText(''); setCPw(''); setReplyTo(null); load();
     // 푸시를 쓰는 기기면 댓글 단 글을 조용히 지켜보기(대댓글 알림)
     if (pushEnabled() && !isWatched(id)) {
@@ -161,7 +162,7 @@ export default function Post() {
   }
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
   async function onDeleteClick() {
-    if (post.post_password_hash && !isAdmin) { setShowDel((v) => !v); return; }
+    if (post.has_password && !isAdmin) { setShowDel((v) => !v); return; }
     if (!confirm('이 게시글을 삭제할까요?')) return;
     const { data, error } = await deletePost(Number(id), '');
     if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
@@ -236,7 +237,8 @@ export default function Post() {
         {replyTo && (
           <span className="comment-reply-hint">↳ 답글 작성 중 <button type="button" className="link-btn" onClick={() => setReplyTo(null)}>취소</button></span>
         )}
-        <textarea value={cText} onChange={(e) => setCText(e.target.value)} rows={2} placeholder={replyTo ? '답글을 입력하세요' : '댓글을 입력하세요'} />
+        {/* 댓글창에 손을 대면 그때 비속어 사전을 미리 받는다 — 읽기만 하는 사람은 받지 않는다. */}
+        <textarea value={cText} onFocus={prefetchMask} onChange={(e) => setCText(e.target.value)} rows={2} placeholder={replyTo ? '답글을 입력하세요' : '댓글을 입력하세요'} />
         <div className="comment-form-row">
           <input type="password" value={cPw} onChange={(e) => setCPw(e.target.value)} placeholder="삭제용 비번 (선택)" />
           <button className="btn-add">등록</button>
@@ -256,12 +258,12 @@ export default function Post() {
             <p className="comment-body">{c.content}</p>
             <div className="comment-actions">
               <button className="link-btn" onClick={() => setReplyTo(c.id)}>답글</button>
-              <CommentDelete id={c.id} hasPw={!!c.post_password_hash} isAdmin={isAdmin} onDone={load} />
+              <CommentDelete id={c.id} hasPw={!!c.has_password} isAdmin={isAdmin} onDone={load} />
             </div>
             {(repliesByParent.get(c.id) || []).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
-                <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.post_password_hash} isAdmin={isAdmin} onDone={load} /></div>
+                <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.has_password} isAdmin={isAdmin} onDone={load} /></div>
               </div>
             ))}
           </li>

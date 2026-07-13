@@ -3,10 +3,12 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog, buildSections } from '../lib/cache';
 import { getReacted, markReacted } from '../lib/reactions';
+import { summarize, REVIEW_COLS, REVIEW_LIMIT } from '../lib/reviews';
 import TimetableGrid from '../components/TimetableGrid';
 import CorrectionModal from '../components/CorrectionModal';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import '../styles/course.css';
 
 function Stars({ value }) {
   if (value == null) return <span className="muted">-</span>;
@@ -38,10 +40,12 @@ export default function ProfessorDetail() {
   const [sections, setSections] = useState([]);   // 이 교수 담당 분반(현재 학기, 시간 포함)
   const [periods, setPeriods] = useState([]);
   const [courseNames, setCourseNames] = useState({}); // course_code -> name
-  const [summary, setSummary] = useState([]);     // course_professor_rating rows
   const [reviews, setReviews] = useState([]);     // review rows (이 교수)
   const [loading, setLoading] = useState(true);
   const [corr, setCorr] = useState(false);
+
+  // 과목별 집계 — 받아 온 강의평에서 바로 계산(서버 집계뷰 왕복 없음).
+  const summary = useMemo(() => summarize(reviews, (r) => r.course_code), [reviews]);
 
   // silent: 당겨서 새로고침 때는 화면을 '불러오는 중…'으로 갈아치우지 않는다
   async function loadAll(silent = false) {
@@ -57,16 +61,11 @@ export default function ProfessorDetail() {
       setPeriods([...(catalog.period ?? [])].sort((a, b) => a.no - b.no));
     }
 
-    const [sumRes, revRes] = await Promise.all([
-      supabase.from('course_professor_rating').select('*').eq('professor_code', code),
-      supabase
-        .from('review')
-        .select('*')
-        .eq('professor_code', code)
-        .order('created_at', { ascending: false }),
-    ]);
-    setSummary(sumRes.data ?? []);
-    setReviews(revRes.data ?? []);
+    // 강의평 목록 1회. 과목별 집계는 이 행들로 만든다(집계뷰 요청 없음).
+    const { data } = await supabase
+      .from('review').select(REVIEW_COLS).eq('professor_code', code)
+      .order('created_at', { ascending: false }).limit(REVIEW_LIMIT);
+    setReviews(data ?? []);
     setLoading(false);
   }
 
@@ -176,16 +175,14 @@ export default function ProfessorDetail() {
         ) : (
           <div className="rev-summary">
             {summary
-              .slice()
-              .sort((a, b) => (b.review_count || 0) - (a.review_count || 0))
               .map((s) => (
                 <Link
-                  key={s.course_code}
-                  to={`/reviews/${s.course_code}?prof=${code}`}
+                  key={s.key}
+                  to={`/reviews/${s.key}?prof=${code}`}
                   className="rev-sum-card prof-course-card"
                 >
                   <div className="rev-sum-top">
-                    <strong>{s.course_name ?? courseNames[s.course_code] ?? s.course_code}</strong>
+                    <strong>{courseNames[s.key] ?? s.key}</strong>
                     <span className="tag tag-primary">{s.review_count}개</span>
                   </div>
                   <Stars value={s.avg_overall} />
