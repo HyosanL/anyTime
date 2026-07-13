@@ -5,6 +5,21 @@
 }
 .cor-flag-btn:hover { color: var(--primary); }
 
+/* 강의 정보 부정확 안내 — 강의 검색·시간표 마법사 공통.
+   카탈로그는 학교 공지를 옮겨 담은 것이라 실제와 어긋날 수 있다.
+   그 사실만 알리면 사람은 손쓸 데가 없으니, 고치는 길(🚩)을 같은 문장에 붙인다. */
+.cor-notice {
+  margin: 0 var(--pad) 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-weak);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.cor-notice b { color: var(--text-1); font-weight: 700; }
+
 .cor-overlay {
   position: fixed; inset: 0; z-index: 200;
   background: rgba(0, 0, 0, 0.5);

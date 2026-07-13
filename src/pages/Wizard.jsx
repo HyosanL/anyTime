@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import BackButton from '../components/BackButton';
+import CorrectionModal from '../components/CorrectionModal';
+import { correctionMeta, sectionCorrectionOptions, sectionSubject } from '../lib/correction';
 import { getCatalog, buildSections, currentSemester, semesterList, formatTimes, dayLabel } from '../lib/cache';
 import {
   listTimetables, createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
@@ -127,6 +129,7 @@ export default function Wizard() {
   const [blocked, setBlocked] = useState(() => new Set());   // 기피 시간 "요일-교시"
   const [sortMode, setSortMode] = useState('free');
   const [profPick, setProfPick] = useState({});       // "과목@시간묶음" → 고른 분반 id
+  const [corr, setCorr] = useState(null);             // 🚩 수정 제안 모달 { subject, options }
 
   const [slots, setSlots] = useState(null);           // { existing, empty[] } — 저장 가능 슬롯
   const [chosen, setChosen] = useState([]);           // 저장할 후보의 sig 목록
@@ -175,6 +178,10 @@ export default function Wizard() {
     () => [...(catalog?.period ?? [])].map((p) => p.no).sort((a, b) => a - b),
     [catalog]
   );
+
+  // 🚩 수정 제안 — 2단계에서 시간·교수가 틀린 분반을 본 자리에서 바로 알린다(강의 검색과 같은 양식).
+  const corrMeta = useMemo(() => correctionMeta(catalog), [catalog]);
+  const openCorr = (s) => setCorr({ subject: sectionSubject(s), options: sectionCorrectionOptions(s, corrMeta) });
 
   // 관리자가 이름 붙인 비수업 시간(common_block). 자동 유도로는 잡히지 않는 것도 여기 들어온다 —
   // 예: 월7·8, 수7·8 은 '자율선택형교과' 시간이라 일반 강의는 없지만 체육(무도·체력단련)이
@@ -657,6 +664,12 @@ export default function Wizard() {
                 교수는 후보를 고른 뒤 4단계에서 정합니다.</span>
             </p>
 
+            {/* 카탈로그는 학교 공지를 옮겨 담은 것이라 실제와 다를 수 있다 — 고치는 길을 함께 알려 준다 */}
+            <p className="cor-notice">
+              ⚠️ 강의 정보(시간·강의실·교수)가 실제와 다를 수 있습니다.
+              틀린 곳이 보이면 그 분반의 <b>🚩</b> 를 눌러 알려 주세요.
+            </p>
+
             {roughCount > BUSY_HINT && (
               <p className="wz-hint">
                 지금 켠 분반으로는 경우의 수가 <strong>{roughCount.toLocaleString()}가지</strong>입니다.
@@ -693,20 +706,34 @@ export default function Wizard() {
                         const nos = g.sections.map((s) => s.section_no).join('·');
                         return (
                           <li key={g.key}>
-                            <label className={`wz-sec${on ? ' is-on' : ''}`}>
-                              <input type="checkbox" checked={on} onChange={() => toggleGroup(it.course.code, g.key)} />
-                              <span className="wz-sec-body">
-                                <span className="wz-sec-top">
-                                  <span className="wz-sec-no">{nos}분반</span>
-                                  <span className="wz-sec-prof">
-                                    {many
-                                      ? `교수 ${g.sections.length}명`
-                                      : (g.sections[0].professor_name ?? '교수 미정')}
+                            <div className="wz-sec-row">
+                              <label className={`wz-sec${on ? ' is-on' : ''}`}>
+                                <input type="checkbox" checked={on} onChange={() => toggleGroup(it.course.code, g.key)} />
+                                <span className="wz-sec-body">
+                                  <span className="wz-sec-top">
+                                    <span className="wz-sec-no">{nos}분반</span>
+                                    <span className="wz-sec-prof">
+                                      {many
+                                        ? `교수 ${g.sections.length}명`
+                                        : (g.sections[0].professor_name ?? '교수 미정')}
+                                    </span>
                                   </span>
+                                  <span className="wz-sec-time">{formatTimes(g.times)}</span>
                                 </span>
-                                <span className="wz-sec-time">{formatTimes(g.times)}</span>
-                              </span>
-                            </label>
+                              </label>
+                              {/* 제안 대상은 분반 하나다 — 교수가 여럿인 묶음은 아래 교수 줄마다 🚩 를 둔다.
+                                  버튼은 라벨 밖에 둔다(안에 두면 누를 때 체크박스가 같이 토글된다). */}
+                              {!many && (
+                                <button
+                                  type="button"
+                                  className="cor-flag-btn wz-flag"
+                                  aria-label={`${nos}분반 정보 수정 제안`}
+                                  onClick={() => openCorr(g.sections[0])}
+                                >
+                                  🚩
+                                </button>
+                              )}
+                            </div>
 
                             {/* 같은 시간에 교수가 여럿이면, 못 듣는 교수를 여기서 끈다.
                                 (기본은 전부 켜짐 — 후보에는 교수와 무관하게 이 시간이 한 번만 나온다) */}
@@ -724,6 +751,14 @@ export default function Wizard() {
                                         />
                                         <span>{s.section_no}분반 {s.professor_name ?? '교수 미정'}</span>
                                       </label>
+                                      <button
+                                        type="button"
+                                        className="cor-flag-btn wz-flag"
+                                        aria-label={`${s.section_no}분반 정보 수정 제안`}
+                                        onClick={() => openCorr(s)}
+                                      >
+                                        🚩
+                                      </button>
                                     </li>
                                   );
                                 })}
@@ -1032,6 +1067,10 @@ export default function Wizard() {
             </div>
           </div>
         </div>
+      )}
+
+      {corr && (
+        <CorrectionModal subject={corr.subject} options={corr.options} onClose={() => setCorr(null)} />
       )}
     </div>
   );

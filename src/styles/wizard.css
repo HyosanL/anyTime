@@ -25,6 +25,7 @@
 .wz-body .search-bar { padding: 0.5rem 0 0.4rem; }
 .wz-body .section-label { padding: 0; margin: 1rem 0 0.5rem; }
 .wz-body .error-msg { margin: 0 0 0.6rem; }
+.wz-body .cor-notice { margin: 0 0 0.8rem; }   /* 좌우는 wz-body 가 이미 준다 */
 
 .wizard .wz-lead {
   margin: 0.2rem 0 0.9rem;
@@ -193,6 +194,19 @@
 }
 .wz-sec-time { font-size: 0.74rem; color: var(--text-3); line-height: 1.3; }
 
+/* 분반 줄 + 🚩 수정 제안 — 버튼은 라벨 밖에 둔다(안에 두면 누를 때 체크박스가 같이 토글된다).
+   correction.css 가 뒤에 로드되므로 .cor-flag-btn 을 덮으려면 .wizard 를 앞세워야 한다. */
+.wz-sec-row { display: flex; align-items: center; gap: 0.1rem; }
+.wz-sec-row .wz-sec { flex: 1; min-width: 0; }
+.wizard .wz-flag {
+  flex: none;
+  padding: 0.4rem 0.3rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0.5;
+}
+.wizard .wz-flag:hover, .wizard .wz-flag:focus-visible { opacity: 1; }
+
 /* 같은 시간 안의 교수(분반)들 — 못 듣는 교수를 여기서 끈다 */
 .wz-profs {
   list-style: none;
@@ -202,6 +216,8 @@
   flex-wrap: wrap;
   gap: 0.3rem;
 }
+/* 교수 알약 + 그 분반의 🚩 — 제안 대상이 분반 하나이므로 🚩 도 분반마다 붙는다 */
+.wz-profs li { display: inline-flex; align-items: center; }
 .wz-prof {
   display: inline-flex;
   align-items: center;
