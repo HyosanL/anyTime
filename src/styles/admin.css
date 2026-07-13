@@ -116,6 +116,28 @@
   padding: 1rem 0.5rem;
 }
 
+/* 교수 통합: 목록의 체크박스로 대상을 고르고, 패널에서 남길 한 명을 라디오로 고른다.
+   모바일에서도 손가락으로 짚을 수 있게 입력칸을 키운다. */
+.adm-item-row > input[type="checkbox"],
+.prof-merge-pick > input[type="radio"] {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+/* 라디오 + 이름/분반수까지가 '고르는 영역'. 옆의 빼기 버튼은 이 label 밖에 있다. */
+.prof-merge-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+.prof-merge .adm-item.open { border-color: var(--primary); }
+.prof-merge .btn-add:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* 펼친 분반/시간 영역 */
 .adm-expand {
   display: flex;

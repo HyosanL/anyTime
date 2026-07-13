@@ -189,6 +189,43 @@ Deno.serve(async (req) => {
           department: payload.department ?? null,
         }).throwOnError()
         return json({ status: 'OK' })
+      // 통합 전 확인용: 교수별 분반·강의평 수(= 어느 쪽을 남길지 판단 근거).
+      // 분반은 카탈로그에 있어 프런트가 셀 수 있지만 강의평은 없다 — 여기서 같이 센다.
+      case 'professor_usage': {
+        const codes = ((payload.codes as unknown[]) ?? []).map(String).filter(Boolean).slice(0, 50)
+        const usage: Record<string, { sections: number; reviews: number }> = {}
+        await Promise.all(codes.map(async (code) => {
+          const [s, r] = await Promise.all([
+            admin.from('section').select('*', { count: 'exact', head: true }).eq('professor_code', code),
+            admin.from('review').select('*', { count: 'exact', head: true }).eq('professor_code', code),
+          ])
+          usage[code] = { sections: s.count ?? 0, reviews: r.count ?? 0 }
+        }))
+        return json({ status: 'OK', usage })
+      }
+      // 교수 통합: from[] 의 분반·강의평·수정제안을 into 로 옮기고 from 을 삭제.
+      // 한 건씩 DB 함수(merge_professor)로 — 함수 하나가 곧 한 트랜잭션이라 부분 반영이 없다.
+      case 'merge_professors': {
+        const into = String(payload.into ?? '')
+        const from = [...new Set(((payload.from as unknown[]) ?? []).map(String))]
+          .filter((c) => c && c !== into)
+        if (!into || !from.length) return json({ status: 'BAD_REQUEST' }, 400)
+        let sections = 0
+        let reviews = 0
+        let corrections = 0
+        for (const code of from) {
+          const { data, error } = await admin.rpc('merge_professor', { p_from: code, p_into: into })
+          if (error) return json({ status: 'ERROR', detail: error.message }, 500)
+          const r = (data ?? {}) as { status?: string; sections?: number; reviews?: number; corrections?: number }
+          if (r.status !== 'OK') {
+            return json({ status: r.status ?? 'ERROR', detail: `교수 ${code}` }, r.status === 'NOT_FOUND' ? 404 : 400)
+          }
+          sections += r.sections ?? 0
+          reviews += r.reviews ?? 0
+          corrections += r.corrections ?? 0
+        }
+        return json({ status: 'OK', merged: from.length, sections, reviews, corrections })
+      }
       case 'set_course':
         await admin.from('course').upsert({
           code: payload.code, name: payload.name,

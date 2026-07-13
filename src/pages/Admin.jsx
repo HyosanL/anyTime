@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
+import { dupProfessorGroups, isPlaceholderProf } from '../lib/profname';
 import SyllabusUpload from '../components/SyllabusUpload';
 import BackButton from '../components/BackButton';
 
@@ -26,7 +27,7 @@ async function invokeSync(mode) {
 const CATALOG_ACTIONS = new Set([
   'set_period', 'delete_catalog', 'set_section', 'set_section_time',
   'set_course', 'add_course', 'set_professor', 'add_professor', 'set_semester',
-  'set_common_block',
+  'set_common_block', 'merge_professors',
 ]);
 
 const fmtDateTime = (iso) => {
@@ -479,6 +480,10 @@ export default function Admin() {
   const [course, setCourse] = useState({ code: '', name: '' });
   const [prof, setProf] = useState({ code: '', name: '', department: '' });
   const [pq, setPq] = useState('');
+  // 교수 통합: 고른 교수들(pSel) 중 한 명(pKeep)만 남기고 나머지를 흡수시킨다.
+  const [pSel, setPSel] = useState([]);      // 통합 대상 교수코드
+  const [pKeep, setPKeep] = useState('');    // 남길 교수코드
+  const [pUsage, setPUsage] = useState({});  // code → { sections, reviews }
   const [sem, setSem] = useState({ year: 2026, term: 1 });
   // 공통 비수업 시간 탭에서 보고 있는 학기 ("2026-2")
   const [blockSem, setBlockSem] = useState('');
@@ -532,6 +537,89 @@ export default function Admin() {
     () => [...(cat?.period ?? [])].map((p) => p.no).sort((a, b) => a - b),
     [cat]
   );
+
+  // ── 교수 통합 ────────────────────────────────────────────────────────
+  // 같은 사람이 두 벌로 등록된 묶음(이름만 다르게 적혀 새로 생긴 것). 검색과 무관하게 항상 보여준다.
+  const dupGroups = useMemo(() => dupProfessorGroups(cat?.professor ?? []), [cat]);
+  // 사람이 아닌 교수("신임교수"·"미정" …). 옛 일괄등록이 담당교수 칸을 그대로 교수로 만든 흔적 —
+  // 지우면 그 강의는 '교수 미정'이 된다(FK ON DELETE SET NULL). 지금은 파싱 단계에서 걸러진다.
+  const fakeProfs = useMemo(
+    () => (cat?.professor ?? []).filter((p) => isPlaceholderProf(p.name)),
+    [cat]
+  );
+  const secCountOf = (code) => (cat?.section ?? []).filter((s) => s.professor_code === code).length;
+
+  function deleteFakeProf(p) {
+    const n = secCountOf(p.code);
+    const ok = confirm(
+      `"${p.name}" 은(는) 사람 이름이 아니라 '아직 정해지지 않았다'는 표시로 보입니다.\n`
+      + `교수 목록에서 지웁니다.\n\n`
+      + (n > 0
+        ? `· 이 교수로 등록된 분반 ${n}개는 '교수 미정'이 됩니다(강의는 지워지지 않습니다).\n`
+        : `· 이 교수로 등록된 분반은 없습니다.\n`)
+      + `\n진행할까요?`
+    );
+    if (!ok) return;
+    run('delete_catalog', { table: 'professor', key: { code: p.code } }, `'${p.name}' 삭제 — 해당 분반은 교수 미정`);
+  }
+  const profByCode = useMemo(
+    () => new Map((cat?.professor ?? []).map((p) => [p.code, p])),
+    [cat]
+  );
+  const selProfs = useMemo(
+    () => pSel.map((c) => profByCode.get(c)).filter(Boolean),
+    [pSel, profByCode]
+  );
+
+  // 고른 교수들의 분반·강의평 수를 세어 온다(어느 쪽을 남길지 판단 근거).
+  // 기본으로 남길 교수 = 참조가 가장 많은 쪽, 같으면 이름이 가장 완전한(긴) 쪽.
+  useEffect(() => {
+    if (pSel.length < 2) { setPUsage({}); return; }
+    let alive = true;
+    call('professor_usage', { codes: pSel }).then((r) => {
+      if (!alive || !r.ok) return;
+      const u = r.data.usage ?? {};
+      setPUsage(u);
+      setPKeep((cur) => {
+        if (cur && pSel.includes(cur)) return cur;
+        const refs = (c) => (u[c]?.sections ?? 0) + (u[c]?.reviews ?? 0);
+        const nameLen = (c) => (profByCode.get(c)?.name || '').length;
+        return [...pSel].sort((a, b) => refs(b) - refs(a) || nameLen(b) - nameLen(a))[0] ?? '';
+      });
+    });
+    return () => { alive = false; };
+  }, [pSel, profByCode]);
+
+  // 선택에서 뺀 교수가 '남길 교수'였다면 그 선택도 지운다 — 안 그러면 목록에 없는 교수로 합쳐진다.
+  const toggleSel = (code) => {
+    setPSel((s) => (s.includes(code) ? s.filter((c) => c !== code) : [...s, code]));
+    setPKeep((k) => (k === code ? '' : k));
+  };
+  const cancelMerge = () => { setPSel([]); setPKeep(''); setPUsage({}); };
+
+  // 통합은 되돌릴 수 없다(흡수된 교수 행이 사라진다) — 무엇이 어디로 옮겨지는지 세어 보여주고 확인받는다.
+  async function mergeProfs() {
+    const keep = profByCode.get(pKeep);
+    const gone = selProfs.filter((p) => p.code !== pKeep);
+    if (!keep || !pSel.includes(pKeep) || !gone.length) return;
+    const nSec = gone.reduce((a, p) => a + (pUsage[p.code]?.sections ?? 0), 0);
+    const nRev = gone.reduce((a, p) => a + (pUsage[p.code]?.reviews ?? 0), 0);
+    const ok = confirm(
+      `${gone.map((p) => `${p.name} (${p.code})`).join('\n')}\n`
+      + `→ ${keep.name} (${keep.code}) 로 통합합니다.\n\n`
+      + `· 분반 ${nSec}개와 강의평 ${nRev}개가 ${keep.name} 에게 옮겨집니다.\n`
+      + `· 흡수된 교수 ${gone.length}명은 목록에서 사라집니다.\n`
+      + `· 학과·연구실은 ${keep.name} 쪽이 비어 있을 때만 채워집니다.\n\n`
+      + `되돌릴 수 없습니다. 진행할까요?`
+    );
+    if (!ok) return;
+    const r = await run('merge_professors', { into: pKeep, from: gone.map((p) => p.code) }, '교수 통합');
+    if (r.ok) {
+      const d = r.data ?? {};
+      setMsg(`✅ ${keep.name} 로 통합 — 교수 ${d.merged}명 흡수, 분반 ${d.sections}개·강의평 ${d.reviews}개 이동.`);
+      cancelMerge();
+    }
+  }
 
   // 학기 삭제는 이 앱에서 가장 파괴적인 버튼이다. (year,term) 은 section·common_block·timetable 이
   // 모두 ON DELETE CASCADE 로 물고 있어서, 칩의 × 한 번이 그 학기의 분반·강의시간은 물론
@@ -819,7 +907,107 @@ export default function Admin() {
         )}
 
         {section === 'professors' && (
-          <Card icon="👤" title="교수 관리" desc="교수를 검색해 수정/삭제하고, 아래에서 새 교수를 추가합니다. 교수코드는 자동 부여됩니다.">
+          <Card icon="👤" title="교수 관리" desc="교수를 검색해 수정/삭제하고, 아래에서 새 교수를 추가합니다. 교수코드는 자동 부여됩니다. 같은 사람이 두 번 등록됐다면 체크해서 한 명으로 통합하세요.">
+            {/* 사람이 아닌 교수: 담당교수 칸의 "신임교수"·"미정" 이 그대로 교수가 된 것.
+                지금은 파싱 단계에서 걸러지므로 새로 생기지 않는다 — 남아 있는 것만 지우면 된다. */}
+            {fakeProfs.length > 0 && (
+              <>
+                <div className="section-label adm-sub-label">🧹 교수가 아닌 항목 ({fakeProfs.length})</div>
+                <p className="note">
+                  <b>신임교수 · 미정</b> 처럼 &lsquo;아직 정해지지 않았다&rsquo;는 표시가 교수로 등록돼 있습니다.
+                  지우면 해당 분반은 <b>교수 미정</b>이 됩니다(강의는 그대로).
+                </p>
+                <ul className="list adm-list">
+                  {fakeProfs.map((p) => (
+                    <li key={p.code} className="adm-item">
+                      <div className="adm-item-row">
+                        <div className="adm-item-body">
+                          <div className="adm-item-title">{p.name}</div>
+                          <div className="adm-item-sub">
+                            {[p.department, p.code].filter(Boolean).join(' · ')} · 분반 {secCountOf(p.code)}개
+                          </div>
+                        </div>
+                        <div className="adm-item-acts">
+                          <button className="rev-del-btn" onClick={() => deleteFakeProf(p)}>삭제</button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="divider adm-divider" />
+              </>
+            )}
+
+            {/* 중복 의심: 일괄등록이 이름 문자열로만 매칭해 같은 교수가 새로 생긴 경우
+                ("Justin"/"Justin Bunting", "유 훈"/"유훈"). 검색과 무관하게 항상 보여준다. */}
+            {dupGroups.length > 0 && (
+              <>
+                <div className="section-label adm-sub-label">⚠️ 중복 의심 ({dupGroups.length})</div>
+                <p className="note">
+                  이름이 사실상 같은 교수가 따로 등록돼 있습니다. CSV·편람 일괄등록은 <b>이름 글자</b>로 기존 교수를 찾기 때문에,
+                  파일에 성이 빠졌거나(<b>Justin</b> / Justin Bunting) 외자 이름이 띄어 적히면(<b>유 훈</b> / 유훈) 같은 사람이 새로 생깁니다.
+                  아래에서 한 명으로 합치면 분반·강의평이 모두 남기는 교수에게 옮겨집니다.
+                </p>
+                <ul className="list adm-list">
+                  {dupGroups.map((g) => (
+                    <li key={g[0].code} className="adm-item">
+                      <div className="adm-item-row">
+                        <div className="adm-item-body">
+                          <div className="adm-item-title">{g.map((p) => p.name).join('  ·  ')}</div>
+                          <div className="adm-item-sub">{g.map((p) => [p.department, p.code].filter(Boolean).join(' ')).join(' / ')}</div>
+                        </div>
+                        <div className="adm-item-acts">
+                          <button className="link-btn" onClick={() => { setPSel(g.map((p) => p.code)); setPKeep(''); }}>통합하기</button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="divider adm-divider" />
+              </>
+            )}
+
+            {/* 통합 패널: 남길 교수 하나를 고르고 나머지를 흡수시킨다. */}
+            {selProfs.length >= 2 && (
+              <div className="prof-merge">
+                <div className="section-label adm-sub-label">교수 통합 — 남길 교수를 고르세요 ({selProfs.length}명 선택)</div>
+                <ul className="list adm-list">
+                  {selProfs.map((p) => (
+                    <li key={p.code} className={`adm-item ${pKeep === p.code ? 'open' : ''}`}>
+                      <div className="adm-item-row">
+                        {/* '빼기'는 label 밖에 둔다 — label 안에 있으면 누를 때 라디오(남길 교수)까지 켜진다 */}
+                        <label className="prof-merge-pick">
+                          <input type="radio" name="prof-keep" checked={pKeep === p.code} onChange={() => setPKeep(p.code)} />
+                          <div className="adm-item-body">
+                            <div className="adm-item-title">
+                              {p.name} {pKeep === p.code && <span className="tag tag-success">남김</span>}
+                            </div>
+                            <div className="adm-item-sub">
+                              {[p.department, p.code].filter(Boolean).join(' · ')}
+                              {' · '}
+                              {pUsage[p.code]
+                                ? `분반 ${pUsage[p.code].sections} · 강의평 ${pUsage[p.code].reviews}`
+                                : '세는 중…'}
+                            </div>
+                          </div>
+                        </label>
+                        <div className="adm-item-acts">
+                          <button type="button" className="link-btn" onClick={() => toggleSel(p.code)}>빼기</button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="adm-btn-row">
+                  <button className="btn-add" disabled={!pKeep} onClick={mergeProfs}>
+                    {pKeep ? `${profByCode.get(pKeep)?.name} 로 통합` : '남길 교수를 고르세요'}
+                  </button>
+                  <button className="rev-del-btn" onClick={cancelMerge}>취소</button>
+                </div>
+                <div className="divider adm-divider" />
+              </div>
+            )}
+
             <div className="search-bar adm-inline-search">
               <input type="search" placeholder="교수 검색 (성명/학과)" value={pq} onChange={(e) => setPq(e.target.value)} />
             </div>
@@ -834,6 +1022,9 @@ export default function Admin() {
                   {list.map((p) => (
                     <li key={p.code} className="adm-item">
                       <div className="adm-item-row">
+                        {/* 검색으로 찾은 교수도 체크해서 통합할 수 있다(중복 의심으로 안 잡히는 경우) */}
+                        <input type="checkbox" title="통합 대상으로 선택"
+                          checked={pSel.includes(p.code)} onChange={() => toggleSel(p.code)} />
                         <div className="adm-item-body">
                           <div className="adm-item-title">{p.name}</div>
                           <div className="adm-item-sub">{[p.department, p.code].filter(Boolean).join(' · ')}</div>

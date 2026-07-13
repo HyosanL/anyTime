@@ -6,6 +6,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { supabase } from '../supabase';
 import { parseGridsOnPage, toItems, universalBlocks, crossCheck, fixColumnBleed } from './grid';
+import { profKey, isSubName, isPlaceholderProf } from './profname';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -139,7 +140,10 @@ const cleanName = (s) => String(s || '').replace(/\s+/g, '').trim();
 const cleanProf = (s) => {
   const first = String(s || '').split(/[,，]/)[0]; // 팀티칭이면 대표 1명
   const n = first.replace(/\s+/g, ' ').trim(); // 공백 축약(제거 아님) — 영문 이름 "Dan Kingyens" 유지
-  return n || null;
+  // "신임교수"·"미정" 은 사람이 아니라 '아직 없다'는 표시다. 교수로 만들면 가짜 교수가
+  // 교수 검색·강의평에 사람처럼 나온다 — 교수 미정(NULL)으로 둔다.
+  if (!n || isPlaceholderProf(n)) return null;
+  return n;
 };
 
 function normRow(r) {
@@ -471,12 +475,45 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
 
   const courseByName = new Map();
   for (const c of courses) if (!courseByName.has(c.name)) courseByName.set(c.name, c);
-  const profsByName = new Map();
-  for (const p of profs) (profsByName.get(p.name) ?? profsByName.set(p.name, []).get(p.name)).push(p);
+  // 교수는 이름 글자 그대로가 아니라 정규화 키(공백·대소문자 무시)로 찾는다 —
+  // "유 훈"(편람) 과 "유훈"(DB) 은 같은 사람인데 문자열 비교로는 안 맞아 매번 새 교수가 생겼다.
+  const profsByKey = new Map();
+  for (const p of profs) {
+    const k = profKey(p.name);
+    (profsByKey.get(k) ?? profsByKey.set(k, []).get(k)).push(p);
+  }
+
+  // 파일에 적힌 이름 → 표준 이름(canonical). DB 에 있는 이름이 표준이다.
+  //   1) 공백·대소문자만 다르면 DB 이름으로 통일          ("유 훈"     → "유훈")
+  //   2) 기존 교수 이름의 '짧은 판'이고 후보가 하나뿐이면 그 DB 이름으로 ("Justin" → "Justin Bunting")
+  //   3) DB 에 없고 파일 안에서만 길고 짧은 변형이 섞였으면 긴 쪽으로 통일(한 파일이 교수를 두 벌 만들지 않게)
+  // 후보가 둘 이상이면 통일하지 않고 그대로 둔다 → 아래에서 'ambiguous' 로 사람이 고른다.
+  const rawNames = [...new Set(rows.map((r) => r.professor).filter(Boolean))];
+  const canonOf = new Map();
+  const nearMatched = new Set();   // 짧은 이름으로 기존 교수를 찾아낸 표준 이름(관리자가 확인해야 함)
+  for (const n of rawNames) {
+    if (profsByKey.has(profKey(n))) { canonOf.set(n, profsByKey.get(profKey(n))[0].name); continue; }
+    const near = profs.filter((p) => isSubName(n, p.name) || isSubName(p.name, n));
+    if (near.length === 1) { canonOf.set(n, near[0].name); nearMatched.add(near[0].name); continue; }
+    if (near.length > 1) { canonOf.set(n, n); continue; }
+    const longer = rawNames.filter((m) => m !== n && isSubName(n, m)).sort((a, b) => b.length - a.length)[0];
+    canonOf.set(n, longer ?? n);
+  }
+  const rws = rows.map((r) => (
+    r.professor && canonOf.get(r.professor) !== r.professor
+      ? { ...r, professor: canonOf.get(r.professor) }
+      : r
+  ));
+  // 표준 이름 → 파일에 적혀 있던 다른 표기들. 화면에 "파일 표기: 유 훈" 으로 보여 준다
+  // (아래 professors[].name 은 파일 글자가 아니라 DB 이름이므로, 이걸 안 보여주면 왜 매칭됐는지 알 수 없다).
+  const aliasOf = new Map();
+  for (const [raw, canon] of canonOf) {
+    if (raw !== canon) (aliasOf.get(canon) ?? aliasOf.set(canon, []).get(canon)).push(raw);
+  }
 
   // 과목별 그룹
   const courseGroups = new Map();
-  for (const r of rows) {
+  for (const r of rws) {
     const g = courseGroups.get(r.course) ?? courseGroups.set(r.course, { name: r.course, sections: new Map() }).get(r.course);
     const sec = g.sections.get(r.sectionNo) ?? g.sections.set(r.sectionNo, { sectionNo: r.sectionNo, professor: r.professor, slots: [], room: r.room }).get(r.sectionNo);
     if (!sec.professor && r.professor) sec.professor = r.professor;
@@ -487,30 +524,39 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
   // 교수별 추정 학과 + 가르치는 과목코드 모으기
   const profDept = new Map(); // name -> dept(추정)
   const profCourseCodes = new Map(); // name -> Set(course_code) (기존에 있는 과목만)
-  for (const r of rows) {
+  for (const r of rws) {
     if (!r.professor) continue;
     if (!profDept.has(r.professor) && r.department) profDept.set(r.professor, r.department);
     const existing = courseByName.get(r.course);
     if (existing) (profCourseCodes.get(r.professor) ?? profCourseCodes.set(r.professor, new Set()).get(r.professor)).add(existing.code);
   }
 
-  // 교수 해석(매칭/신규/동명이인)
-  const profNames = [...new Set(rows.map((r) => r.professor).filter(Boolean))];
+  // 교수 해석(매칭/신규/비슷한이름/동명이인)
+  const profNames = [...new Set(rws.map((r) => r.professor).filter(Boolean))];
   const professors = profNames.map((name) => {
-    const matches = profsByName.get(name) ?? [];
-    const candidates = matches.map((m) => ({ code: m.code, department: m.department }));
+    const aliases = aliasOf.get(name) ?? [];
+    const exact = profsByKey.get(profKey(name)) ?? [];
+    // 정확히 같은 이름이 없을 때만 '비슷한 이름'을 후보로 올린다(성 누락·외자 띄어쓰기).
+    const matches = exact.length ? exact : profs.filter((p) => isSubName(name, p.name) || isSubName(p.name, name));
+    const candidates = matches.map((m) => ({ code: m.code, name: m.name, department: m.department }));
     if (matches.length === 0) {
-      return { name, code: null, action: 'create', department: profDept.get(name) ?? null, candidates };
+      return { name, aliases, code: null, action: 'create', department: profDept.get(name) ?? null, candidates };
     }
     if (matches.length === 1) {
-      return { name, code: matches[0].code, action: 'match', department: matches[0].department ?? null, candidates };
+      return {
+        name, aliases, code: matches[0].code,
+        // 짧은 이름으로 찾아낸 것은 '확실'이 아니다 — 경고를 달아 사람이 보게 한다.
+        action: nearMatched.has(name) ? 'similar' : 'match',
+        department: matches[0].department ?? profDept.get(name) ?? null,
+        candidates,
+      };
     }
-    // 동명이인: 과목 이력으로 보정
+    // 동명이인(또는 비슷한 이름 여럿): 과목 이력으로 보정
     const myCodes = profCourseCodes.get(name) ?? new Set();
     const byHistory = matches.find((m) => sections.some((s) => s.professor_code === m.code && myCodes.has(s.course_code)));
     const pick = byHistory ?? matches[0];
     return {
-      name, code: pick.code, action: byHistory ? 'match' : 'ambiguous',
+      name, aliases, code: pick.code, action: byHistory && exact.length ? 'match' : 'ambiguous',
       department: pick.department ?? null, candidates,
     };
   });
@@ -587,6 +633,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
       professors: professors.length,
       newProfessors: professors.filter((p) => p.action === 'create').length,
       ambiguous: professors.filter((p) => p.action === 'ambiguous').length,
+      similar: professors.filter((p) => p.action === 'similar').length,   // 짧은 이름으로 기존 교수와 이어붙임 — 확인 필요
       reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
       staleSections: stale.length,
       conflicts: conflicts.length,

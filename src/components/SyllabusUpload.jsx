@@ -2,6 +2,14 @@ import { useMemo, useState } from 'react';
 import { getCatalog } from '../lib/cache';
 
 const DAY = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
+// 교수 매칭 결과 배지. similar = 파일의 짧은 이름("Justin")으로 기존 교수("Justin Bunting")를
+// 찾아 이어붙인 것 — 자동이지만 확실하지 않으니 사람이 보게 경고색으로 띄운다.
+const PROF_TAG = {
+  create: ['신규', 'tag-primary'],
+  match: ['기존', 'tag-success'],
+  similar: ['비슷한 이름', 'tag-warn'],
+  ambiguous: ['동명이인?', 'tag-warn'],
+};
 const fmtTimes = (blocks) =>
   (blocks || []).map((b) => `${DAY[b.day]}${b.start}${b.end > b.start ? `-${b.end}` : ''}`).join(' ') || '시간미정';
 // 격자 대조용 "요일-교시" 키 목록 → "월1 월2 목1"
@@ -251,6 +259,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             <span className="tag tag-primary">신규교수 {plan.stats.newProfessors}</span>
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
+            {plan.stats.similar > 0 && <span className="tag tag-warn">비슷한 이름 {plan.stats.similar}</span>}
             {conflicts.length > 0 && <span className="tag tag-warn">시간 충돌 {conflicts.length}</span>}
             {plan.stats.commonBlocks > 0 && <span className="tag">공통 공강 {plan.stats.commonBlocks}</span>}
             {plan.stats.gridWarnings > 0 && <span className="tag tag-warn">격자와 어긋남 {plan.stats.gridWarnings}</span>}
@@ -390,20 +399,28 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           <div className="section-label adm-sub-label">교수 ({plan.professors.length}) — 매칭 확인</div>
           <div className="syl-list">
             {plan.professors.map((p, i) => (
-              <div className={`syl-prof ${p.action === 'ambiguous' ? 'is-warn' : ''}`} key={p.name}>
+              <div className={`syl-prof ${p.action === 'ambiguous' || p.action === 'similar' ? 'is-warn' : ''}`} key={p.name}>
                 <div className="syl-prof-head">
                   <b>{p.name}</b>
-                  <span className={`tag ${p.action === 'create' ? 'tag-primary' : p.action === 'ambiguous' ? 'tag-warn' : 'tag-success'}`}>
-                    {p.action === 'create' ? '신규' : p.action === 'ambiguous' ? '동명이인?' : '기존'}
+                  <span className={`tag ${PROF_TAG[p.action]?.[1] ?? 'tag-success'}`}>
+                    {PROF_TAG[p.action]?.[0] ?? '기존'}
                   </span>
                 </div>
+                {/* 후보는 '이름'까지 보여준다 — 학과·코드만 보고는 어느 교수인지 알 수 없다.
+                    비슷한 이름으로 이어붙인 경우(similar) 파일의 이름과 DB 이름이 다르기 때문. */}
                 {p.candidates.length > 0 && (
                   <select value={p.code ?? '__new__'} onChange={(e) => setProfChoice(i, e.target.value)}>
                     <option value="__new__">+ 새 교수로 등록</option>
                     {p.candidates.map((c) => (
-                      <option key={c.code} value={c.code}>{[c.department, c.code].filter(Boolean).join(' · ') || c.code}</option>
+                      <option key={c.code} value={c.code}>{[c.name, c.department, c.code].filter(Boolean).join(' · ')}</option>
                     ))}
                   </select>
+                )}
+                {p.aliases?.length > 0 && (
+                  <p className="note">
+                    파일 표기: <b>{p.aliases.join(', ')}</b> → 기존 교수 <b>{p.name}</b> 로 봤습니다.
+                    {p.action === 'similar' && ' 다른 사람이면 위에서 «새 교수로 등록»을 고르세요.'}
+                  </p>
                 )}
                 <div className="syl-prof-meta">
                   <input placeholder="학과(추정)" value={p.department || ''} onChange={(e) => setProfField(i, 'department', e.target.value)} />
