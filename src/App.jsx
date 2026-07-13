@@ -25,6 +25,7 @@ const Exams = lazy(() => import('./pages/Exams'));
 const Memo = lazy(() => import('./pages/Memo'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Admin = lazy(() => import('./pages/Admin'));
+const AdminCourse = lazy(() => import('./pages/AdminCourse'));
 const Moderation = lazy(() => import('./pages/Moderation'));
 const Boards = lazy(() => import('./pages/Boards'));
 const Board = lazy(() => import('./pages/Board'));
@@ -177,6 +178,8 @@ export default function App() {
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           <Route path="/admin/moderation" element={<ProtectedRoute><Moderation /></ProtectedRoute>} />
+          {/* 과목 하나만 다루는 화면 — 관리자 허브의 과목 검색에서 새 탭으로 연다 */}
+          <Route path="/admin/courses/:code" element={<ProtectedRoute><AdminCourse /></ProtectedRoute>} />
           <Route path="/admin/:section" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
           <Route path="/boards" element={<ProtectedRoute><Boards /></ProtectedRoute>} />
           <Route path="/board/:id" element={<ProtectedRoute><Board /></ProtectedRoute>} />

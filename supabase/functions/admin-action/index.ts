@@ -283,7 +283,6 @@ Deno.serve(async (req) => {
         await admin.from('section').upsert({
           course_code: payload.course_code, year: payload.year, term: payload.term,
           section_no: payload.section_no, professor_code: payload.professor_code ?? null,
-          capacity: payload.capacity ?? null,
         }).throwOnError()
         return json({ status: 'OK' })
       // 강의시간 추가/수정. PK=(분반키, day_of_week, start_period) 라 요일·시작교시를 바꾸면
@@ -442,7 +441,7 @@ Deno.serve(async (req) => {
           for (const se of (co.sections ?? [])) {
             await admin.from('section').insert({
               course_code: code, year: se.year, term: se.term, section_no: se.section_no,
-              professor_code: se.professor_code ?? null, capacity: se.capacity ?? null,
+              professor_code: se.professor_code ?? null,
             }).throwOnError()
             for (const t of (se.times ?? [])) {
               await admin.from('section_time').insert({

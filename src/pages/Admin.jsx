@@ -4,21 +4,16 @@ import { supabase } from '../supabase';
 import { getCatalog } from '../lib/cache';
 import { useAuthContext } from '../contexts/AuthContext';
 import { dupProfessorGroups, isPlaceholderProf } from '../lib/profname';
+import { callAdmin as call, CATALOG_ACTIONS } from '../lib/admin';
 import SyllabusUpload from '../components/SyllabusUpload';
-import SectionModal from '../components/SectionModal';
 import BackButton from '../components/BackButton';
 import '../styles/admin.css';
 import '../styles/course.css';
 import '../styles/board.css';
 
 // 화면9: 관리자. is_admin 게이트. 작업은 admin-action Edge Function(service-role).
-// 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx).
-async function call(action, payload = {}) {
-  const { data, error } = await supabase.functions.invoke('admin-action', { body: { action, payload } });
-  let status = data?.status;
-  if (error) { try { status = (await error.context?.json?.())?.status; } catch { /* ignore */ } }
-  return { ok: status === 'OK', status, data };
-}
+// 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx),
+// 과목 하나를 고치는 '/admin/courses/:code'도 별도 페이지(AdminCourse.jsx) — 여기서 새 탭으로 연다.
 
 // 교수 명단 동기화(sync-professors) 는 admin-action 이 아니라 전용 Edge Function.
 async function invokeSync(mode) {
@@ -26,14 +21,6 @@ async function invokeSync(mode) {
   if (error) { try { data = await error.context?.json?.(); } catch { data = null; } }
   return { ok: data?.status === 'OK', status: data?.status ?? 'ERROR', data: data ?? {} };
 }
-
-// 카탈로그(professor/semester/course/period/section/section_time) 테이블을 바꾸는 액션들.
-// 이 액션이 성공했을 때만 로컬 카탈로그 캐시를 강제로 다시 받는다(그 외 액션은 캐시 유지).
-const CATALOG_ACTIONS = new Set([
-  'set_period', 'delete_catalog', 'set_section', 'set_section_time',
-  'set_course', 'add_course', 'set_professor', 'add_professor', 'set_semester',
-  'set_common_block', 'merge_professors',
-]);
 
 const fmtDateTime = (iso) => {
   if (!iso) return '없음';
@@ -168,8 +155,6 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
   );
 }
 
-const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
-
 // 교시 표의 한 행: 시작·종료 시각을 즉석에서 수정하고 저장.
 function PeriodRow({ p, run }) {
   const s0 = String(p.start_time).slice(0, 5);
@@ -299,14 +284,14 @@ function NewPeriodRow({ run, nextNo }) {
   );
 }
 
-// 분반 편집·추가는 SectionModal(다이얼로그)로 — 목록 안에서 펼치면 어느 과목의 분반인지 헷갈린다.
+// 분반 편집·추가는 과목 전용 화면(AdminCourse, /admin/courses/:code)에서 — 여기서는 새 탭으로 연다.
 
 // 허브 항목 정의 (key는 라우팅 section 과 일치). 검열(moderation)은 별도 페이지로 링크하며 최상단.
 const SECTIONS = [
   { key: 'moderation', icon: '🧹', title: '검열', sub: '신고·자동필터 강의평·수정제안 검토', to: '/admin/moderation' },
   { key: 'banned-words', icon: '🚫', title: '금지어', sub: '작성 시 자동으로 가려질 금지어 추가·삭제' },
   { key: 'notices', icon: '📢', title: '공지사항', sub: '홈 화면 팝업 공지 작성·관리' },
-  { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 분반 하나씩 관리' },
+  { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 새 탭에서 분반·교수·시간 관리' },
   { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
   { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
@@ -341,12 +326,9 @@ export default function Admin() {
 
   // 폼 상태
   const [q, setQ] = useState('');
-  const [selCourse, setSelCourse] = useState('');
-  // 다이얼로그로 여는 분반 편집 — { course, section|null }. section 이 null 이면 새 분반.
-  const [secModal, setSecModal] = useState(null);
   const [newCode, setNewCode] = useState('');
   const [adminUser, setAdminUser] = useState('');
-  const [course, setCourse] = useState({ code: '', name: '' });
+  const [newCourse, setNewCourse] = useState('');   // 새 과목명 (수정은 /admin/courses/:code 에서)
   const [prof, setProf] = useState({ code: '', name: '', department: '' });
   const [pq, setPq] = useState('');
   // 교수 통합: 고른 교수들(pSel) 중 한 명(pKeep)만 남기고 나머지를 흡수시킨다.
@@ -538,11 +520,7 @@ export default function Admin() {
     const s = q.trim().toLowerCase();
     return courses.filter((c) => !s || c.name.toLowerCase().includes(s) || c.code.toLowerCase().includes(s));
   }, [courses, q]);
-  const curSem = cat?.semester?.find((s) => s.is_current) || cat?.semester?.[0] || { year: 2026, term: 1 };
   const secOf = (code) => (cat?.section ?? []).filter((x) => x.course_code === code);
-  const timesOf = (s) => (cat?.section_time ?? [])
-    .filter((t) => t.course_code === s.course_code && t.year === s.year && t.term === s.term && t.section_no === s.section_no)
-    .map((t) => (t.start_period === t.end_period ? `${DAY_KO[t.day_of_week]}${t.start_period}` : `${DAY_KO[t.day_of_week]}${t.start_period}-${t.end_period}`)).join(', ');
 
   if (isAdmin === null) return <div className="page-center">확인 중…</div>;
   if (!isAdmin) return (
@@ -685,10 +663,10 @@ export default function Admin() {
         )}
 
         {section === 'courses' && (
-          <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 선택하면 분반을 하나씩 관리합니다. 아래에서 과목을 추가/수정하며, 과목코드는 자동 부여됩니다.">
+          <Card icon="📚" title="과목 · 분반 관리" desc="과목을 검색해 고르면 그 과목만 다루는 화면이 새 탭으로 열립니다 — 분반·담당 교수·강의시간은 거기서 고칩니다. 여기서는 새 과목만 추가합니다(과목코드 자동 부여).">
             <div className="search-bar adm-inline-search">
               <input type="search" placeholder="과목 검색 (이름 또는 코드)" value={q}
-                onChange={(e) => { setQ(e.target.value); setSelCourse(''); }} />
+                onChange={(e) => setQ(e.target.value)} />
             </div>
 
             {q.trim() === '' ? (
@@ -696,43 +674,18 @@ export default function Admin() {
             ) : (
               <ul className="list adm-list">
                 {filtered.map((c) => (
-                  <li key={c.code} className={`adm-item ${selCourse === c.code ? 'open' : ''}`}>
-                    <div className="adm-item-row">
+                  <li key={c.code} className="adm-item">
+                    {/* 새 탭 — 여러 과목을 오가며 고쳐도 어느 과목을 만지는 중인지 헷갈리지 않는다 */}
+                    <a className="adm-item-row adm-course-link" target="_blank" rel="noreferrer"
+                      href={`/admin/courses/${encodeURIComponent(c.code)}`}>
                       <div className="adm-item-body">
                         <div className="adm-item-title">{c.name}</div>
-                        <div className="adm-item-sub">{[c.code, c.department].filter(Boolean).join(' · ')}</div>
+                        <div className="adm-item-sub">
+                          {[c.code, c.department].filter(Boolean).join(' · ')} · 분반 {secOf(c.code).length}개
+                        </div>
                       </div>
-                      <div className="adm-item-acts">
-                        <button className="btn-ghost btn-sm" onClick={() => setSelCourse(selCourse === c.code ? '' : c.code)}>{selCourse === c.code ? '닫기' : '분반'}</button>
-                        <button className="link-btn" onClick={() => setCourse({ code: c.code, name: c.name || '' })}>수정</button>
-                        <button className="rev-del-btn" onClick={() => { if (confirm(`'${c.name}' 과목과 분반·강의시간이 모두 삭제됩니다.`)) run('delete_catalog', { table: 'course', key: { code: c.code } }, '과목 삭제'); }}>삭제</button>
-                      </div>
-                    </div>
-
-                    {selCourse === c.code && (
-                      <div className="adm-expand">
-                        <div className="section-label adm-sub-label">이 과목의 분반</div>
-                        {secOf(c.code).length === 0 && <p className="note">등록된 분반이 없습니다. 아래에서 추가하세요.</p>}
-                        {secOf(c.code)
-                          .slice()
-                          .sort((a, b) => b.year - a.year || b.term - a.term || a.section_no - b.section_no)
-                          .map((s) => {
-                            const pname = (cat.professor.find((p) => p.code === s.professor_code) || {}).name || '교수미정';
-                            return (
-                              <div key={`${s.year}-${s.term}-${s.section_no}`} className="adm-sec-block">
-                                <div className="adm-chip-row">
-                                  <span className="adm-chip-text">{s.year}-{s.term} · {s.section_no}분반 · {pname} · {timesOf(s) || '시간미정'}</span>
-                                  <button className="btn-ghost btn-sm" onClick={() => setSecModal({ course: c, section: s })}>편집</button>
-                                  <button className="rev-del-btn" onClick={() => { if (confirm(`${s.year}-${s.term} ${s.section_no}분반과 강의시간을 삭제합니다.`)) run('delete_catalog', { table: 'section', key: { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no } }, '분반 삭제'); }}>삭제</button>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                        <button className="btn-add btn-block btn-sm adm-sec-add"
-                          onClick={() => setSecModal({ course: c, section: null })}>＋ 새 분반 추가</button>
-                      </div>
-                    )}
+                      <span className="adm-course-open">새 탭 ↗</span>
+                    </a>
                   </li>
                 ))}
                 {filtered.length === 0 && <li className="note adm-empty-row">검색 결과가 없습니다.</li>}
@@ -740,18 +693,15 @@ export default function Admin() {
             )}
 
             <div className="divider adm-divider" />
-            <div className="section-label adm-sub-label">{course.code ? `과목 수정 (${course.code})` : '새 과목 추가'}</div>
-            <div className="adm-form-grid">
-              <label className="field"><span className="field-label">과목명</span><input placeholder={course.code ? '과목명' : '새 과목명'} value={course.name} onChange={(e) => setCourse({ ...course, name: e.target.value })} /></label>
-            </div>
-            {course.code ? (
-              <div className="adm-btn-row">
-                <button className="btn-add" onClick={async () => { const r = await run('set_course', { code: course.code, name: course.name }, '과목 수정'); if (r.ok) setCourse({ code: '', name: '' }); }}>저장</button>
-                <button className="rev-del-btn" onClick={() => setCourse({ code: '', name: '' })}>취소</button>
-              </div>
-            ) : (
-              <button className="btn-add btn-block" onClick={async () => { if (!course.name.trim()) return; const r = await run('add_course', { name: course.name }, '과목 추가(코드 자동)'); if (r.ok) setCourse({ code: '', name: '' }); }}>과목 추가 (코드 자동)</button>
-            )}
+            <div className="section-label adm-sub-label">새 과목 추가</div>
+            <label className="field"><span className="field-label">과목명</span>
+              <input placeholder="새 과목명" value={newCourse} onChange={(e) => setNewCourse(e.target.value)} />
+            </label>
+            <button className="btn-add btn-block" disabled={!newCourse.trim()}
+              onClick={async () => {
+                const r = await run('add_course', { name: newCourse.trim() }, '과목 추가(코드 자동)');
+                if (r.ok) setNewCourse('');
+              }}>과목 추가 (코드 자동)</button>
           </Card>
         )}
 
@@ -1117,18 +1067,6 @@ export default function Admin() {
           </Card>
         )}
       </div>
-
-      {secModal && cat && (
-        <SectionModal
-          course={secModal.course}
-          initial={secModal.section}
-          cat={cat}
-          run={run}
-          onClose={() => setSecModal(null)}
-          defYear={curSem.year}
-          defTerm={curSem.term}
-        />
-      )}
     </div>
   );
 }

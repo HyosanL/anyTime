@@ -148,23 +148,6 @@
   background: var(--card);
 }
 
-/* 분반 칩 행 */
-.adm-chip-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.65rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-}
-.adm-chip-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.8rem;
-  color: var(--text-2);
-}
-
 /* ====================== 폼 그리드 ====================== */
 .adm-form-grid {
   display: grid;
@@ -232,80 +215,90 @@
   margin-top: 0.2rem;
 }
 
-/* ====================== 분반 편집 ====================== */
-.adm-sec-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+/* ====================== 과목 → 분반 편집 ======================
+   과목 검색 결과는 그 과목만 다루는 화면(/admin/courses/:code)으로 가는 새 탭 링크다.
+   분반은 그 화면 안에서 펼쳐 고친다 — 화면 전체가 한 과목이라 헷갈릴 여지가 없다. */
+.adm-course-link {
+  text-decoration: none;
+  color: inherit;
 }
-.adm-sec-add {
-  margin-top: 0.35rem;
+.adm-course-link:hover { background: var(--primary-weak); }
+.adm-course-open {
+  flex: none;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
 }
 
-/* ── 분반 편집 다이얼로그 ─────────────────────────────────────────────
-   목록 안에서 인라인으로 펼치면 어느 과목의 몇 분반을 고치는 중인지 놓친다.
-   한 번에 한 분반만, 과목명을 머리말에 박아 띄운다. */
-.adm-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+/* 과목 화면 머리말 아래 과목코드·학과 */
+.adm-course-sub {
+  margin: -0.2rem 0 0;
+  padding: 0 var(--pad);
 }
-.adm-modal {
-  width: 100%;
-  max-width: 440px;
-  max-height: 90vh;
+
+/* 분반 카드 — 접으면 요약 한 줄, 펼치면 교수·강의시간 */
+.adm-sec-list {
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  gap: 0.5rem;
+}
+.adm-sec-card {
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
+  background: var(--card);
   overflow: hidden;
 }
-.adm-modal-head {
+.adm-sec-card.open { border-color: var(--primary); }
+.adm-sec-head {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.85rem 1rem 0.7rem;
-  border-bottom: 1px solid var(--border);
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem 0.3rem 0;
 }
-.adm-modal-titles { flex: 1; min-width: 0; }
-.adm-modal-title {
-  font-size: 0.98rem;
+.adm-sec-lead {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.3rem 0.5rem 0.7rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.adm-sec-no {
+  flex: none;
+  font-size: 0.88rem;
   font-weight: 700;
   color: var(--text-1);
 }
-.adm-modal-sub {
-  margin-top: 0.15rem;
-  font-size: 0.78rem;
-  color: var(--text-3);
-}
-.adm-modal-x {
-  flex: none;
-  background: none;
-  border: none;
-  font-size: 1rem;
-  color: var(--text-2);
-  cursor: pointer;
-}
-.adm-modal-msg { margin: 0.6rem 1rem 0; }
-.adm-modal-body {
+.adm-sec-meta {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-sec-chevron { flex: none; color: var(--text-3); font-size: 0.8rem; }
+.adm-sec-body {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.8rem 1rem 1rem;
-}
-.adm-modal-foot {
-  padding: 0.7rem 1rem 0.85rem;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem 0.8rem;
   border-top: 1px solid var(--border);
-  background: var(--card);
+  background: var(--surface);
+}
+.adm-sec-card-new {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 0.75rem 0.8rem;
+  border-style: dashed;
+  background: var(--surface);
 }
 
 /* ── 교수 검색·선택 ──────────────────────────────────────────────────
