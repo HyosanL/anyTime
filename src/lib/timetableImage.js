@@ -174,12 +174,12 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
     const y = gridTop + ((b.startMin - minH * 60) / 60) * ROW_H;
     const h = ((b.endMin - b.startMin) / 60) * ROW_H;
     roundRect(ctx, x + 2.5, y + 2.5, DAYCOL_W - 5, h - 5, 8);
-    ctx.fillStyle = b.noClass ? '#eef1f5' : b.color;
+    ctx.fillStyle = b.noClass ? '#e5eaf1' : b.color;   // 화면의 --block-bg(라이트)와 같은 회색
     ctx.fill();
 
     const innerX = x + 9, innerW = DAYCOL_W - 18;
     ctx.textAlign = 'left';
-    ctx.fillStyle = b.noClass ? '#94a3b8' : '#1f2937';
+    ctx.fillStyle = b.noClass ? '#475569' : '#1f2937';
     ctx.font = `600 12.5px ${FONT}`;
     const metaLines = b.meta ? 1 : 0;
     const maxTitleLines = Math.max(1, Math.min(3, Math.floor((h - 12) / 16) - metaLines));

@@ -4,6 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { isIos } from '../components/InstallGate';
 import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
+import PullToRefresh from '../components/PullToRefresh';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSwitcher from '../components/TimetableSwitcher';
 import { getCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
@@ -147,7 +148,9 @@ export default function Home() {
     let active = true;
     (async () => {
       const [cat, cachedList] = await Promise.all([
-        getCatalog().catch(() => null),   // cache-first → 대개 즉시
+        // cache-first → 대개 즉시. 캐시가 오래됐으면 뒤에서 갱신되고, 끝나면 onFresh 로 격자에 반영한다
+        // (관리자가 붙인 공통 공강 시간 이름 등이 '다음 실행'까지 안 뜨는 일을 막는다).
+        getCatalog({ onFresh: (fresh) => { if (active) setCatalog(fresh); } }).catch(() => null),
         readTimetablesCache(),
       ]);
       if (!active) return;
@@ -205,6 +208,31 @@ export default function Home() {
     })();
     return () => { active = false; };
   }, [selectedId, uid]);
+
+  // 당겨서 새로고침 — 홈에서 카탈로그를 강제로 다시 받는 유일한 길이다.
+  // (카탈로그 캐시는 24시간이라, 관리자가 방금 고친 강의·교시·공통 공강 시간이 기기에 따라
+  //  하루까지 안 뜰 수 있다. 시간표 목록·내용도 함께 서버 기준으로 맞춘다.)
+  const handleRefresh = useCallback(async () => {
+    try {
+      const cat = await getCatalog({ force: true });
+      setCatalog(cat);
+      const list = await listTimetables();
+      setTimetables(list);
+      const pick = pickTimetable(list, currentSemester(cat), readSelectedId());
+      setSelectedId(pick?.id ?? null);
+      if (pick) {
+        const [fresh, customs] = await Promise.all([
+          listEntries(pick.id),
+          listCustomClasses(uid, pick.id),
+        ]);
+        setEntries(fresh);
+        setCustomClasses(customs);
+      }
+      setOffline(false);
+    } catch {
+      setOffline(true);
+    }
+  }, [uid]);
 
   const reloadCustom = useCallback(async () => {
     if (!selectedId) return;
@@ -285,7 +313,7 @@ export default function Home() {
   }, [reloadCustom]);
 
   return (
-    <div className="page home">
+    <PullToRefresh className="page home" onRefresh={handleRefresh}>
       <NoticePopup />
       <header className="page-header">
         <Link to="/profile" className="home-ident">
@@ -399,6 +427,6 @@ export default function Home() {
           )}
         </nav>
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

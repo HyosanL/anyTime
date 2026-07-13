@@ -290,21 +290,21 @@
   border-color: var(--danger-border);
   box-shadow: inset 0 0 0 1px var(--danger-border);
 }
-/* 전 생도 비수업 시간(생도대·군사훈련…) — 칠할 것이 없으니 누를 수 없다 */
+/* 전 생도 공통 공강 시간(생도대·군사훈련…) — 칠할 것이 없으니 누를 수 없다.
+   테두리만 점선(누를 수 없음)이고 면은 홈 격자와 같은 평평한 회색이다. */
 .wz-block-cell.is-noclass {
-  background: repeating-linear-gradient(
-    45deg, var(--chip-bg), var(--chip-bg) 4px, transparent 4px, transparent 8px
-  );
+  background: var(--block-bg);
   border-style: dashed;
   cursor: default;
   overflow: hidden;
 }
 .wz-block-cell.is-noclass:active { transform: none; }
+/* 회색 칸(--block-bg) 위 글씨 — 라이트·다크로 뒤집히는 면이라 --on-pastel(검정) 을 쓰면 안 된다 */
 .wz-block-label {
   display: block;
   font-size: 0.5rem;
   line-height: 1;
-  color: var(--text-3);
+  color: var(--text-2);
   padding: 0 1px;
   white-space: nowrap;
   overflow: hidden;
@@ -330,9 +330,7 @@
 }
 .wz-key.is-on { background: var(--danger-weak); border-color: var(--danger-border); }
 .wz-key.is-noclass {
-  background: repeating-linear-gradient(
-    45deg, var(--chip-bg), var(--chip-bg) 3px, transparent 3px, transparent 6px
-  );
+  background: var(--block-bg);
   border-style: dashed;
 }
 .wz-clear { margin-left: auto; }
@@ -545,12 +543,11 @@
   max-width: 100%;
 }
 .wz-mini-cell i { font-size: 0.55rem; font-style: normal; opacity: 0.75; }
-/* 비수업 시간 — 수업이 배정될 수 없는 칸(빈 시간으로 세지 않는다) */
+/* 공통 공강 시간 — 수업이 배정될 수 없는 칸(빈 시간으로 세지 않는다).
+   후보 미리보기는 홈 격자의 축소판이니 같은 회색으로 깐다. */
 .wz-mini td.is-noclass {
-  background: repeating-linear-gradient(
-    45deg, var(--chip-bg), var(--chip-bg) 3px, transparent 3px, transparent 6px
-  );
-  border-style: dashed;
+  background: var(--block-bg);
+  border-color: transparent;
 }
 
 /* ── 하단 조작부 — 화면 아래에 붙어 따라온다(상단바와 같은 프로스티드 표면) ── */

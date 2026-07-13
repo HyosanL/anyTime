@@ -13,10 +13,12 @@ const DB_VERSION = 1;
 const STORE = 'kv';
 const SYNCED_KEY = '_syncedAt';
 const SCHEMA_KEY = '_schema';
-// 캐시된 행의 모양이 바뀌면 올린다 → 옛 캐시를 무시하고 서버에서 다시 받는다.
+// 캐시된 행의 모양이 바뀌면(또는 옛 캐시를 강제로 버려야 하면) 올린다 → 서버에서 다시 받는다.
 //   2: section.id(대체키) 추가 — 시간표가 분반을 id 로 참조(2026-07-12)
 //   3: common_block(전 생도 비수업 시간 이름) 추가 — 시간표 마법사(2026-07-13)
-const SCHEMA_VERSION = 3;
+//   4: 강제 재동기화 — common_block 이 아직 비었을 때 캐시한 기기는 이름을 붙인 뒤에도
+//      24시간(STALE_MS) 동안 공통 공강 시간이 격자에 안 떴다(2026-07-13)
+const SCHEMA_VERSION = 4;
 const STALE_MS = 24 * 60 * 60 * 1000; // 24시간 (강의 데이터는 학기당 거의 불변 → egress 절감. 관리자 수정 시 당겨서 새로고침으로 즉시 반영)
 
 // 캐시할 카탈로그 테이블 (공용 읽기 전용 데이터)
@@ -95,7 +97,9 @@ export async function syncCatalog() {
 }
 
 // cache-first 로 카탈로그를 반환. { ...tables, _syncedAt, fromCache }
-export async function getCatalog({ force = false } = {}) {
+// onFresh(catalog) = 캐시를 먼저 돌려준 뒤 백그라운드 갱신이 끝나면 부른다. 이게 없으면
+// 갱신분은 '다음 실행'에나 보인다 — 관리자가 고친 카탈로그가 한 번 더 켜야 뜨는 셈.
+export async function getCatalog({ force = false, onFresh = null } = {}) {
   const cached = await readCache();
   const hasCache = cached[SYNCED_KEY] > 0;
   const stale = Date.now() - cached[SYNCED_KEY] > STALE_MS;
@@ -115,8 +119,12 @@ export async function getCatalog({ force = false } = {}) {
     return { ...(await syncCatalog()), fromCache: false };
   }
 
-  // 캐시 오래됨: 즉시 캐시 반환 + 백그라운드 갱신.
-  if (stale) syncCatalog().catch(() => {});
+  // 캐시 오래됨: 즉시 캐시 반환 + 백그라운드 갱신(끝나면 onFresh 로 화면에 반영).
+  if (stale) {
+    syncCatalog()
+      .then((fresh) => onFresh?.({ ...fresh, fromCache: false }))
+      .catch(() => {});
+  }
   return { ...cached, fromCache: true };
 }
 
