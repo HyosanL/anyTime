@@ -151,16 +151,7 @@ crawl/
 # 임시 작업 파일(라이브 적용용 SQL·ERD 캡처 등) — 로컬 전용, 커밋 안 함.
 scratchpad/
 
-# docs/ 는 커밋하지 않는다 — 교안·타 조 ·수강편람 등 배포물이 아닌 자료와
-# ( PDF/HWPX)가 들어 있다.  생성기 코드(build/)만 예외로 추적한다.
-docs/*
-!docs/build/
-
-# 문서 빌드 중간 산출물 (gen.mjs: body.html → full html → PDF)
-docs/build/*.html
-!docs/build/*.body.html
-
-#  빌드 부산물·임시 파일
-docs/build/hwpx/_build/
-docs/build/hwpx/__pycache__/
-docs/build/gen_pkg/repo.json
+# docs/ 는 통째로 커밋하지 않는다 — 앱 배포물이 아니다.
+# 교안·타 조 ·수강편람 원본, (), 그 생성기(build/)까지
+# 전부 과제용 자료라 저장소에 둘 이유가 없다. 파일은 로컬 디스크에만 둔다.
+docs/
