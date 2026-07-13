@@ -65,7 +65,8 @@ const PARSE_ERRORS = {
 // 키에 모델을 넣는다 — GEMINI_MODEL 을 바꿨는데 옛 모델의 결과를 물려받으면 안 된다.
 // 프롬프트·스키마를 고치면 CACHE_V 를 올려 통째로 무효화한다.
 //   3: 프롬프트 수정(영역/학과 열을 과목명에 붙이지 말 것) + 모델 교체(2026-07-13)
-const CACHE_V = 3;
+//   4: 프롬프트 수정(압축 교반 "1,2,3(수4) 4,5,6(목1)…" 펼치기 + 교수 이름 순환 대응) (2026-07-13)
+const CACHE_V = 4;
 const CACHE_PREFIX = 'syllabus-parse:';
 
 async function cacheKey(model, kind, text) {
