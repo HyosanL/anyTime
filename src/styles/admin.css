@@ -238,23 +238,116 @@
   flex-direction: column;
   gap: 0.4rem;
 }
-.adm-sec-editor {
+.adm-sec-add {
+  margin-top: 0.35rem;
+}
+
+/* ── 분반 편집 다이얼로그 ─────────────────────────────────────────────
+   목록 안에서 인라인으로 펼치면 어느 과목의 몇 분반을 고치는 중인지 놓친다.
+   한 번에 한 분반만, 과목명을 머리말에 박아 띄운다. */
+.adm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.adm-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.65rem 0.7rem 0.75rem;
   background: var(--surface);
-  border: 1px solid var(--primary-weak-border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.adm-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+.adm-modal-titles { flex: 1; min-width: 0; }
+.adm-modal-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.adm-modal-sub {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+.adm-modal-x {
+  flex: none;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.adm-modal-msg { margin: 0.6rem 1rem 0; }
+.adm-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem 1rem;
+}
+.adm-modal-foot {
+  padding: 0.7rem 1rem 0.85rem;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+
+/* ── 교수 검색·선택 ──────────────────────────────────────────────────
+   교수 드롭다운은 수백 명을 손가락으로 굴려야 했다 — 이름·학과로 검색해 고른다. */
+.adm-pp { display: flex; flex-direction: column; gap: 0.35rem; }
+.adm-pp-hint { margin: 0; font-size: 0.75rem; }
+.adm-pp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
   border-radius: var(--r-sm);
 }
-.adm-sec-new {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  margin-top: 0.35rem;
-  padding-top: 0.55rem;
-  border-top: 1px dashed var(--border);
+.adm-pp-list li + li { border-top: 1px solid var(--border); }
+.adm-pp-list button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+  color: var(--text-1);
+  font-size: 0.87rem;
 }
+.adm-pp-list button:hover { background: var(--primary-weak); }
+.adm-pp-dept { color: var(--text-3); font-size: 0.8rem; }
+.adm-pp-empty { padding: 0.5rem 0.6rem; color: var(--text-3); font-size: 0.82rem; }
+.adm-pp-picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--primary);
+  border-radius: var(--r-sm);
+  background: var(--primary-weak);
+  font-size: 0.88rem;
+  color: var(--text-1);
+}
+.adm-pp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ====================== CSV 업로드 ====================== */
 .adm-steps {
