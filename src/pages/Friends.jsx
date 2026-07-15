@@ -34,6 +34,7 @@ export default function Friends() {
   const [catalog, setCatalog] = useState(null);
   const [gallery, setGallery] = useState(null);   // null = 로딩 전
   const [headTop, setHeadTop] = useState(0);       // 스택 카드가 붙을 위치(앱 헤더 아래)
+  const [reorderOpen, setReorderOpen] = useState(false);
 
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);    // null = 검색 안 함
@@ -104,15 +105,15 @@ export default function Friends() {
     catch { alert('삭제에 실패했어요.'); }
   }
 
-  // 순서 변경(▲▼): 이웃과 자리 교환 후 서버에 전체 순서를 저장.
-  async function move(index, dir) {
-    const to = index + dir;
-    if (!gallery || to < 0 || to >= gallery.length) return;
-    const next = gallery.slice();
-    [next[index], next[to]] = [next[to], next[index]];
-    setGallery(next);                                        // 낙관적
-    try { await reorderFollows(next.map((g) => g.followee_id)); }
-    catch { loadGallery(); }                                 // 실패 → 서버 기준 복구
+  // 순서 편집 모드에서 드래그로 재정렬한 결과(id 순서)를 갤러리에 반영 + 서버 저장.
+  async function reorderTo(ids) {
+    setGallery((prev) => {
+      if (!prev) return prev;
+      const byId = new Map(prev.map((g) => [g.followee_id, g]));
+      return ids.map((id) => byId.get(id)).filter(Boolean);
+    });
+    try { await reorderFollows(ids); }
+    catch { loadGallery(); }
   }
 
   return (
@@ -163,7 +164,12 @@ export default function Friends() {
 
         {/* 갤러리 — 스택형: 한 화면에 친구 한 명, 아래 친구가 위 친구를 덮으며 올라온다(sticky) */}
         <section className="fr-gallery-sec">
-          <p className="section-label">친구 시간표 <span className="fr-hint">— 스크롤하면 다음 친구가 덮으며 올라와요 · ▲▼로 순서 변경</span></p>
+          <div className="fr-gallery-label">
+            <p className="section-label">친구 시간표</p>
+            {gallery && gallery.length >= 2 && (
+              <button className="link-btn" onClick={() => setReorderOpen(true)}>순서 편집</button>
+            )}
+          </div>
           {gallery === null ? (
             <p className="muted center">불러오는 중…</p>
           ) : gallery.length === 0 ? (
@@ -173,13 +179,9 @@ export default function Friends() {
             </div>
           ) : (
             <div className="fr-gallery" style={{ '--fr-top': `${headTop}px` }}>
-              {gallery.map((item, i) => (
+              {gallery.map((item) => (
                 <div key={item.followee_id} className="fr-card">
                   <div className="fr-card-head">
-                    <span className="fr-card-order">
-                      <button type="button" className="fr-move" disabled={i === 0} onClick={() => move(i, -1)} aria-label="위로">▲</button>
-                      <button type="button" className="fr-move" disabled={i === gallery.length - 1} onClick={() => move(i, 1)} aria-label="아래로">▼</button>
-                    </span>
                     <span className="fr-card-name">{item.nickname || item.username}</span>
                     {item.nickname && <span className="fr-card-sub">{item.username}</span>}
                     <span className="fr-card-ops">
@@ -195,6 +197,75 @@ export default function Friends() {
             </div>
           )}
         </section>
+      </div>
+
+      {reorderOpen && gallery && (
+        <ReorderSheet items={gallery} onReorder={reorderTo} onClose={() => setReorderOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+// 순서 편집 — 컴팩트 목록을 드래그해 재정렬(포인터 기반, 라이브러리 없음). 행 높이 고정으로 위치 계산.
+const ROW_H = 50;
+function ReorderSheet({ items, onReorder, onClose }) {
+  const [order, setOrder] = useState(items);
+  const [dragId, setDragId] = useState(null);
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  function onDown(e, id) {
+    setDragId(id);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+  function onMove(e) {
+    if (dragId == null || !listRef.current) return;
+    const rect = listRef.current.getBoundingClientRect();
+    let idx = Math.floor((e.clientY - rect.top) / ROW_H);
+    idx = Math.max(0, Math.min(order.length - 1, idx));
+    const from = order.findIndex((o) => o.followee_id === dragId);
+    if (from === -1 || from === idx) return;
+    const next = order.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(idx, 0, moved);
+    setOrder(next);
+  }
+  function onUp() {
+    if (dragId == null) return;
+    setDragId(null);
+    onReorder(order.map((o) => o.followee_id));   // 저장 + 갤러리 반영
+  }
+
+  return (
+    <div className="fr-reorder-overlay" role="presentation" onClick={onClose}>
+      <div className="fr-reorder" role="dialog" aria-modal="true" aria-label="친구 순서 편집" onClick={(e) => e.stopPropagation()}>
+        <div className="fr-reorder-head">
+          <h3 className="fr-reorder-title">순서 편집</h3>
+          <button className="btn-add btn-sm" onClick={onClose}>완료</button>
+        </div>
+        <p className="account-note">손잡이(≡)를 잡고 위아래로 끌어 순서를 바꾸세요.</p>
+        <ul className="fr-reorder-list" ref={listRef}>
+          {order.map((o) => (
+            <li
+              key={o.followee_id}
+              className={`fr-reorder-row${dragId === o.followee_id ? ' dragging' : ''}`}
+              style={{ height: ROW_H }}
+              onPointerDown={(e) => onDown(e, o.followee_id)}
+              onPointerMove={onMove}
+              onPointerUp={onUp}
+              onPointerCancel={onUp}
+            >
+              <span className="fr-reorder-handle" aria-hidden="true">≡</span>
+              <span className="fr-reorder-name">{o.nickname || o.username}</span>
+              {o.nickname && <span className="fr-card-sub">{o.username}</span>}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

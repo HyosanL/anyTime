@@ -37,35 +37,60 @@
 .fr-empty { padding: 0.6rem 0; }
 
 /* 갤러리 */
-.fr-hint { font-weight: 400; color: var(--text-3); font-size: 0.72rem; }
+.fr-gallery-label { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 
 /* 스택형 갤러리 — 각 카드가 sticky 로 '앱 헤더 아래'에 붙어, 아래 카드가 위 카드를 덮으며 올라온다.
-   한 화면에 친구 한 명(카드 min-height ≈ 헤더 아래 뷰포트). 카드는 불투명이라 덮으면 아래가 가려진다. */
+   높이는 내용(시간표)에 맞춘다 — 빈 공간을 두지 않는다. 카드는 불투명이라 덮으면 아래가 가려진다. */
 .fr-gallery { margin-top: 0.5rem; }
 .fr-card {
   position: sticky;
   top: var(--fr-top, 0);
-  min-height: calc(100vh - var(--fr-top, 0px) - 0.5rem);
-  min-height: calc(100dvh - var(--fr-top, 0px) - 0.5rem);
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 0.7rem 0.7rem 0.9rem;
+  padding: 0.7rem 0.7rem 0.85rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.10);   /* 위로 드리운 그림자 — 카드가 올라오는 느낌 */
 }
 .fr-card-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
-.fr-card-order { display: inline-flex; flex-direction: column; line-height: 0.7; margin-right: 0.15rem; }
-.fr-move {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-2); font-size: 0.62rem; padding: 0.1rem 0.2rem; line-height: 0.9;
-}
-.fr-move:disabled { color: var(--text-3); opacity: 0.35; cursor: default; }
 .fr-card-name { font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fr-card-sub { font-size: 0.72rem; color: var(--text-3); }
 .fr-card-ops { margin-left: auto; display: flex; gap: 0.35rem; flex: none; }
 .fr-card-grid { width: 100%; }
 .fr-none { padding: 2rem 0; text-align: center; line-height: 1.6; }
 .fr-gallery-empty { padding: 1.5rem 0; }
+
+/* 순서 편집 — 컴팩트 목록 드래그 재정렬 */
+.fr-reorder-overlay {
+  position: fixed; inset: 0; z-index: 260;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: flex-end; justify-content: center;
+  overscroll-behavior: contain;
+}
+.fr-reorder {
+  width: 100%; max-width: 480px; max-height: 82vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-bottom: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: 0.9rem 1rem 1.2rem;
+  overscroll-behavior: contain;
+}
+.fr-reorder-head { display: flex; align-items: center; justify-content: space-between; }
+.fr-reorder-title { margin: 0; font-size: 1rem; }
+.fr-reorder-list { list-style: none; margin: 0.6rem 0 0; padding: 0; touch-action: none; }
+.fr-reorder-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--card);
+  margin-bottom: 0.4rem;
+  user-select: none; -webkit-user-select: none;
+}
+.fr-reorder-row.dragging { border-color: var(--primary); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); opacity: 0.95; }
+.fr-reorder-handle { color: var(--text-3); font-size: 1.1rem; cursor: grab; padding: 0 0.2rem; touch-action: none; }
+.fr-reorder-name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (min-width: 560px) {
+  .fr-reorder-overlay { align-items: center; padding: 1rem; }
+  .fr-reorder { border-radius: var(--r-lg); border-bottom: 1px solid var(--border); }
+}
