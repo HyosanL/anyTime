@@ -183,19 +183,28 @@ export function comboStats(groups, periodNos, noClass = new Set()) {
   return { freeDays, amFree, pmFree, early, gaps, dayCount, unscheduled };
 }
 
-const halfDays = (s) => s.amFree.length + s.pmFree.length;
+// 온전한 공강일(하루 통째 빔)은 오전·오후가 다 비는 것 → 반일 공강 계산에 함께 얹는다.
+// (칩 표시는 comboStats 가 freeDays 로 따로 두므로 화면에서 이중으로 세지 않는다.
+//  사관학교라 공강일은 사실상 없어 실무 영향은 거의 없지만, 있으면 지표는 옳게 둔다.)
+const amFreeCount = (s) => s.amFree.length + s.freeDays.length;
+const pmFreeCount = (s) => s.pmFree.length + s.freeDays.length;
 
 // 정렬: 무엇을 먼저 볼 것인가. (동점이면 나머지 지표로 차례차례 가른다)
+// '공강일 많은 순'은 뺐다(사관학교엔 온전한 공강일이 없어 쓰이지 않는다). '반일 공강'은
+// 오후·오전으로 갈랐다 — 사람은 '오후를 비우고 싶다'/'오전을 비우고 싶다'로 생각하지, 반일을 뭉뚱그리지 않는다.
 export const SORTS = {
-  free:  { label: '공강일 많은 순',      key: (x) => [-x.stats.freeDays.length, -halfDays(x.stats), x.stats.gaps, x.stats.early] },
-  half:  { label: '반일 공강 많은 순',   key: (x) => [-halfDays(x.stats), -x.stats.freeDays.length, x.stats.gaps, x.stats.early] },
-  early: { label: '1교시 적은 순',       key: (x) => [x.stats.early, -x.stats.freeDays.length, -halfDays(x.stats), x.stats.gaps] },
-  gap:   { label: '낀 시간 적은 순',     key: (x) => [x.stats.gaps, -x.stats.freeDays.length, -halfDays(x.stats), x.stats.early] },
+  pm:    { label: '오후 공강 많은 순', key: (x) => [-pmFreeCount(x.stats), -amFreeCount(x.stats), x.stats.gaps, x.stats.early] },
+  am:    { label: '오전 공강 많은 순', key: (x) => [-amFreeCount(x.stats), -pmFreeCount(x.stats), x.stats.gaps, x.stats.early] },
+  early: { label: '1교시 적은 순',     key: (x) => [x.stats.early, -pmFreeCount(x.stats), -amFreeCount(x.stats), x.stats.gaps] },
+  gap:   { label: '낀 시간 적은 순',   key: (x) => [x.stats.gaps, -pmFreeCount(x.stats), -amFreeCount(x.stats), x.stats.early] },
 };
 
+// 기본 정렬 — 첫 진입·복원 실패·옛 초안(free·half) 매핑의 기준점.
+export const DEFAULT_SORT = 'pm';
+
 // 정렬만 다시 한다 — 정렬 기준을 바꿨다고 조합을 다시 만들 이유는 없다(조합 집합은 그대로다).
-export function sortCombos(combos, mode = 'free') {
-  const key = (SORTS[mode] ?? SORTS.free).key;
+export function sortCombos(combos, mode = DEFAULT_SORT) {
+  const key = (SORTS[mode] ?? SORTS[DEFAULT_SORT]).key;
   return [...combos].sort((a, b) => {
     const ka = key(a);
     const kb = key(b);
@@ -217,7 +226,7 @@ export function sortCombos(combos, mode = 'free') {
 const shapeKey = (s) =>
   [s.freeDays.join('·'), s.amFree.join('·'), s.pmFree.join('·'), s.early, s.gaps, s.dayCount].join('|');
 
-export function pickDiverse(combos, mode = 'free', limit = 20) {
+export function pickDiverse(combos, mode = DEFAULT_SORT, limit = 20) {
   const sorted = sortCombos(combos, mode);
   const seen = new Set();
   const fresh = [];      // 성격이 처음 나온 후보(= 서로 다른 시간표)

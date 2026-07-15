@@ -9,7 +9,7 @@ import {
   listTimetables, createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
   addSections, findEmptyTimetables, writeSelectedId, isOverlapError,
 } from '../lib/timetable';
-import { generateCombos, pickDiverse, groupByTime, deriveNoClass, SORTS } from '../lib/wizard';
+import { generateCombos, pickDiverse, groupByTime, deriveNoClass, timeKey, SORTS, DEFAULT_SORT } from '../lib/wizard';
 import { readDraft, writeDraft, clearDraft } from '../lib/wizardDraft';
 import '../styles/wizard.css';
 import '../styles/course.css';
@@ -130,9 +130,11 @@ export default function Wizard() {
   const [picked, setPicked] = useState([]);           // [{ code, offKeys:[시간묶음], offSecs:[분반id] }]
   const [query, setQuery] = useState('');
   const [blocked, setBlocked] = useState(() => new Set());   // 기피 시간 "요일-교시"
-  const [sortMode, setSortMode] = useState('free');
+  const [sortMode, setSortMode] = useState(DEFAULT_SORT);
   const [profPick, setProfPick] = useState({});       // "과목@시간묶음" → 고른 분반 id
   const [corr, setCorr] = useState(null);             // 🚩 수정 제안 모달 { subject, options }
+  const [savedSigs, setSavedSigs] = useState([]);     // 이미 저장한 후보 서명 — '이미 저장함' 배지(중복 저장 방지)
+  const [resumeNote, setResumeNote] = useState(null); // { dropped:[과목코드] } — 되살릴 때 폐강되어 뺀 과목 안내
 
   const [slots, setSlots] = useState(null);           // { existing, empty[] } — 저장 가능 슬롯
   const [chosen, setChosen] = useState([]);           // 저장할 후보의 sig 목록
@@ -157,16 +159,38 @@ export default function Wizard() {
       const known = new Set(semesterList(cat).map((s) => `${s.year}-${s.term}`));
       if (draft && known.has(draft.semKey)) {
         const [y, t] = draft.semKey.split('-').map(Number);
-        const codes = new Set(buildSections(cat, { year: y, term: t }).sections.map((s) => s.course_code));
-        const picked = draft.picked.filter((p) => codes.has(p.code));
+        const secs = buildSections(cat, { year: y, term: t }).sections;
+        const codeSet = new Set(secs.map((s) => s.course_code));
+        const idSet = new Set(secs.map((s) => s.id));
+        // 과목별 현재 시간 묶음 키 — 시간이 바뀐 옛 offKey 는 여기 없으니 버려진다(그 묶음은 다시 켜진다).
+        const keysByCode = new Map();
+        for (const c of secs) {
+          const set = keysByCode.get(c.course_code) ?? keysByCode.set(c.course_code, new Set()).get(c.course_code);
+          set.add(timeKey(c.times));
+        }
+
+        // 폐강·삭제되어 사라진 과목은 뺀다(그 사실은 아래에서 알린다). 남은 과목의 껐던 분반·시간 묶음도
+        // 지금 카탈로그에 남은 것만 유지한다 — 사라진 id 를 붙들면 화면엔 없는 것을 끈 채로 두는 셈이다.
+        const dropped = draft.picked.filter((p) => !codeSet.has(p.code)).map((p) => p.code);
+        const picked = draft.picked
+          .filter((p) => codeSet.has(p.code))
+          .map((p) => ({
+            code: p.code,
+            offKeys: (p.offKeys ?? []).filter((k) => keysByCode.get(p.code)?.has(k)),
+            offSecs: (p.offSecs ?? []).filter((id) => idSet.has(id)),
+          }));
         if (picked.length > 0) {
+          const profPick = {};
+          for (const [k, id] of Object.entries(draft.profPick ?? {})) if (idSet.has(id)) profPick[k] = id;
           setSemKey(draft.semKey);
           setPicked(picked);
           setBlocked(draft.blocked);
-          setSortMode(draft.sortMode);
-          setProfPick(draft.profPick);
+          setSortMode(SORTS[draft.sortMode] ? draft.sortMode : DEFAULT_SORT);  // 옛 'free'·'half'는 기본값으로
+          setProfPick(profPick);
+          setSavedSigs(draft.savedSigs ?? []);
           setStep(draft.step);
           setResumed(true);
+          if (dropped.length) setResumeNote({ dropped });
           return;
         }
       }
@@ -198,8 +222,8 @@ export default function Wizard() {
   // 저장을 끝낸 뒤(saved)에는 적지 않는다 — 이미 시간표가 된 것을 초안으로 다시 남길 이유가 없다.
   useEffect(() => {
     if (!hydrated.current || saved) return;
-    writeDraft(uid, { step, semKey, picked, blocked, sortMode, profPick });
-  }, [uid, step, semKey, picked, blocked, sortMode, profPick, saved]);
+    writeDraft(uid, { step, semKey, picked, blocked, sortMode, profPick, savedSigs });
+  }, [uid, step, semKey, picked, blocked, sortMode, profPick, savedSigs, saved]);
 
   // 단계를 넘길 때마다 맨 위로 — 아래쪽 버튼을 누른 자리에서 다음 화면 중간이 열리면 길을 잃는다.
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
@@ -377,6 +401,8 @@ export default function Wizard() {
   function startOver() {
     clearDraft();
     setResumed(false);
+    setResumeNote(null);
+    setSavedSigs([]);
     setPicked([]);
     setBlocked(new Set());
     setProfPick({});
@@ -385,6 +411,18 @@ export default function Wizard() {
     const cur = currentSemester(catalog);
     if (cur) setSemKey(`${cur.year}-${cur.term}`);
     resetResults();
+  }
+
+  // 저장을 마친 뒤(saved) 같은 조합의 다른 후보를 더 담으러 4단계로 되돌아간다.
+  // 방금 채운 슬롯을 다시 세도록 slots 를 비운다(afterSave 가 timetables 목록은 이미 갱신했다).
+  function backToCandidates() {
+    setSaved(null);
+    setChosen([]);
+    setNames({});
+    setConfirming(false);
+    setSlots(null);
+    setResumed(false);
+    setStep(4);
   }
 
   function addCourse(c) {
@@ -447,6 +485,8 @@ export default function Wizard() {
     setBlocked(new Set());
     setProfPick({});
     setSlots(null);
+    setSavedSigs([]);
+    setResumeNote(null);
     resetResults();
   }
 
@@ -513,7 +553,7 @@ export default function Wizard() {
           if (created && id) await deleteTimetable(id).catch(() => {});
           throw e;
         }
-        done.push({ id, name, reused: !!p.reuse });
+        done.push({ id, name, reused: !!p.reuse, sig: p.sig });
       }
       await afterSave(done);
     } catch (e) {
@@ -533,7 +573,11 @@ export default function Wizard() {
   // 그것을 유지하는 선택지를 함께 준다 — 마법사가 남의 확정을 말없이 끌어내리면
   // 그 시간표로 얻은 강의평·수업메모 자격이 끊긴다.
   async function afterSave(done) {
-    clearDraft();          // 시간표가 됐다 — 초안은 여기서 수명을 다한다
+    // 다 짠 뒤에도 초안은 남긴다(로컬만) — 같은 조합에서 다른 후보를 더 담으러 돌아올 수 있게.
+    // 방금 저장한 후보 서명을 적어 두면, 다시 들어왔을 때 '이미 저장함' 배지로 중복 저장을 막는다.
+    const sigs = [...new Set([...savedSigs, ...done.map((d) => d.sig).filter(Boolean)])];
+    setSavedSigs(sigs);
+    writeDraft(uid, { step: 4, semKey, picked, blocked, sortMode, profPick, savedSigs: sigs });
     const list = await listTimetables().catch(() => timetables);
     setTimetables(list);
     const cur = list.find((t) => t.year === sem.year && t.term === sem.term && t.is_primary);
@@ -621,6 +665,12 @@ export default function Wizard() {
               {saving ? '지정 중…' : primaryId ? '★ 확정하고 홈으로' : '확정은 그대로 두고 홈으로'}
             </button>
           </div>
+          {/* 같은 조합에서 후보를 더 담고 싶을 때 — 홈에 나갔다 오지 않고 4단계로 되돌아간다(초안은 남아 있다) */}
+          <div className="wz-bar-row">
+            <button className="btn-ghost btn-block" disabled={saving} onClick={backToCandidates}>
+              ↩ 다른 후보 더 보기
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -648,12 +698,21 @@ export default function Wizard() {
         {/* 되살렸다는 사실은 알려야 한다 — 말없이 채워 두면 '내가 언제 이걸 담았지?' 가 된다.
             손을 대는 순간(단계 이동·과목 추가…) 사라진다. */}
         {resumed && (
-          <div className="wz-resume">
-            <p className="wz-resume-t">
-              💾 짜다 만 것을 불러왔습니다 — 담은 과목·분반·기피 시간이 그대로입니다.
-            </p>
-            <button className="btn-ghost btn-sm" onClick={startOver}>새로 시작</button>
-          </div>
+          <>
+            <div className="wz-resume">
+              <p className="wz-resume-t">
+                💾 {savedSigs.length > 0
+                  ? '이전에 저장한 조합을 불러왔습니다 — 같은 조합에서 다른 후보를 더 담을 수 있어요.'
+                  : '짜다 만 것을 불러왔습니다 — 담은 과목·분반·기피 시간이 그대로입니다.'}
+              </p>
+              <button className="btn-ghost btn-sm" onClick={startOver}>새로 시작</button>
+            </div>
+            {resumeNote?.dropped?.length > 0 && (
+              <p className="wz-warn wz-resume-warn">
+                ⚠️ 수업정보가 바뀌어 뺀 과목: {resumeNote.dropped.join(', ')} — 남은 과목으로 후보를 다시 만듭니다.
+              </p>
+            )}
+          </>
         )}
 
         {/* ── 1. 과목 담기 ─────────────────────────────────────────────── */}
@@ -987,6 +1046,7 @@ export default function Wizard() {
                     const on = chosen.includes(c.sig);
                     const full = !on && chosen.length >= maxSave;
                     const manyProf = c.groups.some((g) => g.sections.length > 1);
+                    const already = savedSigs.includes(c.sig);   // 이 조합은 이미 저장한 적이 있다
                     return (
                       <li key={c.sig} className={`wz-cand${on ? ' is-on' : ''}`}>
                         <button
@@ -997,6 +1057,7 @@ export default function Wizard() {
                           onClick={() => toggleChoose(c.sig)}
                         >
                           <span className="wz-cand-rank">#{i + 1}</span>
+                          {already && <span className="wz-cand-saved">이미 저장함</span>}
                           <CandChips stats={c.stats} />
                           <span className={`wz-cand-box${on ? ' is-on' : ''}`} aria-hidden="true">
                             {on ? '✓' : '＋'}

@@ -16,6 +16,8 @@ import {
   readSelectedId, writeSelectedId, pickTimetable, isOverlapError,
 } from '../lib/timetable';
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
+import { detectConflicts } from '../lib/conflict';
+import { buildSeed, seedDraft, readDraft } from '../lib/wizardDraft';
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
 
@@ -100,6 +102,23 @@ export default function Home() {
     if (!catalog) return { mine: [], periods: [] };
     return buildMyTimetable(catalog, entries, selected);
   }, [catalog, entries, selected]);
+
+  // 저장한 뒤 관리자가 분반 시간을 고치면 담아 둔 시간표가 겹치게 된다 — 격자는 겹친 칸을
+  // 말없이 덮어써 경고가 없으니, 여기서 직접 찾아 배너로 알리고 겹친 칸을 강조한다.
+  const conflicts = useMemo(
+    () => detectConflicts({ mine, customClasses, periods }),
+    [mine, customClasses, periods]
+  );
+
+  // 겹치게 된 시간표를 마법사로 넘겨 고친다 — 그 과목들로 초안을 심어 4단계(후보)로 보낸다.
+  const openWizardFix = useCallback(() => {
+    if (!selected) return;
+    const seed = buildSeed(mine, `${selected.year}-${selected.term}`);
+    if (!seed.picked.length) return;
+    if (readDraft(uid) && !confirm('마법사에 짜던 초안이 있습니다.\n이 시간표의 과목으로 덮어쓰고 다시 짤까요?')) return;
+    seedDraft(uid, seed);
+    navigate('/wizard');
+  }, [selected, mine, uid, navigate]);
 
   // 전 생도 공통 비수업 시간(생도대·군사훈련·공통연구) — 격자에 함께 깐다.
   // 생도마다 DB에 담지 않는다: 모두에게 똑같은 시간이라 저장할 이유가 없고(계정당 쓰기 0),
@@ -388,6 +407,17 @@ export default function Home() {
             </div>
           </div>
           {adding && selected && <CustomClassForm onAdd={handleAddCustom} />}
+          {conflicts.pairs.length > 0 && (
+            <div className="tt-conflict-warn" role="alert">
+              <p className="tt-conflict-t">⚠️ 시간이 겹치는 강의가 있습니다 — 저장한 뒤 수업정보가 바뀐 것 같아요.</p>
+              <ul className="tt-conflict-list">
+                {conflicts.pairs.map((p) => (
+                  <li key={`${p.a} ${p.b}`}>‘{p.a}’ 와 ‘{p.b}’ 가 겹칩니다.</li>
+                ))}
+              </ul>
+              <button className="btn-add btn-sm" onClick={openWizardFix}>🪄 마법사로 고치기</button>
+            </div>
+          )}
           <div className="home-tt-body">
             {loading ? (
               <p className="muted center">불러오는 중…</p>
@@ -397,6 +427,7 @@ export default function Home() {
                 periods={periods}
                 customClasses={customClasses}
                 commonBlocks={commonBlocks}
+                conflictCells={conflicts.cells}
                 onDeleteCustom={handleDeleteCustom}
                 onHideBlock={handleHideBlock}
               />

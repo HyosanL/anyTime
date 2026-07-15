@@ -294,6 +294,48 @@
   border-radius: var(--r-sm);
 }
 
+/* 저장한 뒤 관리자가 분반 시간을 고쳐 담아 둔 시간표가 겹치게 됐을 때의 경고 */
+.tt-conflict-warn {
+  margin: 0 0.65rem 0.7rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--r-md);
+  background: var(--danger-weak);
+}
+.tt-conflict-t {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--danger);
+  line-height: 1.4;
+}
+.tt-conflict-list {
+  margin: 0.4rem 0 0.6rem;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.tt-conflict-list li { list-style: disc; }
+
+/* 겹친 칸 강조 — 격자는 겹친 두 강의 중 한쪽만 그리므로, 테두리와 ⚠ 로 '여기 겹침이 있다'를 드러낸다 */
+.tt td.tt-td-conflict {
+  position: relative;
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
+}
+.tt td.tt-td-conflict::after {
+  content: '⚠';
+  position: absolute;
+  top: 0;
+  right: 2px;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--danger);
+  pointer-events: none;
+}
+
 /* 확정시간표가 비어 있을 때: 강의 검색 유도 */
 .tt-empty {
   padding: 2.25rem 1.25rem 2rem;

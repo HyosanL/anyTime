@@ -267,6 +267,8 @@
   color: var(--danger);
   font-weight: 600;
 }
+/* 되살릴 때 폐강되어 뺀 과목 안내 — 되살림 배너(wz-resume) 바로 아래에 붙인다 */
+.wz-resume-warn { margin: 0 0 0.8rem; line-height: 1.45; }
 
 /* ── 3단계: 기피 시간 격자 ────────────────────────────────────── */
 .wz-block-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -467,6 +469,18 @@
   font-size: 0.74rem;
   font-weight: 700;
   color: var(--primary);
+}
+
+/* 이미 저장한 조합 — 후보 머리(rank 옆)에 붙는 배지. 중복 저장을 막으려는 알림이지 경고는 아니다 */
+.wz-cand-saved {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-weak);
+  white-space: nowrap;
 }
 
 /* 담긴 분반 — 접어 둔다(펼쳐 두면 후보 20장이 끝없이 길어진다) */

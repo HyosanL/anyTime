@@ -24,7 +24,7 @@ const pad2 = (n) => String(n).padStart(2, '0');
 //   DB에 담기지 않는다(생도마다 저장할 이유가 없다) — 격자에만 깔린다.
 // showProfessor = 칸에 교수명을 함께 적는다. 교수 상세(한 교수의 담당 시간표)에서는
 //   모든 칸이 같은 이름이라 잡음일 뿐이므로 끈다.
-function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], showProfessor = true, onDeleteCustom, onHideBlock }) {
+function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], conflictCells = null, showProfessor = true, onDeleteCustom, onHideBlock }) {
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
   // (부모 Home 이 시작 중 여러 번 리렌더돼도 데이터가 그대로면 재계산하지 않음)
   const grid = useMemo(() => {
@@ -167,10 +167,17 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
               {days.map((d) => {
                 const c = cells[`${d}-${h}`];
                 if (c?.skip) return null;
+                // 겹치는 강의가 있는 칸 — 격자는 한쪽만 그리므로, 이긴 칸을 강조해 '여기 겹침이 있다'를 드러낸다.
+                let conflict = false;
+                if (c && !c.block && conflictCells?.size) {
+                  for (let k = 0; k < (c.span || 1); k++) {
+                    if (conflictCells.has(`${d}-${h + k}`)) { conflict = true; break; }
+                  }
+                }
                 return (
                   <td
                     key={d}
-                    className={c?.block ? 'tt-td-block' : undefined}
+                    className={[c?.block ? 'tt-td-block' : '', conflict ? 'tt-td-conflict' : ''].filter(Boolean).join(' ') || undefined}
                     rowSpan={c && c.span > 1 ? c.span : undefined}
                     style={c && !c.block ? { background: c.color } : undefined}
                   >
