@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
 import { maskText, prefetchMask } from '../lib/mask';
 
@@ -34,6 +34,15 @@ function ScoreRow({ label, required, value, onChange }) {
 // 강의평 작성 폼. create_review 호출(자격 검사는 서버 RPC).
 export default function ReviewForm({ courseCode, professors, defaultProf, onDone }) {
   const [prof, setProf] = useState(defaultProf || (professors[0]?.code ?? ''));
+  // defaultProf·professors 는 부모(ReviewWrite)가 카탈로그를 '마운트 뒤에' 비동기로 읽어 채운다.
+  // useState 초기값은 그 전(빈 값)에 한 번만 잡히므로, 뒤늦게 도착한 기본 교수를 여기서 반영한다.
+  // 이게 없으면 <select>는 교수 이름을 보여주면서도 값은 '' 인 채 제출돼 professor_code=null → '교수 미정'으로 저장된다.
+  const firstCode = professors[0]?.code;
+  useEffect(() => {
+    if (prof) return;                        // 사용자가 이미 고른 값은 건드리지 않는다
+    const next = defaultProf || firstCode;
+    if (next) setProf(next);                 // 도착한 기본 교수를 채택(없으면 진짜 '교수 미정' — 그대로 둔다)
+  }, [defaultProf, firstCode, prof]);
   const [scores, setScores] = useState({ overall: null, workload: null, progress: null, difficulty: null, class_time: null });
   const [fail, setFail] = useState(false);
   const [teamplay, setTeamplay] = useState(false);
@@ -52,6 +61,8 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
     e.preventDefault();
     setError('');
     if (!scores.overall) return setError('종합 평점은 필수입니다.');
+    // 교수 선택지가 있는데 값이 비어 있으면 막는다 — 비면 professor_code=null 로 '교수 미정'에 저장돼 버린다.
+    if (professors.length > 0 && !prof) return setError('교수를 선택해주세요.');
 
     setSubmitting(true);
     const { error } = await supabase.rpc('create_review', {
