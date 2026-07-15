@@ -480,10 +480,10 @@ export default function Home() {
               <span className="nav-tile-sub">자유롭게 이야기 나누기</span>
             </Link>
           ) : (
-            <div className="nav-tile nav-tile-accent is-disabled" role="link" aria-disabled="true" title="익명게시판이 비활성화되었습니다">
-              <span className="nav-tile-ic" aria-hidden="true">💬</span>
+            <div className="nav-tile nav-tile-accent is-disabled" role="link" aria-disabled="true" title="익명게시판 준비중">
+              <span className="nav-tile-ic" aria-hidden="true">🚧</span>
               <span className="nav-tile-title">익명게시판</span>
-              <span className="nav-tile-sub">현재 비활성화됨</span>
+              <span className="nav-tile-sub">준비중이에요</span>
             </div>
           )}
 

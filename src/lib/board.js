@@ -82,12 +82,14 @@ export async function shareImageObjectUrl(token, key, { thumb = false } = {}) {
 // 데이터 (읽기는 RLS, 쓰기는 RPC)
 // 게시판 목록은 활동량(게시글 수) 많은 순. board_post(count) 임베드로 게시판별 글 수를
 // 서버에서 집계(전체 글 행을 받지 않음). 같은 수면 최근 활동순(서버 정렬 → JS 안정정렬로 유지).
+// ⚠️ board_post(count) 임베드 금지: PostgREST 가 이를 count(board_post.*)(전체 행)로 번역하는데,
+//    board_post 엔 authenticated 가 못 읽는 컬럼(post_password_hash)이 있어 전체 행 접근이
+//    'permission denied for table board_post'(400) 로 실패한다 → 목록 전체가 비어 버렸다(핫게만 보임).
+//    게시판 정렬은 서버의 last_activity_at DESC(최근 활동순)로 충분하다 — 목록 UI는 글 수를 쓰지 않는다.
 export const listBoards = (q) =>
-  supabase.from('board').select('*, board_post(count)').ilike('name', `%${q || ''}%`)
+  supabase.from('board').select('*').ilike('name', `%${q || ''}%`)
     .order('last_activity_at', { ascending: false }).limit(100)
-    .then((r) => (r.data || [])
-      .map((b) => ({ ...b, post_count: b.board_post?.[0]?.count ?? 0 }))
-      .sort((a, b) => b.post_count - a.post_count));
+    .then((r) => r.data || []);
 export const createBoard = (name) => supabase.rpc('create_board', { p_name: name }).then((r) => r.data);
 export const getBoard = (id) => supabase.from('board').select('*').eq('id', id).maybeSingle().then((r) => r.data);
 export const PAGE_SIZE = 15;

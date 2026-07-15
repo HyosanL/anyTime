@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
 import { syncPush, consumePendingNav } from './lib/push';
@@ -88,6 +88,24 @@ function ProtectedRoute({ children }) {
   if (loading) return <div className="page-center">로딩 중...</div>;
   if (!session) return <Navigate to="/login" replace />;
   if (geo?.expired) return <GeoBlockScreen />;
+  return children;
+}
+
+// 익명게시판이 닫혀 있으면(관리자 비활성화) 목록·게시판·글 어디로도 못 들어간다(완전 차단).
+// 링크를 직접 알아도 '준비중' 안내만 보인다 — 예전엔 라우트에 아무 가드가 없어 URL 로 들어가졌다.
+// (관리자 모더레이션은 service_role Edge(admin-action)라 이 가드·RLS 와 무관하게 계속 동작한다.)
+function BoardRoute({ children }) {
+  const { settings } = useAuthContext();
+  if (settings && settings.boardEnabled === false) {
+    return (
+      <div className="page-center" style={{ flexDirection: 'column', gap: '0.55rem', textAlign: 'center', padding: '2rem 1.25rem' }}>
+        <span aria-hidden="true" style={{ fontSize: '2.6rem' }}>🚧</span>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: '1.05rem' }}>익명게시판 준비중</p>
+        <p className="muted" style={{ margin: 0 }}>지금은 익명게시판을 열 수 없어요. 준비되면 다시 열게요.</p>
+        <Link to="/" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>홈으로</Link>
+      </div>
+    );
+  }
   return children;
 }
 
@@ -181,9 +199,9 @@ export default function App() {
           {/* 과목 하나만 다루는 화면 — 관리자 허브의 과목 검색에서 새 탭으로 연다 */}
           <Route path="/admin/courses/:code" element={<ProtectedRoute><AdminCourse /></ProtectedRoute>} />
           <Route path="/admin/:section" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-          <Route path="/boards" element={<ProtectedRoute><Boards /></ProtectedRoute>} />
-          <Route path="/board/:id" element={<ProtectedRoute><Board /></ProtectedRoute>} />
-          <Route path="/board/post/:id" element={<ProtectedRoute><Post /></ProtectedRoute>} />
+          <Route path="/boards" element={<ProtectedRoute><BoardRoute><Boards /></BoardRoute></ProtectedRoute>} />
+          <Route path="/board/:id" element={<ProtectedRoute><BoardRoute><Board /></BoardRoute></ProtectedRoute>} />
+          <Route path="/board/post/:id" element={<ProtectedRoute><BoardRoute><Post /></BoardRoute></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           {/* 공유 링크: 유일한 공개 콘텐츠 라우트 — 세션·게이트 없이 그 글 하나만 읽기 전용 */}
