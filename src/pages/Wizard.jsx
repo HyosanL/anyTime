@@ -11,14 +11,9 @@ import {
 } from '../lib/timetable';
 import { generateCombos, pickDiverse, groupByTime, deriveNoClass, timeKey, SORTS, DEFAULT_SORT } from '../lib/wizard';
 import { readDraft, writeDraft, clearDraft } from '../lib/wizardDraft';
+import { getColors, textOn, usePalette } from '../lib/palettes';
 import '../styles/wizard.css';
 import '../styles/course.css';
-
-// 과목별 파스텔 색(TimetableGrid 와 같은 팔레트) — 데이터성 값이라 다크모드와 무관.
-const PALETTE = [
-  '#dbeafe', '#dcfce7', '#fef9c3', '#fce7f3', '#ede9fe',
-  '#ffedd5', '#cffafe', '#fee2e2', '#e0e7ff', '#d1fae5',
-];
 
 const MAX_PER_SEM = 5;                 // DB 트리거와 같은 값(학기당 시간표 상한)
 const SHOW_LIMIT = 20;                 // 한 번에 보여줄 후보 수 — 사람이 훑어보고 고를 수 있는 양
@@ -40,10 +35,12 @@ function MiniGrid({ groups, picked, periodNos, days, colorOf, noClass, blockLabe
     for (const t of g.times ?? []) {
       const ps = periodNos.filter((p) => p >= t.start_period && p <= t.end_period);
       ps.forEach((p, i) => {
+        const color = colorOf(s.course_code);
         cells[`${t.day_of_week}-${p}`] = {
           title: s.course_name,
           no: s.section_no,
-          color: colorOf(s.course_code),
+          color,
+          fg: textOn(color),
           span: i === 0 ? ps.length : 0,
           skip: i > 0,
         };
@@ -72,7 +69,7 @@ function MiniGrid({ groups, picked, periodNos, days, colorOf, noClass, blockLabe
                   className={off ? 'is-noclass' : undefined}
                   title={off ? (blockLabel[`${d}-${p}`] ?? '수업 없는 시간') : undefined}
                   rowSpan={c && c.span > 1 ? c.span : undefined}
-                  style={c ? { background: c.color } : undefined}
+                  style={c ? { background: c.color, '--cell-fg': c.fg } : undefined}
                 >
                   {c && (
                     <span className="wz-mini-cell">
@@ -315,12 +312,15 @@ export default function Wizard() {
     return [...set].sort((a, b) => a - b);
   }, [items]);
 
+  // 미리보기 색은 사용자가 고른 팔레트(홈과 동일). 바뀌면 이벤트로 재렌더.
+  const [pkey] = usePalette();
+  const palette = getColors(pkey);
   const colorOf = useCallback(
     (code) => {
       const i = picked.findIndex((p) => p.code === code);
-      return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+      return palette[(i < 0 ? 0 : i) % palette.length];
     },
-    [picked]
+    [picked, palette]
   );
 
   // 한 시간 묶음에서 실제로 담을 분반(교수). 고르지 않았으면 첫 분반.

@@ -1,0 +1,124 @@
+/* ============================================================
+   시간표 색상 테마 피커 (PalettePicker / PaletteSheet)
+   - 색은 전부 토큰. 단, 스와치 안 미니 블록은 팔레트 색(데이터성 값)이 인라인으로 들어온다.
+   ============================================================ */
+
+/* 스와치 그리드 — 프로필 카드·바텀시트 공용 */
+.pal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 0.6rem;
+}
+
+.pal-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.06s ease, box-shadow 0.12s ease;
+}
+.pal-swatch:active { transform: scale(0.97); }
+.pal-swatch.is-on {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* 미니 모자이크 — 시간표 축소판 느낌(5열 세로 블록) */
+.pal-mosaic {
+  display: flex;
+  gap: 2px;
+  height: 54px;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+.pal-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pal-block {
+  border-radius: 2px;
+  min-height: 0;
+}
+
+.pal-name {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  line-height: 1.2;
+}
+.pal-swatch.is-on .pal-name {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+/* ── 홈 ⚙️ 바텀시트 ── */
+.pal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+.pal-sheet {
+  width: 100%;
+  max-width: 520px;
+  max-height: 82vh;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: 0.9rem 1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: pal-rise 0.18s ease;
+}
+@keyframes pal-rise {
+  from { transform: translateY(12px); opacity: 0.6; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.pal-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pal-sheet-title { margin: 0; font-size: 1rem; }
+.pal-sheet-x {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  line-height: 1;
+}
+.pal-sheet-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+.pal-sheet-body {
+  overflow-y: auto;
+  min-height: 0;
+  padding-top: 0.2rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 560px) {
+  .pal-overlay { align-items: center; padding: 1rem; }
+  .pal-sheet { border-radius: var(--r-lg); border-bottom: 1px solid var(--border); }
+}

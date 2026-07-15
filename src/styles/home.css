@@ -67,6 +67,13 @@
   align-items: center;
   gap: 0.45rem;
 }
+/* 아이콘 전용 툴바 버튼(🖼️ 저장 · ⚙️ 색상 · ＋ 직접추가) — 정사각에 가깝게, 이모지 가운데 */
+.tt-icon-btn {
+  padding: 0.4rem 0.5rem;
+  min-width: 2rem;
+  line-height: 1;
+  text-align: center;
+}
 
 /* ── 시간표 전환 드롭다운 (카드 제목 자리) ───────────────────────── */
 .tt-switch {
@@ -659,8 +666,9 @@
 
 /* ============================================================
    시간표 그리드 (TimetableGrid)
-   - 셀 배경은 컴포넌트 inline style(데이터 PALETTE) 이 칠한다.
-   - 셀 안 텍스트는 항상 밝은 파스텔 위 → var(--on-pastel).
+   - 셀 배경은 컴포넌트 inline style(lib/palettes 팔레트) 이 칠한다.
+   - 셀 안 텍스트색은 td 인라인 --cell-fg(타일 밝기로 자동 대비, lib/palettes textOn).
+     어두운 팔레트(심해·우주선)에서도 읽히게. 값이 없으면 예전처럼 --on-pastel 로 폴백.
    ============================================================ */
 .tt-wrap {
   width: 100%;
@@ -740,7 +748,7 @@
   height: 100%;
   padding: 0.2rem 0.15rem;
   border-radius: var(--r-sm);
-  color: var(--on-pastel);
+  color: var(--cell-fg, var(--on-pastel));
   overflow: hidden;   /* 한 시간짜리 칸(46px)에 과목명 2줄 + 강의실·교수명이 들어차도 이웃 칸을 밀지 않게 */
   transition: filter 0.12s ease, transform 0.06s ease;
 }
@@ -750,7 +758,7 @@
   font-size: 0.74rem;
   font-weight: 700;
   line-height: 1.15;
-  color: var(--on-pastel);
+  color: var(--cell-fg, var(--on-pastel));
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -762,7 +770,7 @@
   font-size: 0.62rem;
   font-weight: 600;
   line-height: 1.2;
-  color: var(--on-pastel);
+  color: var(--cell-fg, var(--on-pastel));
   opacity: 0.78;
   white-space: nowrap;
   overflow: hidden;
@@ -783,7 +791,7 @@
   right: 3px;
   font-size: 0.5rem;
   font-weight: 800;
-  color: var(--on-pastel);
+  color: var(--cell-fg, var(--on-pastel));
   opacity: 0.6;
 }
 

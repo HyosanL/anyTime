@@ -6,6 +6,7 @@ import { supabase } from '../supabase';
 import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendTestPush } from '../lib/push';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
+import PalettePicker from '../components/PalettePicker';
 import BackButton from '../components/BackButton';
 import '../styles/share.css';
 
@@ -279,6 +280,12 @@ export default function Profile() {
           <div className="account-theme">
             <ThemeToggle />
           </div>
+        </section>
+
+        <section className="card account-sec">
+          <h3 className="account-sec-title">시간표 색상</h3>
+          <p className="account-note">시간표 과목 칸의 색 테마를 고를 수 있어요. (이 기기에만 저장됩니다.)</p>
+          <PalettePicker />
         </section>
 
         <PushSettings />

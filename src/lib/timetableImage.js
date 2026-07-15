@@ -1,49 +1,30 @@
 // 시간표를 PNG 이미지로 렌더링해 저장/공유한다.
 // DOM→이미지 라이브러리(html-to-image 등)는 iOS Safari에서 canvas 오염으로 자주 실패하므로,
-// TimetableGrid 와 동일한 블록 계산을 canvas 2D로 직접 그린다(모든 기기에서 안정적).
+// TimetableGrid 와 동일한 블록 계산(lib/timetableLayout)을 canvas 2D로 직접 그린다(모든 기기에서 안정적).
+//
+// ⭐ 화면 격자(home.css)와 '똑같은 그림'이 나오도록 그린다:
+//   - 격자선 없이 3px 간격으로 분리된 둥근 타일(빈 칸도 연한 테두리 박스)
+//   - 공통 공강은 수업 없는 칸에만 회색으로(공용 cells 모델을 그대로 사용)
+//   - 직접추가 칸엔 '직접' 태그, 글자색은 팔레트 밝기 자동 대비(cell.fg)
+//   - 색은 사용자가 고른 팔레트(lib/palettes)를 클릭 시점에 읽어 화면과 일치
 import { dayLabel } from './cache';
+import { getColors, getPaletteKey } from './palettes';
+import { buildClassBlocks, layoutTimetable, pad2 } from './timetableLayout';
 
-const PALETTE = [
-  '#dbeafe', '#dcfce7', '#fef9c3', '#fce7f3', '#ede9fe',
-  '#ffedd5', '#cffafe', '#fee2e2', '#e0e7ff', '#d1fae5',
-];
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
-function parseHM(t) {
-  if (!t) return null;
-  const [h, m] = String(t).split(':').map(Number);
-  if (Number.isNaN(h)) return null;
-  return h * 60 + (m || 0);
-}
-const pad2 = (n) => String(n).padStart(2, '0');
-
-// TimetableGrid 와 동일하게 통합 블록 목록을 만든다.
-function buildBlocks({ mine = [], periods = [], customClasses = [] }) {
-  const periodByNo = Object.fromEntries((periods || []).map((p) => [p.no, p]));
-  const colorByKey = {};
-  let ci = 0;
-  const colorFor = (k) => (colorByKey[k] ??= PALETTE[ci++ % PALETTE.length]);
-
-  // meta = 강의실 · 교수명(화면 격자와 같은 한 줄)
-  const blocks = [];
-  (mine || []).forEach((s) =>
-    (s.times || []).forEach((t) => {
-      const startMin = parseHM(periodByNo[t.start_period]?.start_time);
-      const endMin = parseHM(periodByNo[t.end_period]?.end_time);
-      if (startMin == null || endMin == null || endMin <= startMin) return;
-      blocks.push({
-        day: t.day_of_week, startMin, endMin, title: s.course_name,
-        meta: [t.room, s.professor_name].filter(Boolean).join(' · '),
-        color: colorFor('c:' + s.course_code),
-      });
-    })
-  );
-  (customClasses || []).forEach((c) => {
-    if (c.startMin == null || c.endMin == null || c.endMin <= c.startMin) return;
-    blocks.push({ day: c.day, startMin: c.startMin, endMin: c.endMin, title: c.title, meta: c.room || '', color: colorFor('x:' + c.id) });
-  });
-  return blocks;
-}
+// 화면 토큰과 맞춘 값(이미지는 항상 밝게 — 다크모드와 무관하게 가독성).
+const C = {
+  bg: '#ffffff',
+  title: '#111827',
+  dayHead: '#374151',
+  emptyFill: '#ffffff',
+  emptyBorder: '#e5e7eb',   // --border(라이트) 근사
+  block: '#e5eaf1',         // --block-bg(라이트)
+  blockText: '#475569',     // 회색 위 읽는 색(--text-2 근사)
+  axisPeriod: '#9ca3af',
+  axisHour: '#6b7280',
+};
 
 // 텍스트를 maxWidth 안에서 최대 maxLines 줄로 접고, 넘치면 말줄임.
 function wrapText(ctx, text, maxWidth, maxLines) {
@@ -60,7 +41,6 @@ function wrapText(ctx, text, maxWidth, maxLines) {
       line = test;
     }
   }
-  // 남은 글자 처리(말줄임)
   const rest = chars.slice([...lines.join('')].length).join('');
   if (lines.length < maxLines) {
     let last = rest;
@@ -82,33 +62,24 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+function tile(ctx, x, y, w, h, r, fill, stroke) {
+  roundRect(ctx, x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+}
 
 // 시간표 canvas 를 생성. 블록이 없으면 null.
 export function renderTimetableCanvas({ mine, periods, customClasses, commonBlocks = [], title = '시간표' }) {
-  const classes = buildBlocks({ mine, periods, customClasses });
-  if (classes.length === 0) return null;
-
-  // 공통 비수업 시간(생도대·군사훈련·자율선택형교과)은 수업 아래에 회색으로 깐다 —
-  // 화면 격자와 같은 그림이 나와야 저장한 이미지가 딴판이 되지 않는다.
-  const backdrop = (commonBlocks || []).map((b) => ({
-    day: b.day, startMin: b.startMin, endMin: b.endMin, title: b.label, color: null, noClass: true,
-  }));
-  const blocks = [...backdrop, ...classes];   // 수업을 나중에 그려 위에 얹는다
-
-  const usedDays = new Set([1, 2, 3, 4, 5]);
-  blocks.forEach((b) => usedDays.add(b.day));
-  const days = [...usedDays].sort((a, b) => a - b);
-
-  let minH = Infinity, maxH = -Infinity;
-  blocks.forEach((b) => { minH = Math.min(minH, Math.floor(b.startMin / 60)); maxH = Math.max(maxH, Math.ceil(b.endMin / 60)); });
-  const hours = [];
-  for (let h = minH; h < maxH; h++) hours.push(h);
-
-  const periodNoByHour = {};
-  (periods || []).forEach((p) => { const sm = parseHM(p.start_time); if (sm != null) periodNoByHour[Math.floor(sm / 60)] = p.no; });
+  // 화면과 같은 팔레트·같은 격자 계산.
+  const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: getColors(getPaletteKey()) });
+  const grid = layoutTimetable({ classBlocks, periods, commonBlocks });
+  if (grid.empty) return null;
+  const { days, hours, minH, periodNoByHour, cells } = grid;
 
   // 레이아웃(CSS px). DPR 로 스케일해 선명하게.
   const PAD = 16, TITLE_H = 44, HEAD_H = 34, HOURCOL_W = 52, DAYCOL_W = 118, ROW_H = 58;
+  const RAD = 8;      // --r-sm
+  const INSET = 1.5;  // 타일 사이 3px 간격(화면 border-spacing) 근사
   const gridW = HOURCOL_W + days.length * DAYCOL_W;
   const gridH = hours.length * ROW_H;
   const W = PAD * 2 + gridW;
@@ -122,12 +93,12 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
   ctx.scale(DPR, DPR);
   ctx.textBaseline = 'top';
 
-  // 배경(이미지는 항상 밝게 — 다크모드와 무관하게 가독성 확보)
-  ctx.fillStyle = '#ffffff';
+  // 배경
+  ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, W, H);
 
   // 제목
-  ctx.fillStyle = '#111827';
+  ctx.fillStyle = C.title;
   ctx.font = `700 20px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.fillText(title, W / 2, PAD + 8);
@@ -137,61 +108,80 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
 
   // 요일 헤더
   ctx.font = `600 14px ${FONT}`;
-  ctx.fillStyle = '#374151';
+  ctx.fillStyle = C.dayHead;
   days.forEach((d, i) => ctx.fillText(dayLabel(d), gridLeft + i * DAYCOL_W + DAYCOL_W / 2, PAD + TITLE_H + 9));
 
-  // 격자선 + 시(hour) 라벨
-  ctx.strokeStyle = '#e5e7eb';
-  ctx.lineWidth = 1;
-  ctx.textAlign = 'left';
-  for (let r = 0; r <= hours.length; r++) {
-    const y = gridTop + r * ROW_H;
-    ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(PAD + gridW, y); ctx.stroke();
-  }
-  for (let c = 0; c <= days.length; c++) {
-    const x = gridLeft + c * DAYCOL_W;
-    ctx.beginPath(); ctx.moveTo(x, PAD + TITLE_H); ctx.lineTo(x, gridTop + gridH); ctx.stroke();
-  }
-  // 좌측 축(시각·교시)
+  // 좌축(시각·교시) — 격자선은 그리지 않는다(화면처럼 분리 타일).
   hours.forEach((h, i) => {
     const y = gridTop + i * ROW_H;
     ctx.textAlign = 'center';
     if (periodNoByHour[h] != null) {
-      ctx.fillStyle = '#9ca3af';
+      ctx.fillStyle = C.axisPeriod;
       ctx.font = `600 11px ${FONT}`;
       ctx.fillText(String(periodNoByHour[h]), PAD + HOURCOL_W / 2, y + 6);
     }
-    ctx.fillStyle = '#6b7280';
+    ctx.fillStyle = C.axisHour;
     ctx.font = `600 13px ${FONT}`;
     ctx.fillText(pad2(h), PAD + HOURCOL_W / 2, y + 22);
   });
 
-  // 강의 블록 (공통 비수업 시간이 먼저 깔리고 그 위에 수업이 얹힌다)
-  blocks.forEach((b) => {
-    const di = days.indexOf(b.day);
-    if (di < 0) return;
-    const x = gridLeft + di * DAYCOL_W;
-    const y = gridTop + ((b.startMin - minH * 60) / 60) * ROW_H;
-    const h = ((b.endMin - b.startMin) / 60) * ROW_H;
-    roundRect(ctx, x + 2.5, y + 2.5, DAYCOL_W - 5, h - 5, 8);
-    ctx.fillStyle = b.noClass ? '#e5eaf1' : b.color;   // 화면의 --block-bg(라이트)와 같은 회색
-    ctx.fill();
+  // 칸: 화면과 같은 cells 모델을 그대로 그린다.
+  days.forEach((d, di) => {
+    hours.forEach((h, hi) => {
+      const cx = gridLeft + di * DAYCOL_W;
+      const cy = gridTop + hi * ROW_H;
+      const cell = cells[`${d}-${h}`];
 
-    const innerX = x + 9, innerW = DAYCOL_W - 18;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = b.noClass ? '#475569' : '#1f2937';
-    ctx.font = `600 12.5px ${FONT}`;
-    const metaLines = b.meta ? 1 : 0;
-    const maxTitleLines = Math.max(1, Math.min(3, Math.floor((h - 12) / 16) - metaLines));
-    const titleLines = wrapText(ctx, b.title, innerW, maxTitleLines);
-    let ty = y + 8;
-    titleLines.forEach((ln) => { ctx.fillText(ln, innerX, ty); ty += 16; });
-    if (b.meta && ty + 14 <= y + h) {
-      ctx.fillStyle = '#4b5563';
-      ctx.font = `500 11px ${FONT}`;
-      const metaLine = wrapText(ctx, b.meta, innerW, 1)[0] || '';
-      ctx.fillText(metaLine, innerX, ty);
-    }
+      if (!cell) {   // 빈 칸 — 연한 테두리 둥근 박스
+        tile(ctx, cx + INSET, cy + INSET, DAYCOL_W - 2 * INSET, ROW_H - 2 * INSET, RAD, C.emptyFill, C.emptyBorder);
+        return;
+      }
+      if (cell.skip) return;   // 위 칸의 rowSpan 이 덮음
+
+      const tx = cx + INSET;
+      const ty = cy + INSET;
+      const tw = DAYCOL_W - 2 * INSET;
+      const th = cell.span * ROW_H - 2 * INSET;
+
+      if (cell.block) {   // 공통 공강 — 회색 타일 + 회색 글자(가운데)
+        tile(ctx, tx, ty, tw, th, RAD, C.block, null);
+        ctx.fillStyle = C.blockText;
+        ctx.font = `600 11.5px ${FONT}`;
+        ctx.textAlign = 'center';
+        const lines = wrapText(ctx, cell.title, tw - 16, 2);
+        let yy = ty + (th - lines.length * 15) / 2;
+        lines.forEach((ln) => { ctx.fillText(ln, tx + tw / 2, yy); yy += 15; });
+        return;
+      }
+
+      // 수업 칸 — 팔레트 색 타일 + 자동 대비 글자(가운데)
+      tile(ctx, tx, ty, tw, th, RAD, cell.color, null);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = cell.fg;
+      ctx.font = `700 12px ${FONT}`;
+      const titleLines = wrapText(ctx, cell.title, tw - 16, 2);
+      const hasMeta = !!cell.meta;
+      const blockH = titleLines.length * 15 + (hasMeta ? 13 : 0);
+      let yy = ty + Math.max(6, (th - blockH) / 2);
+      titleLines.forEach((ln) => { ctx.fillText(ln, tx + tw / 2, yy); yy += 15; });
+      if (hasMeta) {
+        ctx.save();
+        ctx.globalAlpha = 0.78;   // 화면 .tt-meta opacity
+        ctx.font = `600 10px ${FONT}`;
+        const metaLine = wrapText(ctx, cell.meta, tw - 14, 1)[0] || '';
+        ctx.fillText(metaLine, tx + tw / 2, yy + 1);
+        ctx.restore();
+      }
+      if (cell.custom) {   // '직접' 태그 — 우상단(화면 .tt-custom-tag)
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        ctx.textAlign = 'right';
+        ctx.font = `800 8px ${FONT}`;
+        ctx.fillStyle = cell.fg;
+        ctx.fillText('직접', tx + tw - 4, ty + 3);
+        ctx.restore();
+      }
+    });
   });
 
   return canvas;

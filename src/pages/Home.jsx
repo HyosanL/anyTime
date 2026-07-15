@@ -8,6 +8,7 @@ import PullToRefresh from '../components/PullToRefresh';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSummary from '../components/TimetableSummary';
 import TimetableSwitcher from '../components/TimetableSwitcher';
+import { PaletteSheet } from '../components/PalettePicker';
 import { getCatalog, subscribeCatalog, buildMyTimetable, currentSemester, semesterList } from '../lib/cache';
 import { buildCommonBlocks, blockKey, readHidden, hideBlock, unhideAll } from '../lib/commonBlock';
 import {
@@ -86,6 +87,7 @@ export default function Home() {
 
   const [customClasses, setCustomClasses] = useState([]);
   const [adding, setAdding] = useState(false);
+  const [palOpen, setPalOpen] = useState(false);   // 시간표 색상 테마 시트(⚙️)
   // 수강신청용 요약표(어느 시간표든 목록에서 바로) — { tt, entries, customs, loading }
   const [summary, setSummary] = useState(null);
   // 게시판 활성 여부는 부팅 RPC 로 이미 와 있다 — 홈 진입마다 board_enabled() 를 따로 부르지 않는다.
@@ -400,10 +402,14 @@ export default function Home() {
             <div className="home-tt-actions">
               {offline && <span className="cache-tag">오프라인</span>}
               {(mine.length > 0 || customClasses.length > 0) && (
-                <button className="btn-ghost btn-sm" title="시간표를 이미지로 저장"
-                  onClick={handleSaveImage}>🖼️ 이미지 저장</button>
+                <button className="btn-ghost btn-sm tt-icon-btn" title="시간표를 이미지로 저장" aria-label="시간표를 이미지로 저장"
+                  onClick={handleSaveImage}>🖼️</button>
               )}
-              <button className="btn-ghost btn-sm" disabled={!selected} onClick={() => setAdding((v) => !v)}>{adding ? '닫기' : '＋ 직접 추가'}</button>
+              <button className="btn-ghost btn-sm tt-icon-btn" title="시간표 색상 테마" aria-label="시간표 색상 테마"
+                onClick={() => setPalOpen(true)}>⚙️</button>
+              <button className="btn-ghost btn-sm tt-icon-btn" disabled={!selected}
+                title={adding ? '직접 추가 닫기' : '직접 추가한 강의'} aria-label={adding ? '직접 추가 닫기' : '직접 추가한 강의'}
+                onClick={() => setAdding((v) => !v)}>{adding ? '✕' : '＋'}</button>
             </div>
           </div>
           {adding && selected && <CustomClassForm onAdd={handleAddCustom} />}
@@ -502,6 +508,8 @@ export default function Home() {
           onClose={() => setSummary(null)}
         />
       )}
+
+      {palOpen && <PaletteSheet onClose={() => setPalOpen(false)} />}
     </PullToRefresh>
   );
 }
