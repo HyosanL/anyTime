@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dayLabel } from '../lib/cache';
-import { getColors, usePalette } from '../lib/palettes';
+import { paletteByKey, usePalette } from '../lib/palettes';
 import { buildClassBlocks, layoutTimetable, pad2 } from '../lib/timetableLayout';
 
 // 시간 기준(한 시간 단위 칸) 주간 시간표.
@@ -17,7 +17,8 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
   // 계산은 화면·이미지가 공유하는 lib/timetableLayout 에 있다(저장본이 화면과 같은 그림이 되도록).
   const grid = useMemo(() => {
-    const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: getColors(pkey), showProfessor });
+    const pal = paletteByKey(pkey);
+    const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg, showProfessor });
     return layoutTimetable({ classBlocks, periods, commonBlocks });
   }, [mine, periods, customClasses, commonBlocks, showProfessor, pkey]);
 

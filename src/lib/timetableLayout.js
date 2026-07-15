@@ -1,7 +1,6 @@
 // 시간표 격자 계산 — 화면(TimetableGrid, DOM)과 이미지 저장(timetableImage, canvas)이
 // '똑같은 그림'을 그리도록 블록·격자 계산을 한 곳으로 뺀다.
 // 예전엔 둘이 서로 다른 로직으로 블록을 만들어 저장본이 화면과 어긋났다.
-import { textOn } from './palettes';
 
 // "09:00" / "09:00:00" -> 분
 export function parseHM(t) {
@@ -13,8 +12,8 @@ export function parseHM(t) {
 export const pad2 = (n) => String(n).padStart(2, '0');
 
 // 모든 강의(DB 분반 mine + 직접추가 customClasses)를 통합 블록으로.
-// 색은 키 순서대로 colors[i % n], 글자색 fg 는 타일 밝기로 자동 대비(textOn).
-export function buildClassBlocks({ mine = [], periods = [], customClasses = [], colors, showProfessor = true }) {
+// 색은 키 순서대로 colors[i % n]. 글자색 fg 는 그 테마 한 벌의 통일 색(모든 칸 공통).
+export function buildClassBlocks({ mine = [], periods = [], customClasses = [], colors, fg, showProfessor = true }) {
   const periodByNo = Object.fromEntries((periods || []).map((p) => [p.no, p]));
   const colorByKey = {};
   let ci = 0;
@@ -26,30 +25,28 @@ export function buildClassBlocks({ mine = [], periods = [], customClasses = [], 
       const startMin = parseHM(periodByNo[t.start_period]?.start_time);
       const endMin = parseHM(periodByNo[t.end_period]?.end_time);
       if (startMin == null || endMin == null || endMin <= startMin) return;
-      const color = colorFor('c:' + s.course_code);
       blocks.push({
         day: t.day_of_week,
         startMin,
         endMin,
         title: s.course_name,
         meta: [t.room, showProfessor ? s.professor_name : null].filter(Boolean).join(' · '),
-        color,
-        fg: textOn(color),
+        color: colorFor('c:' + s.course_code),
+        fg,
         memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
       });
     })
   );
   (customClasses || []).forEach((c) => {
     if (c.startMin == null || c.endMin == null || c.endMin <= c.startMin) return;
-    const color = colorFor('x:' + c.id);
     blocks.push({
       day: c.day,
       startMin: c.startMin,
       endMin: c.endMin,
       title: c.title,
       meta: c.room || '',
-      color,
-      fg: textOn(color),
+      color: colorFor('x:' + c.id),
+      fg,
       custom: true,
       id: c.id,
     });

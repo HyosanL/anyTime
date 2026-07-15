@@ -8,7 +8,7 @@
 //   - 직접추가 칸엔 '직접' 태그, 글자색은 팔레트 밝기 자동 대비(cell.fg)
 //   - 색은 사용자가 고른 팔레트(lib/palettes)를 클릭 시점에 읽어 화면과 일치
 import { dayLabel } from './cache';
-import { getColors, getPaletteKey } from './palettes';
+import { paletteByKey, getPaletteKey } from './palettes';
 import { buildClassBlocks, layoutTimetable, pad2 } from './timetableLayout';
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
@@ -71,7 +71,8 @@ function tile(ctx, x, y, w, h, r, fill, stroke) {
 // 시간표 canvas 를 생성. 블록이 없으면 null.
 export function renderTimetableCanvas({ mine, periods, customClasses, commonBlocks = [], title = '시간표' }) {
   // 화면과 같은 팔레트·같은 격자 계산.
-  const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: getColors(getPaletteKey()) });
+  const pal = paletteByKey(getPaletteKey());
+  const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg });
   const grid = layoutTimetable({ classBlocks, periods, commonBlocks });
   if (grid.empty) return null;
   const { days, hours, minH, periodNoByHour, cells } = grid;

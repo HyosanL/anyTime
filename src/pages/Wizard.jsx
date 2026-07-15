@@ -11,7 +11,7 @@ import {
 } from '../lib/timetable';
 import { generateCombos, pickDiverse, groupByTime, deriveNoClass, timeKey, SORTS, DEFAULT_SORT } from '../lib/wizard';
 import { readDraft, writeDraft, clearDraft } from '../lib/wizardDraft';
-import { getColors, textOn, usePalette } from '../lib/palettes';
+import { paletteByKey, usePalette } from '../lib/palettes';
 import '../styles/wizard.css';
 import '../styles/course.css';
 
@@ -28,19 +28,18 @@ const pickKey = (courseCode, groupKey) => `${courseCode}@${groupKey}`;
 
 // 후보 미리보기(교시 × 요일) — 홈 격자의 축소판. 링크 없이 보기만 한다.
 // 비수업 시간(생도대·군사훈련…)은 회색으로 깔아 '수업이 없는 시간'임을 드러낸다.
-function MiniGrid({ groups, picked, periodNos, days, colorOf, noClass, blockLabel }) {
+function MiniGrid({ groups, picked, periodNos, days, colorOf, fg, noClass, blockLabel }) {
   const cells = {};
   for (const g of groups) {
     const s = picked(g);
     for (const t of g.times ?? []) {
       const ps = periodNos.filter((p) => p >= t.start_period && p <= t.end_period);
       ps.forEach((p, i) => {
-        const color = colorOf(s.course_code);
         cells[`${t.day_of_week}-${p}`] = {
           title: s.course_name,
           no: s.section_no,
-          color,
-          fg: textOn(color),
+          color: colorOf(s.course_code),
+          fg,
           span: i === 0 ? ps.length : 0,
           skip: i > 0,
         };
@@ -314,7 +313,8 @@ export default function Wizard() {
 
   // 미리보기 색은 사용자가 고른 팔레트(홈과 동일). 바뀌면 이벤트로 재렌더.
   const [pkey] = usePalette();
-  const palette = getColors(pkey);
+  const pal = paletteByKey(pkey);
+  const palette = pal.colors;
   const colorOf = useCallback(
     (code) => {
       const i = picked.findIndex((p) => p.code === code);
@@ -1070,6 +1070,7 @@ export default function Wizard() {
                           periodNos={periodNos}
                           days={days}
                           colorOf={colorOf}
+                          fg={pal.fg}
                           noClass={noClass}
                           blockLabel={blockLabel}
                         />
