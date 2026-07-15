@@ -755,6 +755,10 @@
 }
 .tt-cell:active { transform: scale(0.97); }
 .tt-cell:hover { filter: brightness(0.97); }
+/* 읽기 전용(친구 시간표) — 그림만, 상호작용 없음 */
+.tt-cell.tt-readonly { cursor: default; }
+.tt-cell.tt-readonly:hover { filter: none; }
+.tt-cell.tt-readonly:active { transform: none; }
 .tt-course {
   font-size: 0.74rem;
   font-weight: 700;

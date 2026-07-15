@@ -11,7 +11,8 @@ import { buildClassBlocks, layoutTimetable, pad2 } from '../lib/timetableLayout'
 //   DB에 담기지 않는다(생도마다 저장할 이유가 없다) — 격자에만 깔린다.
 // showProfessor = 칸에 교수명을 함께 적는다. 교수 상세(한 교수의 담당 시간표)에서는
 //   모든 칸이 같은 이름이라 잡음일 뿐이므로 끈다.
-function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], conflictCells = null, showProfessor = true, onDeleteCustom, onHideBlock }) {
+// readOnly = 읽기 전용(친구 시간표 보기). 링크·삭제/숨기기 없이 그림만 보여준다.
+function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], conflictCells = null, showProfessor = true, readOnly = false, onDeleteCustom, onHideBlock }) {
   // 사용자가 고른 색 테마 — 바뀌면(다른 화면·시트에서) 이벤트로 여기까지 와서 격자를 재채색한다.
   const [pkey] = usePalette();
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
@@ -73,26 +74,45 @@ function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBloc
                     style={c && !c.block ? { background: c.color, '--cell-fg': c.fg } : undefined}
                   >
                     {c && c.block ? (
-                      <button
-                        type="button"
-                        className="tt-cell tt-cell-block"
-                        title="공통 공강 시간 — 탭하여 숨기기"
-                        onClick={() => onHideBlock?.(c.src)}
-                      >
-                        <span className="tt-course">{c.title}</span>
-                      </button>
-                    ) : c &&
-                      (c.custom ? (
+                      readOnly ? (
+                        <div className="tt-cell tt-cell-block tt-readonly">
+                          <span className="tt-course">{c.title}</span>
+                        </div>
+                      ) : (
                         <button
                           type="button"
-                          className="tt-cell tt-cell-custom"
-                          title="직접 추가한 강의 — 탭하여 삭제"
-                          onClick={() => onDeleteCustom?.(c.id, c.title)}
+                          className="tt-cell tt-cell-block"
+                          title="공통 공강 시간 — 탭하여 숨기기"
+                          onClick={() => onHideBlock?.(c.src)}
                         >
                           <span className="tt-course">{c.title}</span>
-                          {c.meta && <span className="tt-meta">{c.meta}</span>}
-                          <span className="tt-custom-tag">직접</span>
                         </button>
+                      )
+                    ) : c &&
+                      (c.custom ? (
+                        readOnly ? (
+                          <div className="tt-cell tt-cell-custom tt-readonly">
+                            <span className="tt-course">{c.title}</span>
+                            {c.meta && <span className="tt-meta">{c.meta}</span>}
+                            <span className="tt-custom-tag">직접</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="tt-cell tt-cell-custom"
+                            title="직접 추가한 강의 — 탭하여 삭제"
+                            onClick={() => onDeleteCustom?.(c.id, c.title)}
+                          >
+                            <span className="tt-course">{c.title}</span>
+                            {c.meta && <span className="tt-meta">{c.meta}</span>}
+                            <span className="tt-custom-tag">직접</span>
+                          </button>
+                        )
+                      ) : readOnly ? (
+                        <div className="tt-cell tt-readonly" title={[c.title, c.meta].filter(Boolean).join(' · ')}>
+                          <span className="tt-course">{c.title}</span>
+                          {c.meta && <span className="tt-meta">{c.meta}</span>}
+                        </div>
                       ) : (
                         /* 칸이 좁아 강의실·교수명은 말줄임될 수 있다 — 전체 문구는 title 로 남긴다 */
                         <Link className="tt-cell" to={c.memoTo} title={`${[c.title, c.meta].filter(Boolean).join(' · ')} — 수업 메모`}>

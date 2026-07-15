@@ -17,9 +17,10 @@ function FriendGrid({ catalog, item }) {
     () => (catalog && item.timetable ? buildCommonBlocks(catalog, item.timetable) : []),
     [catalog, item]
   );
-  if (!item.timetable) return <p className="fr-none muted">공개된 확정 시간표가 없어요.</p>;
+  if (!item.public) return <p className="fr-none muted">아직 확정시간표를 공개하지 않았어요.<br />공개하면 여기 자동으로 떠요.</p>;
+  if (!item.timetable) return <p className="fr-none muted">이번 학기 확정 시간표가 없어요.</p>;
   if (mine.length === 0 && (item.customs?.length ?? 0) === 0) return <p className="fr-none muted">담긴 강의가 없어요.</p>;
-  return <TimetableGrid mine={mine} periods={periods} customClasses={item.customs || []} commonBlocks={commonBlocks} showProfessor={false} />;
+  return <TimetableGrid mine={mine} periods={periods} customClasses={item.customs || []} commonBlocks={commonBlocks} showProfessor={false} readOnly />;
 }
 
 // 화면: 시간표 공유(친구). 내 확정시간표 공개 토글 + 아이디 검색 + 팔로우한 사람들의 확정시간표 갤러리.
@@ -130,6 +131,7 @@ export default function Friends() {
                 {results.map((u) => (
                   <li key={u.id} className="fr-search-row">
                     <span className="fr-uname">{u.username}</span>
+                    {!u.public && <span className="fr-private-tag" title="아직 공개하지 않은 사용자 — 추가해두면 나중에 공개했을 때 떠요">비공개</span>}
                     {u.following
                       ? <span className="fr-added">추가됨</span>
                       : <button className="btn-add btn-sm" onClick={() => follow(u)}>추가</button>}

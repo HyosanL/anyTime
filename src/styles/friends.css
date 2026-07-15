@@ -24,6 +24,16 @@
 .fr-search-row:first-child { border-top: 0; }
 .fr-uname { flex: 1; font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fr-added { flex: none; font-size: 0.8rem; color: var(--text-3); }
+.fr-private-tag {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--chip-bg, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.05rem 0.35rem;
+}
 .fr-empty { padding: 0.6rem 0; }
 
 /* 갤러리 */
