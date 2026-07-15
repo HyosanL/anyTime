@@ -45,7 +45,7 @@ export function useAuth() {
   const fetchCadet = useCallback(async (uid) => {
     // 순차 왕복 → 병렬 1왕복. supabase-js 는 네트워크 실패 시 throw 대신 { data:null } 을 준다(오프라인 안전).
     const [{ data }, boot] = await Promise.all([
-      supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin').eq('id', uid).maybeSingle(),
+      supabase.from('cadet').select('id, username, post_count, geo_verified_at, is_admin, tt_public').eq('id', uid).maybeSingle(),
       fetchBootInfo(),
     ]);
     if (data) { setCadet(data); writeCadetCache(data); } // 오프라인이면 data=null → 캐시 유지

@@ -405,6 +405,8 @@ export default function Home() {
                 <button className="btn-ghost btn-sm tt-icon-btn" title="시간표를 이미지로 저장" aria-label="시간표를 이미지로 저장"
                   onClick={handleSaveImage}>🖼️</button>
               )}
+              <button className="btn-ghost btn-sm tt-icon-btn" title="친구 시간표 공유" aria-label="친구 시간표 공유"
+                onClick={() => navigate('/friends')}>👥</button>
               <button className="btn-ghost btn-sm tt-icon-btn" title="시간표 색상 테마" aria-label="시간표 색상 테마"
                 onClick={() => setPalOpen(true)}>⚙️</button>
               <button className="btn-ghost btn-sm tt-icon-btn" disabled={!selected}
