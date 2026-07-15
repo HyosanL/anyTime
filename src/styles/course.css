@@ -523,13 +523,14 @@
 .rev-scores {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.6rem;   /* 행 간격을 넓혀 위/아래 별점 오터치 방지 */
 }
 .score-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
+  min-height: 2.1rem;   /* 별점 사이에 비클릭 세로 여백을 둬 인접 행 오터치 감소 */
 }
 .score-label { font-size: 0.86rem; font-weight: 600; color: var(--text-2); }
 .score-stars {
@@ -543,7 +544,8 @@
   font-size: 1.35rem;
   line-height: 1;
   color: var(--border-strong);
-  padding: 0.1rem;
+  padding: 0.2rem 0.3rem;   /* 탭 영역 확대(좌우 여유로 옆 별 오터치도 줄임) */
+  touch-action: manipulation;   /* 더블탭 확대 지연 제거 */
   transition: color 0.12s ease, transform 0.06s ease;
 }
 .score-stars .star:hover { transform: scale(1.12); }

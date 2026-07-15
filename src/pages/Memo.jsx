@@ -4,7 +4,7 @@ import { supabase } from '../supabase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskText, prefetchMask } from '../lib/mask';
-import { getReacted, markReacted } from '../lib/reactions';
+import { getReacted, markReacted, hasReviewed } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
 import '../styles/course.css';
@@ -162,6 +162,14 @@ export default function Memo() {
       {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화(눌러서 새 화면으로) */}
       <section className="memo-review">
         {(() => {
+          // 이미 이 과목·교수에 강의평을 쓴 기기면 재작성 버튼을 감춘다(서버는 익명 다건이라 로컬로만 잠금).
+          if (hasReviewed(courseCode, header.profCode)) {
+            return (
+              <Link to={`/reviews/${courseCode}`} className="btn-ghost btn-block">
+                ✍️ 강의평 작성 완료 · 보러 가기
+              </Link>
+            );
+          }
           const eligible = daysHeld != null && daysHeld >= minDays;
           if (eligible) {
             return (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
 import { maskText, prefetchMask } from '../lib/mask';
+import { markReviewed } from '../lib/reactions';
 
 const SCORES = [
   ['overall', '종합', true],
@@ -86,6 +87,7 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
       setError(error.message || '작성에 실패했습니다.');
       return;
     }
+    markReviewed(courseCode, prof);   // 이 과목·교수 재작성 잠금(기기 로컬 — 서버는 익명 다건)
     onDone?.();
   }
 

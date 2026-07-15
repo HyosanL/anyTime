@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getCatalog } from '../lib/cache';
 import ReviewForm from '../components/ReviewForm';
 import BackButton from '../components/BackButton';
+import { hasReviewed } from '../lib/reactions';
 import '../styles/course.css';
 
 // 강의평 쓰기 전용 화면(족보 보기처럼 새 화면으로 진입). 작성 자격은 서버 RPC가 강제.
@@ -40,12 +41,16 @@ export default function ReviewWrite() {
         <h2>{header.name} 강의평 쓰기</h2>
       </header>
 
-      <ReviewForm
-        courseCode={courseCode}
-        professors={header.profCode ? [{ code: header.profCode, name: header.prof }] : []}
-        defaultProf={header.profCode}
-        onDone={() => navigate(-1)}
-      />
+      {hasReviewed(courseCode, header.profCode) ? (
+        <p className="account-note">이미 이 강의의 강의평을 작성했습니다.</p>
+      ) : (
+        <ReviewForm
+          courseCode={courseCode}
+          professors={header.profCode ? [{ code: header.profCode, name: header.prof }] : []}
+          defaultProf={header.profCode}
+          onDone={() => navigate(-1)}
+        />
+      )}
     </div>
   );
 }

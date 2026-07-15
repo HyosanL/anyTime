@@ -9,7 +9,7 @@ function readAll() {
   try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
 }
 
-// scope: 'post'(게시글) | 'review'(강의평) | 'memo'(강의메모)
+// scope: 'post'(게시글) | 'review'(강의평) | 'memo'(강의메모) | 'review-wrote'(강의평 작성 잠금)
 export function getReacted(scope, id) {
   return readAll()[`${scope}:${id}`] || {};
 }
@@ -29,3 +29,13 @@ export function unmarkReacted(scope, id, kind) {
   if (all[`${scope}:${id}`]) delete all[`${scope}:${id}`][kind];
   try { localStorage.setItem(KEY, JSON.stringify(all)); } catch { /* 저장 실패 무시 */ }
 }
+
+// ── 강의평 '이 강의에 이미 썼음' 기기 로컬 잠금 ─────────────────────────────
+// 강의평은 서버가 '익명 다건'(작성자 컬럼 없음 → 익명성 유지)이라 재작성을 서버에서 못 막는다.
+// 그래서 과목·교수 단위로 여기(localStorage)서 잠가 재작성 버튼을 감춘다. 위 반응 기록과
+// 같은 저장소·정리 로직을 쓴다 — 시크릿모드·데이터삭제로 우회 가능한 '정직한 사용자용 잠금'.
+const reviewKey = (courseCode, profCode) => `${courseCode}:${profCode || ''}`;
+export const hasReviewed = (courseCode, profCode) =>
+  !!getReacted('review-wrote', reviewKey(courseCode, profCode)).done;
+export const markReviewed = (courseCode, profCode) =>
+  markReacted('review-wrote', reviewKey(courseCode, profCode), 'done');
