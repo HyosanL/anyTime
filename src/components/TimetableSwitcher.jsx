@@ -76,27 +76,29 @@ export default function TimetableSwitcher({
     e.preventDefault();
     const [y, t] = newSem.split('-').map(Number);
     if (!y || !t) return setErr('학기를 고르세요.');
-    const name = newName.trim();
-    if (!name) return setErr('시간표 이름을 입력하세요.');
+    const name = newName.trim();   // 공란 허용 — 학기로만 구분해도 된다
     const ok = await run(() => onCreate({ year: y, term: t, name }));
     if (ok) close();
   }
 
   async function rename(t) {
-    const name = prompt('시간표 이름', t.name)?.trim();
-    if (!name || name === t.name) return;
+    const input = prompt('시간표 이름 (공란 가능)', t.name);
+    if (input === null) return;    // 취소
+    const name = input.trim();
+    if (name === t.name) return;
     await run(() => onRename(t.id, name));
   }
 
   async function remove(t) {
+    const nm = t.name || '무제';
     const msg = t.is_primary
-      ? `'${t.name}'은(는) ${t.year}-${t.term} 확정 시간표입니다.\n삭제하면 담긴 강의와 직접추가 항목도 함께 사라지고, 같은 학기의 다른 시간표가 확정이 됩니다.\n삭제할까요?`
-      : `'${t.name}' 시간표를 삭제할까요?\n담긴 강의와 직접추가 항목도 함께 사라집니다.`;
+      ? `'${nm}'은(는) ${t.year}-${t.term} 확정 시간표입니다.\n삭제하면 담긴 강의와 직접추가 항목도 함께 사라지고, 같은 학기의 다른 시간표가 확정이 됩니다.\n삭제할까요?`
+      : `'${nm}' 시간표를 삭제할까요?\n담긴 강의와 직접추가 항목도 함께 사라집니다.`;
     if (!confirm(msg)) return;
     await run(() => onDelete(t.id));
   }
 
-  const label = selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표';
+  const label = selected ? `${selected.year}-${selected.term}${selected.name ? ' ' + selected.name : ''}` : '시간표';
 
   return (
     <div className="tt-switch" ref={wrapRef}>
@@ -122,7 +124,7 @@ export default function TimetableSwitcher({
                   onClick={() => { onSelect(t.id); close(); }}
                 >
                   <span className="tt-switch-sem">{t.year}-{t.term}</span>
-                  <span className="tt-switch-name">{t.name}</span>
+                  <span className="tt-switch-name">{t.name || <em className="tt-noname">무제</em>}</span>
                   {t.is_primary && <span className="tt-badge-primary">확정</span>}
                 </button>
                 <span className="tt-switch-ops">
@@ -159,7 +161,7 @@ export default function TimetableSwitcher({
                 value={newName}
                 maxLength={20}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="이름 (예: 초안A)"
+                placeholder="이름 (공란 가능)"
               />
               <div className="tt-switch-new-row">
                 <button type="submit" className="btn-add btn-sm" disabled={busy}>만들기</button>
