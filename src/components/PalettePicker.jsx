@@ -63,7 +63,17 @@ export function PaletteSheet({ onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // 시트가 열린 동안 배경(홈) 스크롤 잠금 — 스와치 사이 여백을 드래그해도 뒤 화면이 안 밀린다.
+    const html = document.documentElement;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = html.style.overflow;
+    document.body.style.overflow = 'hidden';
+    html.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevBody;
+      html.style.overflow = prevHtml;
+    };
   }, [onClose]);
 
   return (

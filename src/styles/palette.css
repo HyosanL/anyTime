@@ -72,6 +72,8 @@
   align-items: flex-end;
   justify-content: center;
   padding: 0;
+  overscroll-behavior: contain;   /* 스크롤이 뒤 페이지로 넘어가지 않게 */
+  touch-action: none;             /* 배경(딤) 드래그로 화면이 안 밀리게 */
 }
 .pal-sheet {
   width: 100%;
@@ -116,6 +118,8 @@
   min-height: 0;
   padding-top: 0.2rem;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;   /* 시트 안 스크롤이 뒤 페이지로 체이닝되지 않게 */
+  touch-action: pan-y;            /* 시트 목록은 세로 스크롤 허용(overlay 의 none 을 덮음) */
 }
 
 @media (min-width: 560px) {
