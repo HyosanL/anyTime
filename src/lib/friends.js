@@ -23,3 +23,5 @@ export const unfollowUser = (uid, followeeId) =>
   supabase.from('tt_follow').delete().match({ follower_id: uid, followee_id: followeeId });
 export const setNickname = (uid, followeeId, nickname) =>
   supabase.from('tt_follow').update({ nickname: nickname?.trim() || null }).match({ follower_id: uid, followee_id: followeeId });
+// 넘긴 followee_id 배열 순서대로 갤러리 표시 순서를 재부여
+export const reorderFollows = (ids) => supabase.rpc('reorder_follows', { p_ids: ids });

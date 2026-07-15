@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, buildMyTimetable } from '../lib/cache';
 import { buildCommonBlocks } from '../lib/commonBlock';
-import { setTtPublic, searchSharedUsers, getGallery, followUser, unfollowUser, setNickname } from '../lib/friends';
+import { setTtPublic, searchSharedUsers, getGallery, followUser, unfollowUser, setNickname, reorderFollows } from '../lib/friends';
 import TimetableGrid from '../components/TimetableGrid';
 import BackButton from '../components/BackButton';
 import '../styles/friends.css';
@@ -33,7 +33,7 @@ export default function Friends() {
 
   const [catalog, setCatalog] = useState(null);
   const [gallery, setGallery] = useState(null);   // null = 로딩 전
-  const [zoom, setZoom] = useState(null);          // 확대해서 보는 항목
+  const [headTop, setHeadTop] = useState(0);       // 스택 카드가 붙을 위치(앱 헤더 아래)
 
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);    // null = 검색 안 함
@@ -41,6 +41,14 @@ export default function Friends() {
   const seq = useRef(0);
 
   useEffect(() => { getCatalog().then(setCatalog).catch(() => {}); }, []);
+
+  // 스택 카드는 sticky 로 '앱 헤더 아래'에 붙는다 — 헤더 높이(노치 포함)를 재서 top 오프셋으로 쓴다.
+  useEffect(() => {
+    const measure = () => setHeadTop(document.querySelector('.page-header')?.offsetHeight || 0);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
 
   const loadGallery = useCallback(async () => {
     try { setGallery(await getGallery()); } catch { setGallery([]); }
@@ -96,6 +104,17 @@ export default function Friends() {
     catch { alert('삭제에 실패했어요.'); }
   }
 
+  // 순서 변경(▲▼): 이웃과 자리 교환 후 서버에 전체 순서를 저장.
+  async function move(index, dir) {
+    const to = index + dir;
+    if (!gallery || to < 0 || to >= gallery.length) return;
+    const next = gallery.slice();
+    [next[index], next[to]] = [next[to], next[index]];
+    setGallery(next);                                        // 낙관적
+    try { await reorderFollows(next.map((g) => g.followee_id)); }
+    catch { loadGallery(); }                                 // 실패 → 서버 기준 복구
+  }
+
   return (
     <div className="page">
       <header className="page-header">
@@ -142,9 +161,9 @@ export default function Friends() {
           )}
         </section>
 
-        {/* 갤러리 */}
-        <section className="card">
-          <p className="section-label">친구 시간표</p>
+        {/* 갤러리 — 스택형: 한 화면에 친구 한 명, 아래 친구가 위 친구를 덮으며 올라온다(sticky) */}
+        <section className="fr-gallery-sec">
+          <p className="section-label">친구 시간표 <span className="fr-hint">— 스크롤하면 다음 친구가 덮으며 올라와요 · ▲▼로 순서 변경</span></p>
           {gallery === null ? (
             <p className="muted center">불러오는 중…</p>
           ) : gallery.length === 0 ? (
@@ -153,10 +172,14 @@ export default function Friends() {
               <p className="muted">아직 담은 친구가 없어요. 위에서 아이디로 검색해 추가해보세요.</p>
             </div>
           ) : (
-            <div className="fr-gallery">
-              {gallery.map((item) => (
+            <div className="fr-gallery" style={{ '--fr-top': `${headTop}px` }}>
+              {gallery.map((item, i) => (
                 <div key={item.followee_id} className="fr-card">
                   <div className="fr-card-head">
+                    <span className="fr-card-order">
+                      <button type="button" className="fr-move" disabled={i === 0} onClick={() => move(i, -1)} aria-label="위로">▲</button>
+                      <button type="button" className="fr-move" disabled={i === gallery.length - 1} onClick={() => move(i, 1)} aria-label="아래로">▼</button>
+                    </span>
                     <span className="fr-card-name">{item.nickname || item.username}</span>
                     {item.nickname && <span className="fr-card-sub">{item.username}</span>}
                     <span className="fr-card-ops">
@@ -164,33 +187,15 @@ export default function Friends() {
                       <button className="link-btn tt-op-del" onClick={() => unfollow(item)}>삭제</button>
                     </span>
                   </div>
-                  <button type="button" className="fr-card-grid" onClick={() => item.timetable && setZoom(item)} title="눌러서 확대">
+                  <div className="fr-card-grid">
                     <FriendGrid catalog={catalog} item={item} />
-                  </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </section>
       </div>
-
-      {/* 확대 보기 */}
-      {zoom && (
-        <div className="fr-zoom-overlay" role="presentation" onClick={() => setZoom(null)}>
-          <div className="fr-zoom" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <div className="fr-zoom-head">
-              <h3 className="fr-zoom-title">
-                {zoom.nickname || zoom.username}
-                {zoom.timetable && <span className="fr-zoom-sem"> · {zoom.timetable.year}-{zoom.timetable.term}{zoom.timetable.name ? ' ' + zoom.timetable.name : ''}</span>}
-              </h3>
-              <button className="fr-zoom-x" onClick={() => setZoom(null)} aria-label="닫기">✕</button>
-            </div>
-            <div className="fr-zoom-body">
-              <FriendGrid catalog={catalog} item={zoom} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

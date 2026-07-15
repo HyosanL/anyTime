@@ -37,64 +37,35 @@
 .fr-empty { padding: 0.6rem 0; }
 
 /* 갤러리 */
-.fr-gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 0.9rem;
-  margin-top: 0.5rem;
-}
+.fr-hint { font-weight: 400; color: var(--text-3); font-size: 0.72rem; }
+
+/* 스택형 갤러리 — 각 카드가 sticky 로 '앱 헤더 아래'에 붙어, 아래 카드가 위 카드를 덮으며 올라온다.
+   한 화면에 친구 한 명(카드 min-height ≈ 헤더 아래 뷰포트). 카드는 불투명이라 덮으면 아래가 가려진다. */
+.fr-gallery { margin-top: 0.5rem; }
 .fr-card {
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  position: sticky;
+  top: var(--fr-top, 0);
+  min-height: calc(100vh - var(--fr-top, 0px) - 0.5rem);
+  min-height: calc(100dvh - var(--fr-top, 0px) - 0.5rem);
   background: var(--card);
-  padding: 0.6rem 0.6rem 0.7rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-.fr-card-head { display: flex; align-items: baseline; gap: 0.4rem; flex-wrap: wrap; }
-.fr-card-name { font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr-card-sub { font-size: 0.72rem; color: var(--text-3); }
-.fr-card-ops { margin-left: auto; display: flex; gap: 0.35rem; flex: none; }
-
-/* 갤러리 카드 안 미니 격자 — 눌러서 확대. 버튼 리셋 + 격자는 축소되어 들어간다. */
-.fr-card-grid {
-  border: 0;
-  background: none;
-  padding: 0;
-  margin: 0;
-  width: 100%;
-  cursor: zoom-in;
-  font-family: inherit;
-  text-align: left;
-}
-.fr-card-grid .tt { font-size: 0.9em; }
-.fr-none { padding: 1.2rem 0; text-align: center; }
-.fr-gallery-empty { padding: 1.5rem 0; }
-
-/* 확대 보기 */
-.fr-zoom-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 260;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-.fr-zoom {
-  width: 100%;
-  max-width: 640px;
-  max-height: 88vh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 0.9rem 1rem 1.1rem;
+  padding: 0.7rem 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.10);   /* 위로 드리운 그림자 — 카드가 올라오는 느낌 */
 }
-.fr-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.6rem; }
-.fr-zoom-title { margin: 0; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; }
-.fr-zoom-sem { font-weight: 500; color: var(--text-3); font-size: 0.85rem; }
-.fr-zoom-x { background: none; border: none; font-size: 1.05rem; color: var(--text-2); cursor: pointer; padding: 0.2rem 0.35rem; line-height: 1; }
+.fr-card-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.fr-card-order { display: inline-flex; flex-direction: column; line-height: 0.7; margin-right: 0.15rem; }
+.fr-move {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-2); font-size: 0.62rem; padding: 0.1rem 0.2rem; line-height: 0.9;
+}
+.fr-move:disabled { color: var(--text-3); opacity: 0.35; cursor: default; }
+.fr-card-name { font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-card-sub { font-size: 0.72rem; color: var(--text-3); }
+.fr-card-ops { margin-left: auto; display: flex; gap: 0.35rem; flex: none; }
+.fr-card-grid { width: 100%; }
+.fr-none { padding: 2rem 0; text-align: center; line-height: 1.6; }
+.fr-gallery-empty { padding: 1.5rem 0; }
