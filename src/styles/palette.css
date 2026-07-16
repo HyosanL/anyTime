@@ -83,7 +83,8 @@
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--r-lg) var(--r-lg) 0 0;
-  padding: 0.9rem 1rem 1.2rem;
+  /* 아래 여백에 휴대폰 하단 안전영역(홈 인디케이터)을 더해 버튼이 바닥에 붙지 않게 한다. */
+  padding: 0.9rem 1rem calc(1.2rem + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

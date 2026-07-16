@@ -6,6 +6,7 @@ import {
   CUSTOM_MIN, CUSTOM_MAX,
   getCustomPalette, setCustomPalette, paletteByKey, getPaletteKey,
 } from '../lib/palettes';
+import { lockScroll, unlockScroll } from '../lib/scrollLock';
 
 // 처음(커스텀 없음) 열 때의 시작값 — 지금 활성 팔레트의 앞 5색 + 그 글씨색(빈 화면 대신).
 function seedFromActive() {
@@ -36,19 +37,14 @@ function Swatch({ value, onChange, ariaLabel }) {
 export default function CustomThemeEditor({ onClose }) {
   const [{ colors, fg }, setState] = useState(() => getCustomPalette() || seedFromActive());
 
-  // Esc 로 닫기 + 배경 스크롤 잠금(PaletteSheet 와 동일한 처리).
+  // Esc 로 닫기 + 배경 스크롤 잠금(홈 시트 위에 겹쳐 떠도 참조 카운트로 안전하게 중첩).
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    const html = document.documentElement;
-    const prevBody = document.body.style.overflow;
-    const prevHtml = html.style.overflow;
-    document.body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
+    lockScroll();
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevBody;
-      html.style.overflow = prevHtml;
+      unlockScroll();
     };
   }, [onClose]);
 

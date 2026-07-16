@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { PALETTES, usePalette, getCustomPalette, CUSTOM_KEY, CUSTOM_LABEL } from '../lib/palettes';
 import CustomThemeEditor from './CustomThemeEditor';
+import { lockScroll, unlockScroll } from '../lib/scrollLock';
 import '../styles/palette.css';
 
 // 미리보기 모자이크: 5열의 세로 블록(시간표 축소판 느낌).
@@ -88,15 +89,11 @@ export function PaletteSheet({ onClose }) {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     // 시트가 열린 동안 배경(홈) 스크롤 잠금 — 스와치 사이 여백을 드래그해도 뒤 화면이 안 밀린다.
-    const html = document.documentElement;
-    const prevBody = document.body.style.overflow;
-    const prevHtml = html.style.overflow;
-    document.body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
+    // position:fixed 로 얼리는 방식(iOS 대응) + 참조 카운트라 위에 편집기가 겹쳐도 안전하다.
+    lockScroll();
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevBody;
-      html.style.overflow = prevHtml;
+      unlockScroll();
     };
   }, [onClose]);
 
