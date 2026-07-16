@@ -1,8 +1,9 @@
 // 시간표 색상 테마 피커 — 팔레트마다 미니 모자이크 미리보기 + 이름 + 선택 링.
 // 프로필 설정(인라인 그리드)과 홈(⚙️ 바텀시트) 두 곳에서 같은 그리드를 쓴다.
 // 고른 테마는 lib/palettes 가 기기(localStorage)에 저장하고 'palettechange' 로 즉시 반영한다.
-import { useEffect } from 'react';
-import { PALETTES, usePalette } from '../lib/palettes';
+import { useEffect, useState } from 'react';
+import { PALETTES, usePalette, getCustomPalette, CUSTOM_KEY, CUSTOM_LABEL } from '../lib/palettes';
+import CustomThemeEditor from './CustomThemeEditor';
 import '../styles/palette.css';
 
 // 미리보기 모자이크: 5열의 세로 블록(시간표 축소판 느낌).
@@ -32,29 +33,52 @@ function Mosaic({ colors }) {
   );
 }
 
-// 스와치 그리드 — 어디서든 재사용.
+// 스와치 그리드 — 어디서든 재사용. 맨 끝은 '직접설정'(커스텀) 스와치로, 탭하면 편집기를 연다.
 export default function PalettePicker() {
   const [key, setKey] = usePalette();
+  const [editing, setEditing] = useState(false);
+  const custom = getCustomPalette();   // usePalette 리렌더 때 다시 읽혀 편집 결과가 미리보기에 반영된다.
+  const customOn = key === CUSTOM_KEY;
+
   return (
-    <div className="pal-grid" role="radiogroup" aria-label="시간표 색상 테마">
-      {PALETTES.map((p) => {
-        const on = p.key === key;
-        return (
-          <button
-            key={p.key}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            aria-label={p.label}
-            className={`pal-swatch${on ? ' is-on' : ''}`}
-            onClick={() => setKey(p.key)}
-          >
-            <Mosaic colors={p.colors} />
-            <span className="pal-name">{p.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <div className="pal-grid" role="radiogroup" aria-label="시간표 색상 테마">
+        {PALETTES.map((p) => {
+          const on = p.key === key;
+          return (
+            <button
+              key={p.key}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={p.label}
+              className={`pal-swatch${on ? ' is-on' : ''}`}
+              onClick={() => setKey(p.key)}
+            >
+              <Mosaic colors={p.colors} />
+              <span className="pal-name">{p.label}</span>
+            </button>
+          );
+        })}
+
+        {/* 직접설정 — 항상 마지막. 만든 게 있으면 그 색으로 미리보기, 없으면 🎨 안내. */}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={customOn}
+          aria-label={`${CUSTOM_LABEL}${custom ? '' : ' (새로 만들기)'}`}
+          className={`pal-swatch pal-swatch-custom${customOn ? ' is-on' : ''}`}
+          onClick={() => setEditing(true)}
+        >
+          {custom
+            ? <Mosaic colors={custom.colors} />
+            : <span className="pal-mosaic pal-custom-empty"><span aria-hidden="true">🎨</span></span>}
+          <span className="pal-name">{CUSTOM_LABEL}</span>
+        </button>
+      </div>
+
+      {editing && <CustomThemeEditor onClose={() => setEditing(false)} />}
+    </>
   );
 }
 

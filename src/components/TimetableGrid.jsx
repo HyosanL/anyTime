@@ -14,14 +14,15 @@ import { buildClassBlocks, layoutTimetable, pad2 } from '../lib/timetableLayout'
 // readOnly = 읽기 전용(친구 시간표 보기). 링크·삭제/숨기기 없이 그림만 보여준다.
 function TimetableGrid({ mine = [], periods = [], customClasses = [], commonBlocks = [], conflictCells = null, showProfessor = true, readOnly = false, onDeleteCustom, onHideBlock }) {
   // 사용자가 고른 색 테마 — 바뀌면(다른 화면·시트에서) 이벤트로 여기까지 와서 격자를 재채색한다.
-  const [pkey] = usePalette();
+  // prev(리비전)는 '직접설정' 색을 편집했을 때처럼 키는 'custom' 그대로인 채 내용만 바뀐 경우의 재계산 신호.
+  const [pkey, , prev] = usePalette();
   // 격자 파생 계산(blocks·days·hours·cells 등)은 입력이 바뀔 때만 재계산한다.
   // 계산은 화면·이미지가 공유하는 lib/timetableLayout 에 있다(저장본이 화면과 같은 그림이 되도록).
   const grid = useMemo(() => {
     const pal = paletteByKey(pkey);
     const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg, showProfessor });
     return layoutTimetable({ classBlocks, periods, commonBlocks });
-  }, [mine, periods, customClasses, commonBlocks, showProfessor, pkey]);
+  }, [mine, periods, customClasses, commonBlocks, showProfessor, pkey, prev]);
 
   if (grid.empty) {
     return (

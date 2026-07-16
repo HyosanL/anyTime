@@ -10,6 +10,11 @@
 import { useEffect, useState } from 'react';
 
 const KEY = 'tt-palette';
+const CUSTOM_STORE = 'tt-palette-custom';   // 직접설정 팔레트 내용({colors,fg}) — 기기에만.
+export const CUSTOM_KEY = 'custom';
+export const CUSTOM_LABEL = '직접설정';
+export const CUSTOM_MIN = 2;                // 색은 최소 2개
+export const CUSTOM_MAX = 10;               // 최대 10개(프리셋과 동일한 상한)
 
 export const PALETTES = [
   // ── 뉴트럴·소프트(어두운 글자) ──────────────────────────────────────
@@ -72,13 +77,46 @@ export const PALETTES = [
 export const DEFAULT_KEY = 'default';
 const BY_KEY = Object.fromEntries(PALETTES.map((p) => [p.key, p]));
 
+// ── 직접설정(커스텀) 팔레트 ────────────────────────────────────────────
+// 프리셋과 달리 색 개수가 자유(CUSTOM_MIN~CUSTOM_MAX)이고, 색은 과목에 순환 배정된다.
+// 내용은 CUSTOM_STORE 에, 선택 여부는 KEY(='custom') 에 저장 — 둘 다 기기(localStorage)에만.
+export function getCustomPalette() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_STORE);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    const colors = Array.isArray(p?.colors) ? p.colors.filter((c) => typeof c === 'string' && c) : [];
+    if (!colors.length || typeof p.fg !== 'string' || !p.fg) return null;
+    return { key: CUSTOM_KEY, label: CUSTOM_LABEL, fg: p.fg, colors };
+  } catch {
+    return null;
+  }
+}
+
+export function hasCustomPalette() {
+  return getCustomPalette() != null;
+}
+
+// 저장하고 활성 테마를 custom 으로 바꾼다(아래 setPaletteKey 가 rev 증가 + 이벤트 발생을 맡음).
+export function setCustomPalette({ colors, fg }) {
+  const clean = {
+    colors: (colors || []).filter((c) => typeof c === 'string' && c).slice(0, CUSTOM_MAX),
+    fg: typeof fg === 'string' && fg ? fg : '#1f2937',
+  };
+  try { localStorage.setItem(CUSTOM_STORE, JSON.stringify(clean)); } catch { /* ignore */ }
+  setPaletteKey(CUSTOM_KEY);
+}
+
 export function paletteByKey(key) {
+  // custom 은 저장본을 읽어 오고, 아직 안 만들었으면 기본 테마로 폴백(깨지지 않게).
+  if (key === CUSTOM_KEY) return getCustomPalette() || BY_KEY[DEFAULT_KEY];
   return BY_KEY[key] || BY_KEY[DEFAULT_KEY];
 }
 
 export function getPaletteKey() {
   try {
     const k = localStorage.getItem(KEY);
+    if (k === CUSTOM_KEY) return hasCustomPalette() ? CUSTOM_KEY : DEFAULT_KEY;
     return k && BY_KEY[k] ? k : DEFAULT_KEY;
   } catch {
     return DEFAULT_KEY;
@@ -94,19 +132,32 @@ export function getFg(key = getPaletteKey()) {
   return paletteByKey(key).fg;
 }
 
+// 리비전 — 키는 'custom' 그대로인 채 색만 바뀌는 편집에도 소비처가 다시 그리도록 함께 실어 보낸다.
+let REV = 0;
+
 export function setPaletteKey(key) {
-  const k = BY_KEY[key] ? key : DEFAULT_KEY;
+  const k = (key === CUSTOM_KEY && hasCustomPalette())
+    ? CUSTOM_KEY
+    : (BY_KEY[key] ? key : DEFAULT_KEY);
   try { localStorage.setItem(KEY, k); } catch { /* ignore */ }
-  window.dispatchEvent(new CustomEvent('palettechange', { detail: k }));
+  REV += 1;
+  window.dispatchEvent(new CustomEvent('palettechange', { detail: { key: k, rev: REV } }));
 }
 
-// React 훅: [key, setPaletteKey] — 'palettechange' 를 구독해 홈·마법사·피커가 함께 갱신된다.
+// React 훅: [key, setPaletteKey, rev] — 'palettechange' 를 구독해 홈·마법사·피커가 함께 갱신된다.
+// rev 는 custom 편집(키는 그대로 'custom')처럼 '키는 같지만 내용이 바뀐' 경우의 재계산 신호.
 export function usePalette() {
-  const [key, setLocal] = useState(getPaletteKey);
+  const [state, setLocal] = useState(() => ({ key: getPaletteKey(), rev: REV }));
   useEffect(() => {
-    const onChange = (e) => setLocal(e.detail || getPaletteKey());
+    const onChange = (e) => {
+      const d = e.detail;
+      setLocal({
+        key: (d && d.key) || getPaletteKey(),
+        rev: d && typeof d.rev === 'number' ? d.rev : REV,
+      });
+    };
     window.addEventListener('palettechange', onChange);
     return () => window.removeEventListener('palettechange', onChange);
   }, []);
-  return [key, setPaletteKey];
+  return [state.key, setPaletteKey, state.rev];
 }
