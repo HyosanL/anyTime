@@ -126,8 +126,28 @@
   display: flex; flex-direction: column;
   animation: ab-swap-in 0.28s ease;
 }
-/* 폰 안에서만 다크 토큰으로 갈아끼운다 — 페이지는 그대로 두고 앱의 다크모드를 미리 보여준다.
-   (tokens.css 의 :root[data-theme=dark] 와 같은 값. 값이 바뀌면 여기도 같이 고칠 것) */
+/* 폰 안에서만 토큰을 갈아끼운다 — 페이지는 그대로 두고 앱의 라이트/다크를 미리 보여준다.
+   (tokens.css 의 :root / :root[data-theme=dark] 와 같은 값. 값이 바뀌면 여기도 같이 고칠 것)
+
+   ⚠️ 두 상태를 **모두** 선언해야 한다. 예전엔 dark 만 선언해서, 라이트 상태일 때 폰이
+      :root 를 그대로 물려받았다 — 그래서 앱이 다크 모드면 토글을 어느 쪽으로 넘겨도
+      계속 다크였고 버튼이 죽은 것처럼 보였다(라이트 모드에서만 동작해 오래 안 보였다).
+      폰은 페이지 테마와 무관하게 자기 상태를 스스로 정해야 한다. */
+.ab-phone[data-ab-theme='light'] .ab-phone-screen {
+  --bg: #e8ecf2; --surface: #f5f6f8; --card: #ffffff; --card-hover: #f3f5f8;
+  --card-active: #eaeef3; --elevated: #ffffff; --input-bg: #ffffff;
+  --text: #0f172a; --text-2: #475569; --text-3: #8a97a8;
+  --primary: #2563eb; --primary-strong: #1d4ed8; --primary-weak: #eaf1fe;
+  --primary-weak-border: #c9ddfd; --on-primary: #ffffff;
+  --accent: #0d9488; --accent-weak: #e6fbf6;
+  --danger: #dc2626; --danger-weak: #fdecec; --danger-border: #f6c9c9;
+  --warn: #d97706; --warn-weak: #fdf3e3; --warn-border: #f3d8a8;
+  --success: #16a34a; --success-weak: #e8f7ee;
+  --star: #f59e0b; --block-bg: #e5eaf1;
+  --border: #e4e8ee; --border-strong: #d3d9e2;
+  --chip-bg: #eef2f8; --chip-fg: #475569;
+  --bar-bg: rgba(255, 255, 255, 0.82);
+}
 .ab-phone[data-ab-theme='dark'] .ab-phone-screen {
   --bg: #04060a; --surface: #0b0f16; --card: #161b24; --card-hover: #1c222d;
   --card-active: #232a36; --elevated: #1a2029; --input-bg: #11161e;
