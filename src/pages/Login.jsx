@@ -72,6 +72,10 @@ export default function Login() {
       <p className="auth-switch">
         계정이 없나요? <Link to="/signup">가입하기</Link>
       </p>
+
+      <Link to="/about" className="btn-ghost btn-block auth-about">
+        📖 애타는 어떤 앱인가요?
+      </Link>
     </div>
   );
 }

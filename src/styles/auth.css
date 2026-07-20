@@ -74,3 +74,14 @@
 .auth-switch a:hover {
   text-decoration: underline;
 }
+
+/* 앱 소개(/about) 진입 — 로그인 다음의 보조 동작이라 고스트 버튼으로 눌러 둔다.
+   .onboarding 의 gap(1.4rem)이 여기선 과해서 위 여백만 좁힌다. */
+.auth-about {
+  margin-top: -0.6rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.auth-about:hover {
+  color: var(--text);
+}

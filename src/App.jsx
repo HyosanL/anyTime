@@ -32,6 +32,7 @@ const Boards = lazy(() => import('./pages/Boards'));
 const Board = lazy(() => import('./pages/Board'));
 const Post = lazy(() => import('./pages/Post'));
 const SharePost = lazy(() => import('./pages/SharePost'));
+const About = lazy(() => import('./pages/About'));
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
 function GeoVerifyButton({ onDone, label }) {
@@ -208,6 +209,10 @@ export default function App() {
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           {/* 공유 링크: 유일한 공개 콘텐츠 라우트 — 세션·게이트 없이 그 글 하나만 읽기 전용 */}
           <Route path="/s/:token" element={<SharePost />} />
+          {/* 앱 소개: 가드 없음(PublicOnly 도 아님) — 로그인 여부와 무관하게 열려야 한다.
+              로그인한 사람도 '이 앱이 뭘 하는지' 보러 올 수 있고, 아직 가입 안 한 사람에게
+              링크로 보낼 수도 있어야 하므로. 데이터를 부르지 않아 세션이 필요 없다. */}
+          <Route path="/about" element={<About />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </Suspense>
