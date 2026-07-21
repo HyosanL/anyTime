@@ -28,6 +28,16 @@ function defaultRow(o) {
   return { day: 1, start: ps[0], end: ps[0] };
 }
 
+// 분반추가에서 고를 수 있는 분반번호 = 이미 있는 번호를 뺀 목록(1..최대+여유).
+function availableNos(existingNos) {
+  const ex = new Set(existingNos || []);
+  const maxNo = (existingNos && existingNos.length) ? Math.max(...existingNos) : 0;
+  const cap = Math.max(maxNo + 5, 15);
+  const out = [];
+  for (let n = 1; n <= cap; n++) if (!ex.has(n)) out.push(n);
+  return out;
+}
+
 export default function CorrectionModal({ subject, options, onClose }) {
   const [idx, setIdx] = useState(0);
   const [val, setVal] = useState('');
@@ -49,11 +59,12 @@ export default function CorrectionModal({ subject, options, onClose }) {
     setIdx(i);
     setVal('');
     setErr('');
-    // 분반추가는 시간이 '선택'이라 빈 채로 시작한다(기본 한 줄이 있으면 '월1'이 딸려 들어간다).
-    setRows(options[i]?.kind === 'sectionAdd' ? [] : [defaultRow(options[i])]);
+    // 분반추가도 시간이 '필수'라 기본 한 줄로 시작한다(최소 한 개는 있어야 제출됨).
+    setRows([defaultRow(options[i])]);
     setPq('');
     setPicked(null);
-    setSaNo(1);
+    // 분반추가: 이미 있는 번호를 뺀 첫 번째 사용가능 번호를 기본값으로.
+    setSaNo(options[i]?.kind === 'sectionAdd' ? (availableNos(options[i].existingNos)[0] ?? 1) : 1);
     setSaRoom('');
   }
 
@@ -99,11 +110,16 @@ export default function CorrectionModal({ subject, options, onClose }) {
     let suggested = val.trim();
     if (opt.kind === 'sectionAdd') {
       const no = Math.round(Number(saNo));
-      if (!Number.isFinite(no) || no < 1) return setErr('분반 번호를 1 이상으로 입력하세요.');
-      const profVal = picked ? (picked.isNew ? `${picked.name} (신규)` : `${picked.name} (${picked.code})`) : '';
+      // 번호·교수·시간은 필수. 번호는 이미 있는 분반이면 막는다(목록에서도 제외되지만 이중 방어).
+      if (!Number.isFinite(no) || no < 1) return setErr('분반 번호를 선택하세요.');
+      if ((opt.existingNos || []).includes(no)) return setErr('이미 있는 분반 번호입니다. 다른 번호를 고르세요.');
+      if (!picked) return setErr('담당 교수를 지정하세요.');
+      const timesStr = blocksToStr(rows);
+      if (!timesStr) return setErr('요일·교시를 한 개 이상 지정하세요.');
+      const profVal = picked.isNew ? `${picked.name} (신규)` : `${picked.name} (${picked.code})`;
       // 정규화 JSON(키 순서 고정 no→prof→room→times) — 동일 제안 3건↑ 자동반영이
       // '문자열 완전일치'로 묶기 때문에 순서·공백이 일정해야 한 분반으로 뭉친다.
-      suggested = JSON.stringify({ no, prof: profVal, room: saRoom.trim(), times: blocksToStr(rows) });
+      suggested = JSON.stringify({ no, prof: profVal, room: saRoom.trim(), times: timesStr });
     } else if (!suggested && !note.trim()) {
       return setErr('올바른 값이나 설명 중 하나는 입력하세요.');
     }
@@ -166,7 +182,7 @@ export default function CorrectionModal({ subject, options, onClose }) {
           <select value={r.end} onChange={(e) => changeRow(i, 'end', +e.target.value)} aria-label="종료교시">
             {periods.map((p) => <option key={p} value={p}>{p}교시</option>)}
           </select>
-          {(rows.length > 1 || opt.kind === 'sectionAdd') && (
+          {rows.length > 1 && (
             <button type="button" className="cor-row-del" onClick={() => removeRow(i)} aria-label="이 시간 삭제">✕</button>
           )}
         </div>
@@ -214,18 +230,20 @@ export default function CorrectionModal({ subject, options, onClose }) {
               </div>
             ) : opt.kind === 'sectionAdd' ? (
               <div className="field cor-sa">
-                <p className="cor-hint cor-sa-hint">수강편람에 있는데 목록에 <b>없는 분반</b>을 알려 주세요. 승인되면(또는 같은 제안 3건↑) 자동으로 분반이 추가됩니다.</p>
+                <p className="cor-hint cor-sa-hint">수강편람에 있는데 목록에 <b>없는 분반</b>을 알려 주세요(분반번호·교수·시간 <b>필수</b>). 승인되면(또는 같은 제안 3건↑) 자동으로 분반이 추가됩니다.</p>
                 <div className="cor-sa-grid">
                   <label className="cor-sa-field"><span>분반 번호</span>
-                    <input type="number" min="1" value={saNo} onChange={(e) => setSaNo(e.target.value)} />
+                    <select value={saNo} onChange={(e) => setSaNo(+e.target.value)}>
+                      {availableNos(opt.existingNos).map((n) => <option key={n} value={n}>{n}분반</option>)}
+                    </select>
                   </label>
                   <label className="cor-sa-field"><span>강의실 (선택)</span>
                     <input value={saRoom} onChange={(e) => setSaRoom(e.target.value)} placeholder="예: 302" />
                   </label>
                 </div>
-                <span className="field-label">담당교수 (선택)</span>
+                <span className="field-label">담당교수</span>
                 {profPickerUI}
-                <span className="field-label cor-sa-time-label">요일·교시 (선택)</span>
+                <span className="field-label cor-sa-time-label">요일·교시</span>
                 {timeBuilderUI}
                 <p className="cor-preview">
                   {saNo || '?'}분반 · {picked ? picked.name : '교수 미정'} · {blocksToStr(rows) || '시간 미정'}{saRoom.trim() ? ` · ${saRoom.trim()}` : ''}

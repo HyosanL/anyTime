@@ -101,7 +101,8 @@
 .cor-sa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 .cor-sa-field { display: flex; flex-direction: column; gap: 0.25rem; }
 .cor-sa-field span { font-size: 0.78rem; color: var(--text-2); }
-.cor-sa-field input {
+.cor-sa-field input,
+.cor-sa-field select {
   padding: 0.45rem 0.55rem; border: 1px solid var(--border); border-radius: var(--r-sm, 0.4rem);
   background: var(--surface); color: var(--text-1); font-size: 0.9rem;
 }
