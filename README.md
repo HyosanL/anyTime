@@ -68,43 +68,27 @@ npm run deploy     # 빌드 후 Cloudflare Pages 배포(wrangler)
 
 **사전 준비**
 
-1. **Supabase**(Seoul): `.env`에 `VITE_SUPABASE_URL`·`VITE_SUPABASE_ANON_KEY`. SQL Editor에서 `db/schema.sql` → `db/comments.sql` 실행. Auth ▸ Email 공급자 활성화.
+1. **Supabase**(Seoul): `.env`에 `VITE_SUPABASE_URL`·`VITE_SUPABASE_ANON_KEY`. SQL Editor에서 데이터베이스 스키마 SQL 실행. Auth ▸ Email 공급자 활성화.
 2. **Edge Functions 배포**: `supabase functions deploy signup --no-verify-jwt`(및 `admin-action`·`delete-account`·`sync-professors --no-verify-jwt`).
 3. **관리자 지정**: `UPDATE cadet SET is_admin=TRUE WHERE username='<아이디>';` · 운영 전 `app_setting` 좌표·반경·가입코드 교체.
 4. **Cloudflare**: Pages에 repo 연결(빌드 `dist`), R2 버킷 `anytime-exams` + 바인딩 `EXAM_FILES`, `[vars]`에 URL·anon 키, 도메인 DNS.
-5. **웹푸시**: VAPID 키쌍 생성 → 공개키는 `.env.production`(`VITE_VAPID_PUBLIC_KEY`)·`wrangler.toml`(`VAPID_PUBLIC_KEY`), 개인키·발송시크릿은 Pages Secret(`VAPID_PRIVATE_KEY`·`PUSH_SECRET`, `wrangler pages secret put …`). 같은 시크릿을 DB `push_config.fanout_secret`에도 시드(schema.sql 웹푸시 섹션 참고).
-6. 카탈로그(교수·과목·분반)는 **관리자 화면**에서 등록(CSV 일괄. 원본: `docs/2026-1-lectures.csv`).
+5. **웹푸시**: VAPID 키쌍 생성 → 공개키는 `.env.production`(`VITE_VAPID_PUBLIC_KEY`)·`wrangler.toml`(`VAPID_PUBLIC_KEY`), 개인키·발송시크릿은 Pages Secret(`VAPID_PRIVATE_KEY`·`PUSH_SECRET`, `wrangler pages secret put …`). 같은 시크릿을 DB `push_config.fanout_secret`에도 시드.
+6. 카탈로그(교수·과목·분반)는 **관리자 화면**에서 등록(CSV 일괄).
 
-> ⚠️ **운영 DB에 `db/schema.sql`을 통째로 재실행하지 말 것** — 상단 정리 블록이 `cadet`/auth 데이터를 삭제한다. 운영 반영은 증분 `ALTER`로만.
+> ⚠️ **운영 DB에 전체 스키마를 통째로 재실행하지 말 것** — 정리 블록이 `cadet`/auth 데이터를 삭제할 수 있다. 운영 반영은 증분 `ALTER`로만.
 
 ## 📁 프로젝트 구조
 
 ```
-db/                 스키마 단일 원본(schema.sql) · 한글 주석(comments.sql)
 supabase/functions/ Edge Functions(signup · admin-action · sync-professors · delete-account)
 functions/api/      Pages Functions(_middleware · exam-* · board-* · parse-syllabus · push-fanout)
 functions/lib/      공용 모듈(webpush — RFC 8291/8292 Web Push 발송)
 src/                React 앱(pages · components · lib · contexts · styles)
-docs/               (요구사항·ERD·릴레이션·DDL·개발환경) + 생성기(build/)
 ```
-
-## 📄 문서
-
-`docs/` 폴더에 다음 (PDF)가 있으며, 생성기는 `docs/build/`에 있다(`node docs/build/gen.mjs`).
-
-| 문서 | 내용 |
-|---|---|
-| `애타_요구사항명세서.pdf` | 기능(FR-1~46)·비기능 요구사항, 요구사항 추적표 |
-| `애타_ERD_피터첸표기법.pdf` | 개체-관계 다이어그램(Peter Chen 표기법) |
-| `애타_릴레이션테이블.pdf` | 관계형 스키마(PK/FK/카디널리티) |
-| `애타_DDL_SQL.pdf` | 테이블 생성 SQL(DDL) |
-| `애타_개발도구_환경_라이브러리.pdf` | 개발 도구·환경·라이브러리 |
-
-설계 원본: [`PROJECT.md`](PROJECT.md) · [`db/schema.sql`](db/schema.sql) · [`db/README.md`](db/README.md)
 
 ## 🗄 데이터 모델(요약)
 
-25개 테이블 + 2개 뷰. 상세는 ERD·릴레이션 문서 참조.
+25개 테이블 + 2개 뷰.
 
 - **회원·기준정보**: `cadet` · `professor` · `course` · `semester` · `period`
 - **분반·시간표**: `section` · `section_time` · `timetable` · `custom_class`
