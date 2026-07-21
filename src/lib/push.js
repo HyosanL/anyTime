@@ -81,9 +81,23 @@ export async function disablePush() {
     const sub = await getSubscription();
     if (sub) {
       await supabase.rpc('push_unsubscribe', { p_endpoint: sub.endpoint });
+      await supabase.rpc('admin_push_unsubscribe', { p_endpoint: sub.endpoint }); // 관리자 구독도 정리(관리자 아니면 무해)
       await sub.unsubscribe();
     }
   } catch { /* 이미 해지됐으면 무시 */ }
+}
+
+// 관리자 기기 등록 — 수정제안·신고삭제·자동반영 알림 대상. 일반 구독(완전 익명)과 별도 표에
+// cadet_id 와 함께 저장한다(관리자 기기만). 관리자 전용 화면 진입 시 호출한다.
+// admin_push_subscribe 는 서버에서 is_admin() 을 확인하므로, 비관리자가 불러도 아무 일도 없다.
+export async function syncAdminPush() {
+  if (!pushEnabled()) return;
+  try {
+    const sub = await getSubscription();
+    if (!sub) return;
+    const j = sub.toJSON();
+    await supabase.rpc('admin_push_subscribe', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+  } catch { /* 오프라인 등 — 다음 진입 때 재시도 */ }
 }
 
 // 앱 시작 시 자가치유(로그인 후 1회) — 구독이 살아있으면 서버에 재업서트(서버 유실·

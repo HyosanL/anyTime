@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { getCatalog } from '../lib/cache';
 import { useAuthContext } from '../contexts/AuthContext';
 import { callAdmin, CATALOG_ACTIONS } from '../lib/admin';
@@ -12,8 +12,19 @@ import '../styles/course.css';
 // 이 화면에서는 화면 전체가 한 과목이므로, 분반·교수·강의시간을 그 자리에서 바로 고친다.
 const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 const DAYS = [1, 2, 3, 4, 5, 6, 7];
+const CORR_FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '과목명', section: '분반 추가' };
 
 const keyOf = (s) => `${s.year}-${s.term}-${s.section_no}`;
+
+// 분반추가 제안값(JSON) → 화면·프리필용. prof 표기 "이름 (코드)"에서 기존 교수코드도 뽑는다("신규"는 제외).
+function parseSectionAdd(suggested) {
+  try {
+    const j = JSON.parse(suggested);
+    const codeM = String(j.prof || '').match(/\(([^()]+)\)\s*$/);
+    const code = codeM && codeM[1] !== '신규' ? codeM[1] : '';
+    return { no: Number(j.no) || null, prof: j.prof || '', profCode: code, room: j.room || '', times: j.times || '' };
+  } catch { return null; }
+}
 
 // 교수 선택 — 드롭다운은 수백 명을 굴려야 한다. 이름·학과·코드로 검색해 고른다.
 // 비워 두면 '교수 미정'(professor_code = null).
@@ -207,11 +218,18 @@ function SectionCard({ s, times, professors, periods, run, open, onToggle }) {
 }
 
 // 새 분반 — 학기·분반번호·담당 교수만 정하면 만들어지고, 강의시간은 만든 분반을 펼쳐 넣는다.
-function NewSectionCard({ courseCode, sections, semesters, professors, run, defYear, defTerm, onAdded }) {
-  const [f, setF] = useState({ year: defYear, term: defTerm, section_no: 1, professor_code: '' });
+// prefill: 수정제안(분반추가)에서 넘어왔을 때 분반번호·학기·교수를 미리 채운다.
+function NewSectionCard({ courseCode, sections, semesters, professors, run, defYear, defTerm, onAdded, prefill }) {
+  const [f, setF] = useState({
+    year: prefill?.year ?? defYear, term: prefill?.term ?? defTerm,
+    section_no: prefill?.section_no ?? 1, professor_code: prefill?.professor_code ?? '',
+  });
+  // 프리필이 있으면 첫 자동번호 계산을 한 번 건너뛴다(제안한 번호가 살아남게).
+  const skipAuto = useRef(!!prefill);
 
   // 그 학기에 아직 없는 분반번호를 미리 채운다(학기를 바꾸면 다시 계산).
   useEffect(() => {
+    if (skipAuto.current) { skipAuto.current = false; return; }
     const used = sections
       .filter((s) => s.course_code === courseCode && s.year === f.year && s.term === f.term)
       .map((s) => s.section_no);
@@ -261,6 +279,8 @@ function NewSectionCard({ courseCode, sections, semesters, professors, run, defY
 
 export default function AdminCourse() {
   const { code } = useParams();
+  const [sp] = useSearchParams();
+  const location = useLocation();
   const { cadet } = useAuthContext();
   const isAdmin = cadet ? !!cadet.is_admin : null;
   const [cat, setCat] = useState(null);
@@ -268,10 +288,30 @@ export default function AdminCourse() {
   const [name, setName] = useState('');
   const [open, setOpen] = useState('');   // 펼친 분반 키
   const [gone, setGone] = useState(false); // 과목을 지운 뒤
+  // 수정 제안에서 딥링크로 넘어온 경우: 배너로 제안값을 보여 주고, 한 번에 적용/정리한다.
+  const [corr, setCorr] = useState(location.state?.corr ?? null);
+  const corrId = sp.get('corr');
+  const secParam = sp.get('sec');
+  const addParam = sp.get('add');
+  const newSecRef = useRef(null);
 
   useEffect(() => {
     if (isAdmin) getCatalog().then(setCat).catch(() => setCat(null));
   }, [isAdmin]);
+
+  // 새로고침 등으로 라우터 state 가 사라졌으면 id 로 제안을 다시 읽는다.
+  useEffect(() => {
+    if (!isAdmin || corr || !corrId) return;
+    callAdmin('get_correction', { id: Number(corrId) }).then((r) => { if (r.ok && r.data?.item) setCorr(r.data.item); });
+  }, [isAdmin, corr, corrId]);
+
+  // 딥링크로 지정된 분반을 펼치거나(분반추가면 새 분반 카드로 스크롤).
+  useEffect(() => {
+    if (secParam) setOpen(secParam);
+  }, [secParam]);
+  useEffect(() => {
+    if (addParam && newSecRef.current) newSecRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [addParam, cat]);
 
   const course = useMemo(
     () => (cat?.course ?? []).find((c) => c.code === code) || null,
@@ -311,6 +351,34 @@ export default function AdminCourse() {
     if (r.ok) setGone(true);
   }
 
+  // 분반추가 제안 → NewSectionCard 프리필(분반번호·학기·기존 교수코드).
+  const addPrefill = useMemo(() => {
+    if (!addParam || corr?.target !== 'section_add' || !corr?.suggested) return null;
+    const sa = parseSectionAdd(corr.suggested);
+    if (!sa) return null;
+    return { section_no: sa.no ?? 1, year: corr.year, term: corr.term, professor_code: sa.profCode || '' };
+  }, [addParam, corr]);
+
+  // 제안대로 적용: 대표 1건 반영 + 동일 묶음 나머지 정리 + 카탈로그 새로고침.
+  async function applyProposal() {
+    if (!corr) return;
+    setMsg('');
+    const r = await callAdmin('apply_correction', { id: corr.id });
+    if (!r.ok && r.status !== 'ALREADY_DONE') { setMsg(`⚠️ 적용 실패: ${r.status ?? '오류'}`); return; }
+    const others = (corr.ids || []).filter((id) => id !== corr.id);
+    if (others.length) await callAdmin('resolve_correction', { ids: others });
+    setCat(await getCatalog({ force: true }).catch(() => cat));
+    setMsg(r.status === 'ALREADY_DONE' ? '✅ 이미 반영돼 있어 제안만 정리했습니다.' : '✅ 제안을 반영했습니다.');
+    setCorr(null);
+  }
+  // 제안 정리: 반영 없이 큐에서 삭제(직접 고친 뒤 처리완료).
+  async function dismissProposal() {
+    if (!corr) return;
+    await callAdmin('resolve_correction', { ids: corr.ids || [corr.id] });
+    setMsg('✅ 제안을 정리했습니다.');
+    setCorr(null);
+  }
+
   if (isAdmin === null || (isAdmin && !cat)) return <div className="page-center">불러오는 중…</div>;
   if (!isAdmin) return (
     <div className="page">
@@ -338,6 +406,34 @@ export default function AdminCourse() {
 
       {msg && <p className={`admin-msg ${msg.startsWith('⚠️') ? 'is-fail' : 'is-ok'}`}>{msg}</p>}
 
+      {corr && (() => {
+        const sa = corr.target === 'section_add' ? parseSectionAdd(corr.suggested) : null;
+        const shown = sa
+          ? [`${sa.no}분반`, sa.prof || '교수 미정', sa.times || '시간 미정', sa.room ? `강의실 ${sa.room}` : ''].filter(Boolean).join(' · ')
+          : corr.suggested;
+        return (
+          <div className="adm-corr-banner">
+            <div className="adm-corr-banner-head">
+              <span className="tag tag-primary">🚩 {corr.target === 'section_add' ? '분반 추가 제안' : `수정 제안 · ${CORR_FIELD_LABEL[corr.field] || corr.field}`}</span>
+              {corr.count > 1 && <span className="tag mod-badge">동일 {corr.count}건</span>}
+            </div>
+            <p className="adm-corr-banner-val">제안값: <b>{shown || '(없음)'}</b></p>
+            {corr.note && <p className="note">설명: {corr.note}</p>}
+            <p className="note">
+              {corr.target === 'section_add'
+                ? '아래 «새 분반 추가»에 값이 채워져 있습니다. 그대로 만들거나 고쳐서 추가한 뒤, 또는 아래 버튼으로 한 번에 반영하세요.'
+                : '해당 분반이 아래에 펼쳐져 있습니다. 값을 확인하고 직접 고치거나, 아래 버튼으로 제안값을 그대로 반영하세요.'}
+            </p>
+            <div className="adm-corr-banner-acts">
+              <button className="btn-add btn-sm" onClick={applyProposal}>
+                {corr.target === 'section_add' ? '제안대로 분반 생성' : '제안대로 적용'}
+              </button>
+              <button className="rev-del-btn" onClick={dismissProposal}>제안 정리(직접 수정함)</button>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="cards admin-cards">
         <section className="card admin-card">
           <div className="card-head">
@@ -359,10 +455,10 @@ export default function AdminCourse() {
               })}
             </div>
 
-            <div className="divider adm-divider" />
+            <div className="divider adm-divider" ref={newSecRef} />
             <NewSectionCard courseCode={code} sections={cat.section ?? []} semesters={semesters}
               professors={professors} run={run} defYear={curSem.year} defTerm={curSem.term}
-              onAdded={(k) => setOpen(k)} />
+              onAdded={(k) => setOpen(k)} prefill={addPrefill} />
           </div>
         </section>
 

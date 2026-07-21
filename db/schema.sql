@@ -422,7 +422,7 @@ CREATE TABLE app_setting (
     campus_lat       DOUBLE PRECISION NOT NULL,        -- 지오펜싱 중심
     campus_lng       DOUBLE PRECISION NOT NULL,
     radius_m         INTEGER NOT NULL DEFAULT 2000,    -- 허용 반경(m)
-    review_min_days  INTEGER NOT NULL DEFAULT 30,      -- 강의평 작성자격(N일 보유)
+    review_min_days  INTEGER NOT NULL DEFAULT 30,      -- 강의평 작성자격(N일 보유; 0=대기 없이 담는 즉시)
     geo_valid_days       INTEGER NOT NULL DEFAULT 90,  -- 위치 재인증 유효기간
     account_delete_days  INTEGER NOT NULL DEFAULT 90,  -- 만료 후 계정삭제 대기
     board_enabled    BOOLEAN NOT NULL DEFAULT TRUE,     -- 익명게시판 전체 활성화
@@ -473,18 +473,19 @@ CREATE TABLE banned_word (
 --   target='section'/'section_time'    → (course_code, year, term, section_no)
 CREATE TABLE correction (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    target      TEXT NOT NULL CHECK (target IN ('professor','course','section','section_time')),
+    target      TEXT NOT NULL CHECK (target IN ('professor','course','section','section_time','section_add')),
     professor_code TEXT REFERENCES professor(code) ON DELETE CASCADE,   -- 대상 교수
     course_code    TEXT REFERENCES course(code) ON DELETE CASCADE,      -- 대상 과목/분반의 과목
     year           SMALLINT,                                            -- 대상 분반 연도
     term           SMALLINT,                                            -- 대상 분반 학기구분
-    section_no     SMALLINT,                                            -- 대상 분반 번호
+    section_no     SMALLINT,                                            -- 대상 분반 번호(section_add 는 NULL — 아직 없는 분반)
     label       TEXT,             -- 사람이 읽는 대상(예: "전쟁사 3분반")
-    field       TEXT NOT NULL CHECK (field IN ('name','department','office','professor','room','time')),
-    suggested   TEXT,             -- 제안값(시간은 "수3 수4 금1" 형식; 교수는 "이름 (코드)")
+    field       TEXT NOT NULL CHECK (field IN ('name','department','office','professor','room','time','section')),
+    suggested   TEXT,             -- 제안값(시간은 "수3 수4 금1"; 교수는 "이름 (코드)"; section_add 는 정규화 JSON {no,prof,room,times})
     note        TEXT,             -- 설명
     status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied')),
     auto_applied  BOOLEAN NOT NULL DEFAULT false,  -- 동일 제안 3건↑ 자동반영으로 처리됨
+    prev_value  TEXT,             -- 반영 직전 값(자동반영 알림의 '수정 전' 표시용; 대기중엔 NULL)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     FOREIGN KEY (course_code, year, term, section_no)
         REFERENCES section(course_code, year, term, section_no) ON DELETE CASCADE,
@@ -495,7 +496,12 @@ CREATE TABLE correction (
              AND year IS NULL AND term IS NULL AND section_no IS NULL)
      OR (target IN ('section','section_time') AND professor_code IS NULL
              AND course_code IS NOT NULL AND year IS NOT NULL
-             AND term IS NOT NULL AND section_no IS NOT NULL))
+             AND term IS NOT NULL AND section_no IS NOT NULL)
+     -- section_add: 아직 없는 분반 제안. section_no 는 NULL 로 둬야 복합 FK(→section)가 걸리지 않는다
+     -- (분반번호·교수·시간·강의실은 suggested JSON 에 담고, 반영 때 그 번호로 새 분반을 만든다).
+     OR (target = 'section_add' AND professor_code IS NULL
+             AND course_code IS NOT NULL AND year IS NOT NULL
+             AND term IS NOT NULL AND section_no IS NULL))
 );
 CREATE INDEX idx_correction_status ON correction (status, created_at DESC);
 -- 동일 제안 묶음 카운트/자동반영 조회용
@@ -520,11 +526,39 @@ DECLARE
     tok        TEXT;
     m          TEXT[];
     valid_toks TEXT[];
+    v_json     JSONB;      -- section_add 제안값(JSON)
+    v_no       SMALLINT;   -- section_add 분반번호
+    v_ptxt     TEXT;       -- section_add 교수 표기("이름 (코드)"/"이름 (신규)")
+    v_prev     TEXT;       -- 반영 직전 값(자동반영 알림 '수정 전' 표시용)
 BEGIN
     SELECT * INTO c FROM correction WHERE id = p_id;
     IF NOT FOUND THEN RETURN 'NOT_FOUND'; END IF;
     IF c.status <> 'pending' THEN RETURN 'ALREADY_DONE'; END IF;
     v := NULLIF(c.suggested, '');
+
+    -- 반영 전 현재값 스냅샷(자동반영 알림에서 '수정 전 → 수정 후'를 보여주기 위함).
+    v_prev := NULL;
+    IF c.target = 'section' AND c.field = 'professor' THEN
+        SELECT COALESCE(p.name, '교수 미정') INTO v_prev
+          FROM section s LEFT JOIN professor p ON p.code = s.professor_code
+         WHERE s.course_code = c.course_code AND s.year = c.year AND s.term = c.term AND s.section_no = c.section_no;
+    ELSIF c.target = 'section_time' AND c.field = 'room' THEN
+        SELECT room INTO v_prev FROM section_time
+         WHERE course_code = c.course_code AND year = c.year AND term = c.term AND section_no = c.section_no LIMIT 1;
+    ELSIF c.target = 'section_time' AND c.field = 'time' THEN
+        SELECT string_agg(
+                 CASE WHEN start_period = end_period
+                      THEN (ARRAY['월','화','수','목','금','토','일'])[day_of_week] || start_period
+                      ELSE (ARRAY['월','화','수','목','금','토','일'])[day_of_week] || start_period || '-' || end_period END,
+                 ' ' ORDER BY day_of_week, start_period)
+          INTO v_prev FROM section_time
+         WHERE course_code = c.course_code AND year = c.year AND term = c.term AND section_no = c.section_no;
+    ELSIF c.target = 'course' AND c.field = 'name' THEN
+        SELECT name INTO v_prev FROM course WHERE code = c.course_code;
+    ELSIF c.target = 'professor' THEN
+        SELECT CASE c.field WHEN 'name' THEN name WHEN 'department' THEN department WHEN 'office' THEN office END
+          INTO v_prev FROM professor WHERE code = c.professor_code;
+    END IF;
 
     IF c.target = 'professor' THEN
         IF c.field = 'name' THEN
@@ -597,16 +631,68 @@ BEGIN
             END LOOP;
         ELSE RETURN 'UNSUPPORTED_FIELD'; END IF;
 
+    ELSIF c.target = 'section_add' THEN
+        -- 제안값은 정규화 JSON: {"no":3,"prof":"이름 (코드)|이름 (신규)|","room":"302","times":"수3-4 금1"}
+        IF v IS NULL THEN RETURN 'BAD_TIME'; END IF;
+        BEGIN v_json := v::jsonb; EXCEPTION WHEN others THEN RETURN 'BAD_TIME'; END;
+        v_no := NULLIF(v_json->>'no','')::smallint;
+        IF v_no IS NULL OR v_no < 1 THEN RETURN 'NOT_FOUND'; END IF;
+        -- 이미 있는 분반이면 덮어쓰지 않는다(제안이 도착하는 사이 관리자가 만들었을 수 있음).
+        IF EXISTS (SELECT 1 FROM section WHERE course_code = c.course_code
+                     AND year = c.year AND term = c.term AND section_no = v_no) THEN
+            UPDATE correction SET status = 'applied' WHERE id = c.id;
+            RETURN 'ALREADY_DONE';
+        END IF;
+        -- 교수 해석: "이름 (코드)" 기존 / "이름 (신규)" 새로 생성 / 그 외·빈값 → 교수 미정(null)
+        v_prof := NULL;
+        v_ptxt := NULLIF(v_json->>'prof','');
+        IF v_ptxt IS NOT NULL THEN
+            v_paren := substring(v_ptxt from '\(([^()]+)\)\s*$');
+            IF v_paren = '신규' THEN
+                v_name := btrim(regexp_replace(v_ptxt, '\s*\([^()]*\)\s*$', ''));
+                IF v_name <> '' THEN
+                    v_prof := gen_professor_code();
+                    INSERT INTO professor(code, name) VALUES (v_prof, v_name);
+                END IF;
+            ELSIF v_paren IS NOT NULL AND EXISTS (SELECT 1 FROM professor WHERE code = v_paren) THEN
+                v_prof := v_paren;
+            ELSE
+                SELECT code INTO v_prof FROM professor WHERE name = btrim(v_ptxt) LIMIT 1;
+            END IF;
+        END IF;
+        -- 학기 보장 후 지정된 번호로 분반 생성.
+        INSERT INTO semester(year, term) VALUES (c.year, c.term) ON CONFLICT DO NOTHING;
+        INSERT INTO section(course_code, year, term, section_no, professor_code)
+        VALUES (c.course_code, c.year, c.term, v_no, v_prof);
+        -- 강의시간(있으면). 토큰 검증은 time 필드와 동일 규칙.
+        v_room := NULLIF(v_json->>'room','');
+        SELECT array_agg(t) INTO valid_toks
+          FROM unnest(regexp_split_to_array(COALESCE(v_json->>'times',''), '[\s,]+')) AS t
+         WHERE t ~ '^[월화수목금토일][0-9]+(?:[-~][0-9]+)?$';
+        IF valid_toks IS NOT NULL THEN
+            FOREACH tok IN ARRAY valid_toks LOOP
+                m := regexp_match(tok, '^([월화수목금토일])([0-9]+)(?:[-~]([0-9]+))?$');
+                v_day := array_position(ARRAY['월','화','수','목','금','토','일'], m[1]);
+                v_a := m[2]::int;
+                v_b := COALESCE(m[3], m[2])::int;
+                IF v_b < v_a THEN v_a := COALESCE(m[3], m[2])::int; v_b := m[2]::int; END IF;
+                INSERT INTO section_time(course_code, year, term, section_no, day_of_week, start_period, end_period, room)
+                VALUES (c.course_code, c.year, c.term, v_no, v_day, v_a, v_b, v_room)
+                ON CONFLICT (course_code, year, term, section_no, day_of_week, start_period) DO NOTHING;
+            END LOOP;
+        END IF;
+
     ELSE RETURN 'UNSUPPORTED_TARGET'; END IF;
 
-    UPDATE correction SET status = 'applied' WHERE id = c.id;
+    UPDATE correction SET status = 'applied', prev_value = v_prev WHERE id = c.id;
     RETURN 'OK';
 END; $$;
 
 -- 제출(익명): 로그인만 확인하고 작성자는 저장하지 않음.
 -- 입력 p_target_key(JSONB)는 전송 형식일 뿐, 저장은 단순 속성으로 분해해서 한다(정규화).
 -- 동일(대상·field·suggested) pending 이 3건 이상 쌓이고, 대상이 '분반 단위'
--- (section_time.time/room, section.professor)면 자동반영 후 그룹 전체를 auto_applied 로 마킹.
+-- (section_time.time/room, section.professor, 그리고 분반추가 section_add)면 자동반영 후
+-- 그룹 전체를 auto_applied 로 마킹. section_add 는 신규 교수 생성을 동반해도 자동반영한다.
 -- 과목명/교수명/학과(파급 큰 항목)는 자동 제외 → pending 유지(관리자가 수동 검토).
 CREATE OR REPLACE FUNCTION submit_correction(
     p_target TEXT, p_target_key JSONB, p_label TEXT,
@@ -618,18 +704,28 @@ DECLARE
     v_sug  TEXT := NULLIF(p_suggested, '');
     v_cnt  INT;
     v_auto BOOLEAN;
+    v_dupes   INT;
+    v_applied BOOLEAN := false;   -- 이번 제출로 자동반영이 일어났는가
+    v_flabel  TEXT;               -- 항목 한글 라벨(관리자 알림 본문용)
     v_prof TEXT; v_course TEXT; v_year SMALLINT; v_term SMALLINT; v_secno SMALLINT;
     k JSONB := COALESCE(p_target_key, '{}'::jsonb);
 BEGIN
     IF auth.uid() IS NULL THEN RAISE EXCEPTION '로그인이 필요합니다.'; END IF;
-    IF p_target NOT IN ('professor','course','section','section_time') THEN RAISE EXCEPTION '대상 오류'; END IF;
-    IF p_field NOT IN ('name','department','office','professor','room','time') THEN RAISE EXCEPTION '항목 오류'; END IF;
+    IF p_target NOT IN ('professor','course','section','section_time','section_add') THEN RAISE EXCEPTION '대상 오류'; END IF;
+    IF p_field NOT IN ('name','department','office','professor','room','time','section') THEN RAISE EXCEPTION '항목 오류'; END IF;
     IF p_target = 'professor' THEN
         v_prof := NULLIF(k->>'code', '');
         IF v_prof IS NULL THEN RAISE EXCEPTION '대상 키 오류'; END IF;
     ELSIF p_target = 'course' THEN
         v_course := NULLIF(k->>'code', '');
         IF v_course IS NULL THEN RAISE EXCEPTION '대상 키 오류'; END IF;
+    ELSIF p_target = 'section_add' THEN
+        -- 아직 없는 분반 제안: 과목·학기만 받고 section_no 는 NULL(복합 FK 미검사 대상).
+        v_course := NULLIF(k->>'course_code', '');
+        v_year   := (k->>'year')::smallint;
+        v_term   := (k->>'term')::smallint;
+        IF v_course IS NULL OR v_year IS NULL OR v_term IS NULL THEN
+            RAISE EXCEPTION '대상 키 오류'; END IF;
     ELSE
         v_course := NULLIF(k->>'course_code', '');
         v_year   := (k->>'year')::smallint;
@@ -644,23 +740,52 @@ BEGIN
             NULLIF(p_label,''), p_field, v_sug, NULLIF(p_note,''))
     RETURNING id INTO v_id;
 
+    -- 같은 제안이 처음 들어온 건지(방금 넣은 1건 포함 count=1) — 새 제안 푸시를 중복 제출로 도배하지 않게.
+    SELECT count(*) INTO v_dupes FROM correction
+     WHERE status = 'pending' AND target = p_target AND field = p_field
+       AND suggested IS NOT DISTINCT FROM v_sug
+       AND professor_code IS NOT DISTINCT FROM v_prof
+       AND course_code IS NOT DISTINCT FROM v_course
+       AND year IS NOT DISTINCT FROM v_year
+       AND term IS NOT DISTINCT FROM v_term
+       AND section_no IS NOT DISTINCT FROM v_secno;
+
     -- 자동반영 대상(분반 단위)인지 판단.
     -- 교수 재배정은 '기존 교수(코드 확정)'일 때만 자동 — 신규 교수 생성은 익명 자동에서 제외(스팸 방지).
+    -- 분반추가(section_add)는 관리자 승인 없이도 3건↑면 자동 생성한다(신규 교수 동반도 포함).
     v_auto := (p_target = 'section_time' AND p_field IN ('time','room'))
            OR (p_target = 'section'      AND p_field = 'professor'
-               AND EXISTS (SELECT 1 FROM professor WHERE code = substring(v_sug from '\(([^()]+)\)\s*$')));
+               AND EXISTS (SELECT 1 FROM professor WHERE code = substring(v_sug from '\(([^()]+)\)\s*$')))
+           OR (p_target = 'section_add');
     IF v_auto AND v_sug IS NOT NULL THEN
+        -- section_add 는 section_no 가 NULL 이라 '=' 로는 안 묶인다 → IS NOT DISTINCT FROM 으로 NULL 안전 비교.
         SELECT count(*) INTO v_cnt FROM correction
          WHERE status = 'pending' AND target = p_target AND field = p_field AND suggested = v_sug
-           AND course_code = v_course AND year = v_year AND term = v_term AND section_no = v_secno;
+           AND course_code = v_course AND year = v_year AND term = v_term
+           AND section_no IS NOT DISTINCT FROM v_secno;
         IF v_cnt >= 3 THEN
             -- 대표 1건만 실제 반영하고, 동일 그룹 전체를 자동반영 처리로 마킹.
             PERFORM apply_correction_row(v_id);
             UPDATE correction SET status = 'applied', auto_applied = true
              WHERE status = 'pending' AND target = p_target AND field = p_field AND suggested = v_sug
-               AND course_code = v_course AND year = v_year AND term = v_term AND section_no = v_secno;
+               AND course_code = v_course AND year = v_year AND term = v_term
+               AND section_no IS NOT DISTINCT FROM v_secno;
             UPDATE correction SET auto_applied = true WHERE id = v_id;  -- 대표건도 표시
+            v_applied := true;
         END IF;
+    END IF;
+
+    -- 관리자 푸시(내부에서 실패 삼킴). 자동반영이 일어났으면 그 알림, 아니면 '이번이 처음인' 제안만 알린다.
+    v_flabel := CASE p_field
+        WHEN 'time' THEN '요일·교시' WHEN 'room' THEN '강의실' WHEN 'professor' THEN '담당교수'
+        WHEN 'name' THEN '이름/과목명' WHEN 'department' THEN '학과' WHEN 'office' THEN '연구실'
+        WHEN 'section' THEN '분반 추가' ELSE p_field END;
+    IF v_applied THEN
+        PERFORM admin_push('auto_correction', '🤖 수정제안 자동반영됨',
+                           COALESCE(NULLIF(p_label,''), '대상') || ' · ' || v_flabel);
+    ELSIF v_dupes = 1 THEN
+        PERFORM admin_push('correction', '🚩 새 수정 제안',
+                           COALESCE(NULLIF(p_label,''), '대상') || ' · ' || v_flabel);
     END IF;
     RETURN v_id;
 END; $$;
@@ -1104,6 +1229,7 @@ BEGIN
         INTO v_del, v_burst_lim FROM app_setting WHERE id = 1;
     IF v_rc >= v_del OR v_burst >= v_burst_lim THEN   -- 삭제 직전 아카이브로 이관(오삭제 복구용) — archive_deleted
         PERFORM archive_deleted('review', p_id, CASE WHEN v_rc >= v_del THEN 'threshold' ELSE 'burst' END);
+        PERFORM admin_push('report_deleted', '🗑️ 신고 누적 자동삭제', '강의평 1건이 신고 누적으로 자동삭제되었습니다. 복구가 필요한지 확인하세요.');
         DELETE FROM review WHERE id = p_id; RETURN 'DELETED';
     END IF;
     RETURN 'OK';
@@ -1234,6 +1360,7 @@ BEGIN
         INTO v_del, v_burst_lim FROM app_setting WHERE id = 1;
     IF v_rc >= v_del OR v_burst >= v_burst_lim THEN   -- 삭제 직전 아카이브로 이관(오삭제 복구용) — archive_deleted
         PERFORM archive_deleted('class_memo', p_id, CASE WHEN v_rc >= v_del THEN 'threshold' ELSE 'burst' END);
+        PERFORM admin_push('report_deleted', '🗑️ 신고 누적 자동삭제', '메모 1건이 신고 누적으로 자동삭제되었습니다. 복구가 필요한지 확인하세요.');
         DELETE FROM class_memo WHERE id = p_id; RETURN 'DELETED';
     END IF;
     RETURN 'OK';
@@ -1485,6 +1612,7 @@ BEGIN
             INTO v_del, v_burst_lim FROM app_setting WHERE id = 1;
         IF v_rc >= v_del OR v_burst >= v_burst_lim THEN   -- 삭제 직전 아카이브로 이관(오삭제 복구용) — archive_deleted
             PERFORM archive_deleted('board_post', p_post_id, CASE WHEN v_rc >= v_del THEN 'threshold' ELSE 'burst' END);
+            PERFORM admin_push('report_deleted', '🗑️ 신고 누적 자동삭제', '게시글 1건이 신고 누적으로 자동삭제되었습니다. 복구가 필요한지 확인하세요.');
             DELETE FROM board_post WHERE id = p_post_id; RETURN 'DELETED';
         END IF;
     END IF;
@@ -1689,10 +1817,23 @@ CREATE TABLE push_config (
     fanout_secret TEXT
 );
 
+-- 관리자 푸시 구독 — 일반 push_subscription(완전 익명)과 달리 cadet_id 를 저장한다.
+-- '관리자에게만' 보내는 알림(새 수정제안·신고 자동삭제·수정제안 자동반영)의 발송 대상.
+-- 관리자 기기가 옵트인(관리자 화면 진입)할 때만 쌓이고, 일반 사용자 익명성엔 영향 없다.
+CREATE TABLE admin_push_subscription (
+    cadet_id  UUID NOT NULL REFERENCES cadet(id) ON DELETE CASCADE,
+    endpoint  TEXT NOT NULL,
+    p256dh    TEXT NOT NULL,
+    auth      TEXT NOT NULL,
+    PRIMARY KEY (cadet_id, endpoint)
+);
+CREATE INDEX idx_admin_push_endpoint ON admin_push_subscription(endpoint);
+
 -- 전면 차단(정책 없음): 클라이언트는 아래 RPC 로만 접근(구독 목록·시크릿 노출 방지).
-ALTER TABLE push_subscription ENABLE ROW LEVEL SECURITY;
-ALTER TABLE post_watch        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE push_config       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_subscription       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE post_watch              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_config             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_push_subscription ENABLE ROW LEVEL SECURITY;
 
 -- 구독 등록/갱신. 로그인은 남용 방지 게이트일 뿐 — uid 는 어디에도 저장하지 않는다.
 CREATE OR REPLACE FUNCTION push_subscribe(p_endpoint TEXT, p_p256dh TEXT, p_auth TEXT)
@@ -1755,6 +1896,7 @@ BEGIN
         RAISE EXCEPTION 'FORBIDDEN';
     END IF;
     DELETE FROM push_subscription WHERE endpoint = ANY(p_endpoints);
+    DELETE FROM admin_push_subscription WHERE endpoint = ANY(p_endpoints);  -- 관리자 구독도 같은 endpoint 로 정리
 END; $$;
 GRANT EXECUTE ON FUNCTION push_prune(TEXT, TEXT[]) TO anon;
 
@@ -1816,6 +1958,56 @@ END; $$;
 CREATE TRIGGER trg_push_hot AFTER UPDATE OF hot ON board_post
     FOR EACH ROW WHEN (OLD.hot IS DISTINCT FROM NEW.hot AND NEW.hot)
     EXECUTE FUNCTION notify_hot_push();
+
+-- ── 관리자 푸시 구독 등록/해제 ──────────────────────────────────────
+-- 일반 push_subscribe 와 별개로, 관리자 기기임을 cadet_id 로 표시해 둔다(관리자 화면 진입 시 호출).
+-- REVOKE FROM PUBLIC + authenticated 만 GRANT — Supabase 기본권한이 anon 에 새 함수를 여는 함정 방지.
+CREATE OR REPLACE FUNCTION admin_push_subscribe(p_endpoint TEXT, p_p256dh TEXT, p_auth TEXT)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+    IF NOT is_admin() THEN RETURN; END IF;   -- 관리자 아니면 조용히 무시(비관리자 호출 무해)
+    IF p_endpoint NOT LIKE 'https://%' OR length(p_endpoint) > 1024
+       OR length(p_p256dh) > 256 OR length(p_auth) > 64 THEN
+        RAISE EXCEPTION '잘못된 구독 정보입니다.';
+    END IF;
+    INSERT INTO admin_push_subscription(cadet_id, endpoint, p256dh, auth)
+    VALUES (auth.uid(), p_endpoint, p_p256dh, p_auth)
+    ON CONFLICT (cadet_id, endpoint) DO UPDATE SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth;
+END; $$;
+REVOKE ALL ON FUNCTION admin_push_subscribe(TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_push_subscribe(TEXT, TEXT, TEXT) TO authenticated;
+
+CREATE OR REPLACE FUNCTION admin_push_unsubscribe(p_endpoint TEXT)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+    DELETE FROM admin_push_subscription WHERE cadet_id = auth.uid() AND endpoint = p_endpoint;
+END; $$;
+REVOKE ALL ON FUNCTION admin_push_unsubscribe(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_push_unsubscribe(TEXT) TO authenticated;
+
+-- 관리자 전원에게 푸시(수정제안·신고삭제·자동반영). 댓글/HOT 트리거와 같은 pg_net → /api/push-fanout
+-- 경로를 쓴다(30건씩 청크). SECURITY DEFINER + 미GRANT — 다른 함수 안에서만 호출된다.
+-- 알림 클릭 목적지(path)는 관리자 검열 화면 고정. 실패는 삼켜 본 트랜잭션을 막지 않는다.
+CREATE OR REPLACE FUNCTION admin_push(p_kind TEXT, p_title TEXT, p_body TEXT)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_secret TEXT; v_targets JSONB;
+BEGIN
+    SELECT fanout_secret INTO v_secret FROM push_config WHERE id = 1;
+    IF v_secret IS NULL THEN RETURN; END IF;
+    FOR v_targets IN
+        SELECT jsonb_agg(jsonb_build_object('endpoint', endpoint, 'p256dh', p256dh, 'auth', auth))
+          FROM (SELECT endpoint, p256dh, auth, row_number() OVER () AS rn
+                  FROM admin_push_subscription) t
+         GROUP BY (rn - 1) / 30
+    LOOP
+        PERFORM net.http_post(
+            url     := 'https://anytime.rokafa.app/api/push-fanout',
+            headers := jsonb_build_object('Content-Type', 'application/json', 'X-Push-Secret', v_secret),
+            body    := jsonb_build_object('kind', p_kind, 'title', p_title, 'body', p_body,
+                                          'path', '/admin/moderation', 'targets', v_targets));
+    END LOOP;
+EXCEPTION WHEN others THEN RETURN;
+END; $$;
 
 -- 발송 시크릿 시드. ※ 라이브 적용 시 실제 값으로 치환(스윕 시크릿과 같은 방식) 후 주석 해제.
 --   Cloudflare Pages 환경변수 PUSH_SECRET 과 같은 값이어야 한다.

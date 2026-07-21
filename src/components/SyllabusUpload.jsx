@@ -10,6 +10,15 @@ const PROF_TAG = {
   similar: ['비슷한 이름', 'tag-warn'],
   ambiguous: ['동명이인?', 'tag-warn'],
 };
+// 과목 매칭 결과 배지. similar = 파일의 과목명("체육(럭비)")이 기존 과목("럭비")과 정규화 구간이
+// 통째로 일치 — 자동이지만 확실치 않으니 사람이 확인. ambiguous = 후보가 여럿(관리자가 고름).
+const COURSE_TAG = {
+  create: ['신규', 'tag-primary'],
+  match: ['통합', 'tag-success'],
+  linked: ['연결됨', 'tag-success'],
+  similar: ['비슷한 이름', 'tag-warn'],
+  ambiguous: ['여러 후보', 'tag-warn'],
+};
 const fmtTimes = (blocks) =>
   (blocks || []).map((b) => `${DAY[b.day]}${b.start}${b.end > b.start ? `-${b.end}` : ''}`).join(' ') || '시간미정';
 // 격자 대조용 "요일-교시" 키 목록 → "월1 월2 목1"
@@ -150,6 +159,16 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   function setCourseInclude(i, v) {
     patchPlan((p) => { const arr = [...p.courses]; arr[i] = { ...arr[i], include: v }; p.courses = arr; });
   }
+  // 과목 매칭 확정: 기존 과목에 연결하거나 새 과목으로 등록. 연결하면 그 과목코드로 분반이 붙는다.
+  function setCourseChoice(i, val) {
+    patchPlan((p) => {
+      const arr = [...p.courses];
+      const c = { ...arr[i] };
+      if (val === '__new__') { c.code = null; c.action = 'create'; }
+      else { c.code = val; c.action = 'linked'; }
+      arr[i] = c; p.courses = arr;
+    });
+  }
   function setBlockLabel(i, v) {
     patchPlan((p) => {
       const arr = [...p.commonBlocks];
@@ -263,6 +282,8 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           <div className="syl-stats">
             <span className="tag tag-success">과목 {plan.stats.courses}</span>
             <span className="tag tag-primary">신규과목 {plan.stats.newCourses}</span>
+            {plan.stats.similarCourses > 0 && <span className="tag tag-warn">과목 비슷한 이름 {plan.stats.similarCourses}</span>}
+            {plan.stats.ambiguousCourses > 0 && <span className="tag tag-warn">과목 후보 여럿 {plan.stats.ambiguousCourses}</span>}
             <span className="tag">교수 {plan.stats.professors}</span>
             <span className="tag tag-primary">신규교수 {plan.stats.newProfessors}</span>
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
@@ -463,14 +484,35 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
 
           <div className="section-label adm-sub-label">과목 · 분반 ({plan.courses.length})</div>
           <div className="syl-list">
-            {plan.courses.map((c, i) => (
-              <div className="syl-course" key={c.name}>
+            {plan.courses.map((c, i) => {
+              const warn = c.action === 'similar' || c.action === 'ambiguous';
+              const [tagText, tagCls] = COURSE_TAG[c.action] ?? (c.code == null ? ['신규', 'tag-primary'] : ['통합', 'tag-success']);
+              return (
+              <div className={`syl-course${warn ? ' is-warn' : ''}`} key={c.name}>
                 <label className="syl-course-head">
                   <input type="checkbox" checked={c.include !== false} onChange={(e) => setCourseInclude(i, e.target.checked)} />
                   <b>{c.name}</b>
-                  <span className={`tag ${c.code == null ? 'tag-primary' : 'tag-success'}`}>{c.code == null ? '신규' : '통합'}</span>
+                  <span className={`tag ${tagCls}`}>{tagText}</span>
                   <span className="muted">{c.sections.length}분반</span>
                 </label>
+                {/* 비슷한 이름·후보 여럿: 기존 과목에 연결할지, 새 과목으로 등록할지 관리자가 고른다.
+                    후보엔 학과·분반 수를 함께 보여 준다(예: 3학년 항공체력관리론 vs 1학년 항공우주체력관리론 구분). */}
+                {c.candidates?.length > 0 && (
+                  <>
+                    <select className="syl-course-pick" value={c.code ?? '__new__'} onChange={(e) => setCourseChoice(i, e.target.value)}>
+                      <option value="__new__">+ 새 과목으로 등록 «{c.name}»</option>
+                      {c.candidates.map((cd) => (
+                        <option key={cd.code} value={cd.code}>
+                          기존 «{cd.name}»{cd.department ? ` · ${cd.department}` : ''} · {cd.sectionCount}분반
+                        </option>
+                      ))}
+                    </select>
+                    <p className="note">
+                      파일의 <b>{c.name}</b> 을(를) {c.code ? <>기존 과목 <b>«{c.candidates.find((cd) => cd.code === c.code)?.name ?? c.code}»</b> 에 이어붙입니다.</> : '새 과목으로 등록합니다.'}
+                      {' '}다른 과목이면 위에서 바꾸세요.
+                    </p>
+                  </>
+                )}
                 <div className="syl-sections">
                   {c.sections.map((s) => (
                     <div className="syl-sec" key={s.sectionNo}>
@@ -479,7 +521,8 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {plan.stale.length > 0 && (

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { flagText, highlightParts } from '../lib/moderation';
-import { clearCatalog, kvGet, kvSet } from '../lib/cache';
+import { clearCatalog, getCatalog, subscribeCatalog, kvGet, kvSet } from '../lib/cache';
+import { syncAdminPush } from '../lib/push';
 import { useAuthContext } from '../contexts/AuthContext';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
@@ -12,7 +13,7 @@ import '../styles/course.css';
 import '../styles/board.css';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
-const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과', office: '연구실' };
+const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과', office: '연구실', section: '분반 추가' };
 // 현행 사유는 'threshold'(누적)·'burst'(15분 급증). 기준값은 관리자 설정이라 라벨엔 수치 미표기(정확한 수치는 신고수 배지로 표시).
 // burst_10/threshold_30/burst_3/threshold_10 은 구 기준 아카이브 행 표시용으로 유지.
 const REASON_LABEL = { threshold: '누적 신고', burst: '단시간 급증(15분)', burst_10: '15분 10건', threshold_30: '누적 30건', burst_3: '30분 3건(구)', threshold_10: '누적 10건(구)' };
@@ -62,6 +63,74 @@ function contentPath(it) {
   }
 }
 
+const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
+// section_time 행들 → "수3-4 금1"
+function fmtSecTimes(times) {
+  return (times || [])
+    .slice()
+    .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period)
+    .map((t) => (t.start_period === t.end_period
+      ? `${DAY_KO[t.day_of_week]}${t.start_period}`
+      : `${DAY_KO[t.day_of_week]}${t.start_period}-${t.end_period}`))
+    .join(' ');
+}
+// 대기중 제안의 '수정 전' = 지금 카탈로그의 현재값. (자동반영된 건은 이미 바뀌었으므로 correction.prev_value 를 쓴다.)
+function currentValue(catalog, g) {
+  if (!catalog) return null;
+  if (g.target === 'section_add') return '없음 (새 분반)';
+  if (g.target === 'course' && g.field === 'name') {
+    return (catalog.course || []).find((c) => c.code === g.course_code)?.name ?? null;
+  }
+  if (g.target === 'professor') {
+    const p = (catalog.professor || []).find((x) => x.code === g.professor_code);
+    if (!p) return null;
+    return g.field === 'name' ? p.name : g.field === 'department' ? p.department : p.office;
+  }
+  if (g.target === 'section' && g.field === 'professor') {
+    const s = (catalog.section || []).find((x) => x.course_code === g.course_code && x.year === g.year && x.term === g.term && x.section_no === g.section_no);
+    if (!s) return null;
+    return (catalog.professor || []).find((x) => x.code === s.professor_code)?.name ?? '교수 미정';
+  }
+  if (g.target === 'section_time') {
+    const times = (catalog.section_time || []).filter((t) => t.course_code === g.course_code && t.year === g.year && t.term === g.term && t.section_no === g.section_no);
+    if (g.field === 'room') return times[0]?.room ?? null;
+    if (g.field === 'time') return fmtSecTimes(times) || null;
+  }
+  return null;
+}
+// 제안값(수정 후) 표시용 — 교수 재배정은 "이름 (코드)"에서 이름만, 분반추가는 요약.
+function fmtCorrAfter(g) {
+  if (g.target === 'section_add') return fmtCorrSuggested(g);
+  if (!g.suggested) return g.suggested;
+  if (g.target === 'section' && g.field === 'professor') return g.suggested.replace(/\s*\([^()]*\)\s*$/, '');
+  return g.suggested;
+}
+
+// 수정제안 제안값을 사람이 읽게 — 분반추가(section_add)는 JSON 이라 요약 문자열로 편다.
+function fmtCorrSuggested(g) {
+  if (g.target === 'section_add' && g.suggested) {
+    try {
+      const j = JSON.parse(g.suggested);
+      const parts = [`${j.no}분반`];
+      if (j.prof) parts.push(j.prof);
+      if (j.times) parts.push(j.times);
+      if (j.room) parts.push(`강의실 ${j.room}`);
+      return parts.join(' · ');
+    } catch { return g.suggested; }
+  }
+  return g.suggested;
+}
+// 편집 페이지 딥링크(수정 페이지로 바로 이동). 과목 단위 대상만 만든다(교수 대상은 과목 편집 페이지가 없다).
+//   section_add → NewSectionCard 를 펼치고, 그 외 → 해당 분반(sec)을 펼친다. corr 로 제안 배너를 띄운다.
+function editPath(g) {
+  if (!g.course_code) return null;
+  const params = new URLSearchParams();
+  if (g.target === 'section_add') params.set('add', '1');
+  else if (g.year && g.term && g.section_no != null) params.set('sec', `${g.year}-${g.term}-${g.section_no}`);
+  params.set('corr', String(g.id));
+  return `/admin/courses/${encodeURIComponent(g.course_code)}?${params.toString()}`;
+}
+
 // 동일(target/key/field/suggested) 제안을 한 카드로 묶고 ids·count 보관.
 function groupCorrections(list) {
   const m = new Map();
@@ -96,6 +165,7 @@ export default function Moderation() {
   const [corrs, setCorrs] = useState([]);        // 수정 제안(pending)
   const [autos, setAutos] = useState([]);        // 자동반영됨(미확인)
   const [deleted, setDeleted] = useState([]);    // 신고 누적 자동삭제 아카이브
+  const [cat, setCat] = useState(null);          // 카탈로그(대기중 제안의 '수정 전' 현재값 계산용)
   const [updatedAt, setUpdatedAt] = useState(null);
   const [reviewedAt, setReviewedAt] = useState(null); // 마지막 '모두 확인 처리' 컷오프
   const [edit, setEdit] = useState(null); // { type, id, text }
@@ -135,6 +205,15 @@ export default function Moderation() {
     }
     setUpdatedAt(new Date());
   }, []);
+
+  // 카탈로그(대기중 제안의 현재값 표시용) — 캐시 우선, 관리자가 값을 바꾸면 재동기화로 갱신.
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    getCatalog().then(setCat).catch(() => {});
+    // 관리자 기기를 관리자 푸시 대상으로 등록(푸시 켜져 있을 때만; 서버가 is_admin 재확인).
+    syncAdminPush().catch(() => {});
+    return subscribeCatalog(setCat);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -227,11 +306,17 @@ export default function Moderation() {
   async function applyGroup(g) {
     for (const id of g.ids) {
       const r = await call('apply_correction', { id });
-      if (!r.ok) { alert('적용 실패: ' + (r.status ?? '오류') + (r.status === 'BAD_TIME' ? ' (시간 형식 오류)' : '')); return; }
+      // ALREADY_DONE(예: 분반추가인데 그 사이 이미 생성됨)은 정리된 것으로 보고 넘어간다.
+      if (!r.ok && r.status !== 'ALREADY_DONE') { alert('적용 실패: ' + (r.status ?? '오류') + (r.status === 'BAD_TIME' ? ' (시간 형식 오류)' : '')); return; }
     }
     setCorrs((prev) => prev.filter((c) => !g.ids.includes(c.id)));
     // 반영값이 카탈로그(교수·과목·시간)에 바로 보이도록 로컬 캐시 무효화(관리자 화면 즉시 확인용).
     clearCatalog().catch(() => {});
+  }
+  // 편집 페이지로 이동(제안 내용을 라우터 state 로 함께 넘겨 배너에 그린다).
+  function openEdit(g) {
+    const path = editPath(g);
+    if (path) navigate(path, { state: { corr: { ...g } } });
   }
   async function rejectGroup(g) {
     if (!confirm('이 수정 제안을 반려할까요?')) return;
@@ -393,14 +478,20 @@ export default function Moderation() {
               <h3 className="mod-corr-head">🤖 자동 반영됨 · 확인 필요 {autoGroups.length}건</h3>
               <ul className="mod-list">
                 {autoGroups.map((g) => (
-                  <li key={`auto-${g.id}`} className="card mod-card mod-auto">
+                  <li key={`auto-${g.id}`} className="card mod-card mod-auto flagged">
                     <div className="mod-card-top">
-                      <span className="tag tag-primary mod-type">자동반영</span>
+                      <span className="tag tag-primary mod-type">{g.target === 'section_add' ? '분반추가·자동' : '자동반영'}</span>
                       <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
                       {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
                       <span className="mod-time">{new Date(g.created_at).toLocaleString('ko-KR')}</span>
                     </div>
-                    <p className="mod-text">반영값: <b className="mod-corr-sug">{g.suggested}</b></p>
+                    <p className="mod-corr-diff">
+                      <span className="mod-diff-label">수정 전</span>
+                      <span className="mod-diff-before">{g.prev_value ?? '—'}</span>
+                      <span className="mod-diff-arrow">→</span>
+                      <span className="mod-diff-label">수정 후</span>
+                      <b className="mod-diff-after">{fmtCorrAfter(g)}</b>
+                    </p>
                     <div className="mod-actions">
                       <button className="btn-add btn-sm" onClick={() => ackGroup(g)}>확인</button>
                     </div>
@@ -420,18 +511,25 @@ export default function Moderation() {
               return (
                 <li key={`corr-${g.id}`} className={`card mod-card ${highRisk ? 'flagged' : ''}`}>
                   <div className="mod-card-top">
-                    <span className="tag tag-primary mod-type">수정제안</span>
+                    <span className="tag tag-primary mod-type">{g.target === 'section_add' ? '분반추가' : '수정제안'}</span>
                     <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
                     {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
                     {highRisk && <span className="tag tag-warn mod-badge">⚠ 검토 필요</span>}
                     <span className="mod-time">{new Date(g.created_at).toLocaleString('ko-KR')}</span>
                   </div>
-                  <p className="mod-text">
-                    {g.suggested ? <>제안값: <b className="mod-corr-sug">{g.suggested}</b></> : <span className="muted">제안값 없음</span>}
-                    {g.note ? <><br />설명: {g.note}</> : null}
-                  </p>
+                  <div className="mod-text">
+                    <p className="mod-corr-diff">
+                      <span className="mod-diff-label">현재</span>
+                      <span className="mod-diff-before">{currentValue(cat, g) ?? '—'}</span>
+                      <span className="mod-diff-arrow">→</span>
+                      <span className="mod-diff-label">제안</span>
+                      <b className="mod-diff-after">{g.suggested ? fmtCorrAfter(g) : '(제안값 없음)'}</b>
+                    </p>
+                    {g.note ? <p className="mod-corr-note">설명: {g.note}</p> : null}
+                  </div>
                   <div className="mod-actions">
-                    <button className="btn-add btn-sm" onClick={() => applyGroup(g)}>적용</button>
+                    <button className="btn-add btn-sm" onClick={() => applyGroup(g)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
+                    {editPath(g) && <button className="link-btn" onClick={() => openEdit(g)}>✏️ 편집에서 열기</button>}
                     <button className="rev-del-btn" onClick={() => rejectGroup(g)}>반려</button>
                   </div>
                 </li>

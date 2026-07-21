@@ -81,16 +81,20 @@ async function showPush(msg) {
   // (댓글 단 직후 본인에게 돌아오는 알림도 대부분 이 경로로 걸러진다)
   const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   if (wins.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === path)) return;
+  // 관리자 알림(수정제안·신고삭제·자동반영) — 제목·본문을 서버가 직접 실어 보낸다.
+  const ADMIN_KINDS = ['correction', 'auto_correction', 'report_deleted'];
+  const admin = ADMIN_KINDS.includes(msg.kind);
   const hot = msg.kind === 'hot';
-  const reason = hot ? '' : await watchReason(String(msg.post_id || ''));
-  const title = hot ? '🔥 인기글이 나왔어요' : commentTitle(msg.kind, reason, msg.title);
+  const reason = (hot || admin) ? '' : await watchReason(String(msg.post_id || ''));
+  const title = admin ? (msg.title || '🔔 관리자 알림')
+    : hot ? '🔥 인기글이 나왔어요' : commentTitle(msg.kind, reason, msg.title);
   // 방해금지 창(디바이스 시간 기준)이면 소리·진동 없이 알림센터로만 조용히 내려보낸다.
   // userVisibleOnly 규약상 알림 자체는 계속 띄운다(발송 억제 시 브라우저가 일반 알림을
   // 대신 띄우거나 구독을 회수할 수 있어, 억제 대신 '조용한 알림'으로 처리).
   const quiet = inQuietHours(await dndConfig(), new Date());
   const opts = {
-    // 제목에 글제목이 들어가므로 본문은 HOT(제목 미포함)에만 채운다.
-    body: hot ? hotBody(msg) : '',
+    // 제목에 글제목이 들어가므로 본문은 HOT(제목 미포함)·관리자 알림에만 채운다.
+    body: admin ? (msg.body || '') : hot ? hotBody(msg) : '',
     tag: `${msg.kind || 'push'}-${msg.post_id || ''}`,   // 같은 글 알림은 1개로 겹침
     icon: '/icons/icon.svg',
     data: { path },   // ← 클릭 이동 목적지. silent 여부와 무관하게 항상 실린다.

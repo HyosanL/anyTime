@@ -104,13 +104,16 @@ Deno.serve(async (req) => {
           'hot_threshold', 'report_delete_count', 'report_burst_count']
         const field = String(payload.field)
         if (!allow.includes(field)) return json({ status: 'BAD_REQUEST' }, 400)
-        // 개수·일수 기준값은 1 이상의 정수만 허용(0/음수/소수면 자동화 로직이 깨짐).
-        const intMin1 = ['review_min_days', 'geo_valid_days', 'account_delete_days', 'radius_m',
+        // 개수·일수 기준값은 정수만 허용(음수·소수면 자동화 로직이 깨짐). 대부분 1 이상이어야 하지만
+        // 강의평 작성자격(review_min_days)만은 0 허용 — '보유 즉시 작성 가능'(대기 없음)을 뜻한다.
+        const intMin1 = ['geo_valid_days', 'account_delete_days', 'radius_m',
           'hot_threshold', 'report_delete_count', 'report_burst_count']
+        const intMin0 = ['review_min_days']
         let value = payload.value
-        if (intMin1.includes(field)) {
+        if (intMin1.includes(field) || intMin0.includes(field)) {
           value = Math.round(Number(value))
-          if (!Number.isFinite(value) || value < 1) return json({ status: 'BAD_REQUEST' }, 400)
+          const min = intMin0.includes(field) ? 0 : 1
+          if (!Number.isFinite(value) || value < min) return json({ status: 'BAD_REQUEST' }, 400)
         }
         await admin.from('app_setting').update({ [field]: value }).eq('id', 1).throwOnError()
         return json({ status: 'OK' })
@@ -571,7 +574,7 @@ Deno.serve(async (req) => {
       case 'list_corrections': {
         const st = payload.status ? String(payload.status) : 'pending'
         const { data } = await admin.from('correction')
-          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, status, created_at')
+          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, status, prev_value, created_at')
           .eq('status', st).order('created_at', { ascending: false }).limit(200)
         return json({ status: 'OK', items: data ?? [] })
       }
@@ -582,17 +585,33 @@ Deno.serve(async (req) => {
       }
       case 'apply_correction': {
         // 실제 반영 로직은 DB 함수(apply_correction_row)에 단일화 — 자동반영과 동일 경로.
-        // 반영 성공한 제안은 테이블에 남길 이유가 없어 즉시 삭제.
+        // 반영 성공(OK) 또는 '이미 있음'(ALREADY_DONE, 예: 분반추가인데 그 사이 이미 생성됨)은
+        // 큐에 남길 이유가 없어 삭제한다.
         const { data: st, error } = await admin.rpc('apply_correction_row', { p_id: payload.id })
         if (error) return json({ status: 'ERROR', detail: error.message }, 500)
-        if (st === 'OK') await admin.from('correction').delete().eq('id', payload.id).throwOnError()
+        if (st === 'OK' || st === 'ALREADY_DONE') await admin.from('correction').delete().eq('id', payload.id).throwOnError()
         const code = st === 'OK' ? 200 : st === 'NOT_FOUND' ? 404 : st === 'ALREADY_DONE' ? 409 : 400
         return json({ status: st ?? 'ERROR' }, code)
+      }
+      // 수정 제안을 '실제 반영 없이' 큐에서 정리(삭제). 관리자가 편집 페이지에서 직접 고친 뒤
+      // 그 제안(동일 묶음 전체)을 처리완료로 치울 때 쓴다. ids 배열 또는 단일 id 를 받는다.
+      case 'resolve_correction': {
+        const ids = Array.isArray(payload.ids) ? payload.ids : (payload.id != null ? [payload.id] : [])
+        if (ids.length) await admin.from('correction').delete().in('id', ids).throwOnError()
+        return json({ status: 'OK' })
+      }
+      // 수정 제안 1건 조회 — 편집 페이지로 딥링크했을 때 배너에 제안값을 그리기 위해(새로고침 등으로
+      // 라우터 state 가 사라진 경우 id 로 다시 읽는다).
+      case 'get_correction': {
+        const { data } = await admin.from('correction')
+          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, status, auto_applied, created_at')
+          .eq('id', payload.id).maybeSingle()
+        return json({ status: data ? 'OK' : 'NOT_FOUND', item: data ?? null })
       }
       // 자동반영 알림: 사용자 동일 제안 3건↑로 시스템이 반영한 건. 관리자 확인 전까지만 유지.
       case 'list_auto_notices': {
         const { data } = await admin.from('correction')
-          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, created_at')
+          .select('id, target, professor_code, course_code, year, term, section_no, label, field, suggested, note, prev_value, created_at')
           .eq('auto_applied', true)
           .order('created_at', { ascending: false }).limit(200)
         return json({ status: 'OK', items: data ?? [] })

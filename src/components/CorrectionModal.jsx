@@ -3,9 +3,10 @@ import { supabase } from '../supabase';
 import '../styles/correction.css';
 
 // 정보 수정 제안 모달 (익명). options: [{label, target, targetKey, field, placeholder, current, kind?, periods?, professors?}]
-//  - kind:'time'      → 요일·교시 빌더(사용자가 양식을 못 맞춰도 정규 문자열 "수3-4 금1" 생성)
-//  - kind:'professor' → 교수 검색·선택(동명이인은 코드로 확정, val="이름 (코드)")
-//  - kind 없음        → 기존 자유 텍스트 입력
+//  - kind:'time'       → 요일·교시 빌더(사용자가 양식을 못 맞춰도 정규 문자열 "수3-4 금1" 생성)
+//  - kind:'professor'  → 교수 검색·선택(동명이인은 코드로 확정, val="이름 (코드)")
+//  - kind:'sectionAdd' → 없는 분반 추가 제안(분반번호·교수·시간·강의실 → 정규화 JSON 한 벌로 제출)
+//  - kind 없음         → 기존 자유 텍스트 입력
 // 제출은 submit_correction RPC(SECURITY DEFINER) — 작성자 미저장.
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금']];
 const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
@@ -38,6 +39,8 @@ export default function CorrectionModal({ subject, options, onClose }) {
   const [rows, setRows] = useState([defaultRow(options[0])]); // 요일·교시
   const [pq, setPq] = useState('');       // 교수 검색어
   const [picked, setPicked] = useState(null); // 선택된 교수 {code,name,department}
+  const [saNo, setSaNo] = useState(1);    // 분반추가: 분반번호
+  const [saRoom, setSaRoom] = useState(''); // 분반추가: 강의실
   const opt = options[idx] || {};
 
   const periods = opt.periods?.length ? opt.periods : [1, 2, 3, 4, 5, 6, 7, 8];
@@ -46,9 +49,12 @@ export default function CorrectionModal({ subject, options, onClose }) {
     setIdx(i);
     setVal('');
     setErr('');
-    setRows([defaultRow(options[i])]);
+    // 분반추가는 시간이 '선택'이라 빈 채로 시작한다(기본 한 줄이 있으면 '월1'이 딸려 들어간다).
+    setRows(options[i]?.kind === 'sectionAdd' ? [] : [defaultRow(options[i])]);
     setPq('');
     setPicked(null);
+    setSaNo(1);
+    setSaRoom('');
   }
 
   // ── 요일·교시 빌더 핸들러 ──
@@ -68,7 +74,7 @@ export default function CorrectionModal({ subject, options, onClose }) {
 
   // ── 교수 검색 ──
   const profResults = useMemo(() => {
-    if (opt.kind !== 'professor') return [];
+    if (opt.kind !== 'professor' && opt.kind !== 'sectionAdd') return [];
     const q = pq.trim().toLowerCase();
     if (!q) return [];
     return (opt.professors ?? [])
@@ -90,20 +96,84 @@ export default function CorrectionModal({ subject, options, onClose }) {
   }
 
   async function submit() {
-    if (!val.trim() && !note.trim()) return setErr('올바른 값이나 설명 중 하나는 입력하세요.');
+    let suggested = val.trim();
+    if (opt.kind === 'sectionAdd') {
+      const no = Math.round(Number(saNo));
+      if (!Number.isFinite(no) || no < 1) return setErr('분반 번호를 1 이상으로 입력하세요.');
+      const profVal = picked ? (picked.isNew ? `${picked.name} (신규)` : `${picked.name} (${picked.code})`) : '';
+      // 정규화 JSON(키 순서 고정 no→prof→room→times) — 동일 제안 3건↑ 자동반영이
+      // '문자열 완전일치'로 묶기 때문에 순서·공백이 일정해야 한 분반으로 뭉친다.
+      suggested = JSON.stringify({ no, prof: profVal, room: saRoom.trim(), times: blocksToStr(rows) });
+    } else if (!suggested && !note.trim()) {
+      return setErr('올바른 값이나 설명 중 하나는 입력하세요.');
+    }
     setBusy(true); setErr('');
     const { error } = await supabase.rpc('submit_correction', {
       p_target: opt.target,
       p_target_key: opt.targetKey,
       p_label: subject,
       p_field: opt.field,
-      p_suggested: val.trim(),
+      p_suggested: suggested,
       p_note: note.trim(),
     });
     setBusy(false);
     if (error) return setErr(error.message || '제출에 실패했습니다.');
     setDone(true);
   }
+
+  // 교수 검색·선택 UI — '담당교수' 항목과 '분반추가' 항목이 함께 쓴다.
+  const profPickerUI = picked ? (
+    <div className="cor-prof-picked">
+      <span><b>{picked.name}</b> · {picked.isNew ? '신규 등록 예정' : (picked.department || '학과 미정')}</span>
+      <button type="button" className="cor-row-del" onClick={() => { setPicked(null); setVal(''); }}>변경</button>
+    </div>
+  ) : (
+    <>
+      <input value={pq} onChange={(e) => setPq(e.target.value)} placeholder="교수명 · 학과로 검색" />
+      {pq.trim() && (
+        <ul className="cor-prof-list">
+          {profResults.map((p) => (
+            <li key={p.code}>
+              <button type="button" onClick={() => pickProf(p)}>
+                <b>{p.name}</b> <span className="muted">{p.department || '학과 미정'}</span>
+              </button>
+            </li>
+          ))}
+          {/* 미등록 교수: 검색한 이름으로 신규 제안(관리자 승인/자동반영 시 생성) */}
+          <li>
+            <button type="button" className="cor-prof-new" onClick={() => pickNewProf(pq.trim())}>
+              ＋ ‘<b>{pq.trim()}</b>’ 이름으로 <b>신규 교수</b> 제안
+            </button>
+          </li>
+        </ul>
+      )}
+    </>
+  );
+
+  // 요일·교시 빌더 — '시간' 항목과 '분반추가' 항목이 함께 쓴다.
+  // 분반추가에선 시간이 선택이라 마지막 한 줄도 지울 수 있게 한다(줄이 0개면 시간 미정).
+  const timeBuilderUI = (
+    <div className="cor-time-builder">
+      {rows.map((r, i) => (
+        <div className="cor-time-row" key={i}>
+          <select value={r.day} onChange={(e) => changeRow(i, 'day', +e.target.value)} aria-label="요일">
+            {DAYS.map(([n, l]) => <option key={n} value={n}>{l}</option>)}
+          </select>
+          <select value={r.start} onChange={(e) => changeRow(i, 'start', +e.target.value)} aria-label="시작교시">
+            {periods.map((p) => <option key={p} value={p}>{p}교시</option>)}
+          </select>
+          <span className="cor-time-tilde">~</span>
+          <select value={r.end} onChange={(e) => changeRow(i, 'end', +e.target.value)} aria-label="종료교시">
+            {periods.map((p) => <option key={p} value={p}>{p}교시</option>)}
+          </select>
+          {(rows.length > 1 || opt.kind === 'sectionAdd') && (
+            <button type="button" className="cor-row-del" onClick={() => removeRow(i)} aria-label="이 시간 삭제">✕</button>
+          )}
+        </div>
+      ))}
+      <button type="button" className="cor-row-add" onClick={addRow}>＋ 요일 추가</button>
+    </div>
+  );
 
   return (
     <div className="cor-overlay" onClick={onClose}>
@@ -133,59 +203,33 @@ export default function CorrectionModal({ subject, options, onClose }) {
             {opt.kind === 'time' ? (
               <div className="field">
                 <span className="field-label">올바른 요일·교시</span>
-                <div className="cor-time-builder">
-                  {rows.map((r, i) => (
-                    <div className="cor-time-row" key={i}>
-                      <select value={r.day} onChange={(e) => changeRow(i, 'day', +e.target.value)} aria-label="요일">
-                        {DAYS.map(([n, l]) => <option key={n} value={n}>{l}</option>)}
-                      </select>
-                      <select value={r.start} onChange={(e) => changeRow(i, 'start', +e.target.value)} aria-label="시작교시">
-                        {periods.map((p) => <option key={p} value={p}>{p}교시</option>)}
-                      </select>
-                      <span className="cor-time-tilde">~</span>
-                      <select value={r.end} onChange={(e) => changeRow(i, 'end', +e.target.value)} aria-label="종료교시">
-                        {periods.map((p) => <option key={p} value={p}>{p}교시</option>)}
-                      </select>
-                      {rows.length > 1 && (
-                        <button type="button" className="cor-row-del" onClick={() => removeRow(i)} aria-label="이 시간 삭제">✕</button>
-                      )}
-                    </div>
-                  ))}
-                  <button type="button" className="cor-row-add" onClick={addRow}>＋ 요일 추가</button>
-                </div>
+                {timeBuilderUI}
                 <p className="cor-preview">입력값: <b>{val || '—'}</b></p>
               </div>
             ) : opt.kind === 'professor' ? (
               <div className="field">
                 <span className="field-label">올바른 담당교수</span>
-                {picked ? (
-                  <div className="cor-prof-picked">
-                    <span><b>{picked.name}</b> · {picked.isNew ? '신규 등록 예정' : (picked.department || '학과 미정')}</span>
-                    <button type="button" className="cor-row-del" onClick={() => { setPicked(null); setVal(''); }}>변경</button>
-                  </div>
-                ) : (
-                  <>
-                    <input value={pq} onChange={(e) => setPq(e.target.value)} placeholder="교수명 · 학과로 검색" />
-                    {pq.trim() && (
-                      <ul className="cor-prof-list">
-                        {profResults.map((p) => (
-                          <li key={p.code}>
-                            <button type="button" onClick={() => pickProf(p)}>
-                              <b>{p.name}</b> <span className="muted">{p.department || '학과 미정'}</span>
-                            </button>
-                          </li>
-                        ))}
-                        {/* 미등록 교수: 검색한 이름으로 신규 제안(관리자 승인 시 생성) */}
-                        <li>
-                          <button type="button" className="cor-prof-new" onClick={() => pickNewProf(pq.trim())}>
-                            ＋ ‘<b>{pq.trim()}</b>’ 이름으로 <b>신규 교수</b> 제안
-                          </button>
-                        </li>
-                      </ul>
-                    )}
-                    <p className="cor-hint">동명이인은 학과로 구분해 선택하세요. 목록에 없으면 아래 ‘신규 교수 제안’.</p>
-                  </>
-                )}
+                {profPickerUI}
+                {!picked && <p className="cor-hint">동명이인은 학과로 구분해 선택하세요. 목록에 없으면 위 ‘신규 교수 제안’.</p>}
+              </div>
+            ) : opt.kind === 'sectionAdd' ? (
+              <div className="field cor-sa">
+                <p className="cor-hint cor-sa-hint">수강편람에 있는데 목록에 <b>없는 분반</b>을 알려 주세요. 승인되면(또는 같은 제안 3건↑) 자동으로 분반이 추가됩니다.</p>
+                <div className="cor-sa-grid">
+                  <label className="cor-sa-field"><span>분반 번호</span>
+                    <input type="number" min="1" value={saNo} onChange={(e) => setSaNo(e.target.value)} />
+                  </label>
+                  <label className="cor-sa-field"><span>강의실 (선택)</span>
+                    <input value={saRoom} onChange={(e) => setSaRoom(e.target.value)} placeholder="예: 302" />
+                  </label>
+                </div>
+                <span className="field-label">담당교수 (선택)</span>
+                {profPickerUI}
+                <span className="field-label cor-sa-time-label">요일·교시 (선택)</span>
+                {timeBuilderUI}
+                <p className="cor-preview">
+                  {saNo || '?'}분반 · {picked ? picked.name : '교수 미정'} · {blocksToStr(rows) || '시간 미정'}{saRoom.trim() ? ` · ${saRoom.trim()}` : ''}
+                </p>
               </div>
             ) : (
               <label className="field"><span className="field-label">올바른 값</span>

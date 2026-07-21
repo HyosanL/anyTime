@@ -43,6 +43,17 @@
 .mod-corr-field { color: var(--primary); font-weight: 600; }
 .mod-corr-sug { color: var(--text-1); }
 
+/* 수정 전 → 수정 후 비교 */
+.mod-corr-diff {
+  margin: 0.3rem 0 0; display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
+  font-size: 0.9rem; color: var(--text-1);
+}
+.mod-diff-label { font-size: 0.68rem; color: var(--text-3); }
+.mod-diff-before { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--text-3); }
+.mod-diff-arrow { color: var(--primary); font-weight: 700; }
+.mod-diff-after { color: var(--primary); }
+.mod-corr-note { margin: 0.3rem 0 0; font-size: 0.82rem; color: var(--text-2); }
+
 /* ── 요일·교시 빌더 ── */
 .cor-time-builder { display: flex; flex-direction: column; gap: 0.45rem; }
 .cor-time-row { display: flex; align-items: center; gap: 0.35rem; }
@@ -83,3 +94,15 @@
   padding: 0.5rem 0.6rem; border: 1px solid var(--primary); border-radius: var(--r-sm, 0.4rem);
   font-size: 0.88rem; color: var(--text-1);
 }
+
+/* ── 없는 분반 추가 제안 ── */
+.cor-sa { display: flex; flex-direction: column; gap: 0.5rem; }
+.cor-sa-hint { text-align: left; }
+.cor-sa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.cor-sa-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.cor-sa-field span { font-size: 0.78rem; color: var(--text-2); }
+.cor-sa-field input {
+  padding: 0.45rem 0.55rem; border: 1px solid var(--border); border-radius: var(--r-sm, 0.4rem);
+  background: var(--surface); color: var(--text-1); font-size: 0.9rem;
+}
+.cor-sa-time-label { margin-top: 0.15rem; }

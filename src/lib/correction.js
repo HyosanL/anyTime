@@ -24,5 +24,8 @@ export function sectionCorrectionOptions(s, meta) {
     { label: '강의실', target: 'section_time', targetKey: secKey, field: 'room', placeholder: '예: 302' },
     { label: '담당교수', target: 'section', targetKey: secKey, field: 'professor', kind: 'professor', professors: meta.professors, current: s.professor_name || '' },
     { label: '과목명', target: 'course', targetKey: { code: s.course_code }, field: 'name', current: s.course_name },
+    // 이 과목에 '없는 분반'을 제안(분반번호·교수·시간·강의실). 승인/동일 3건↑ 자동반영 시 새 분반이 생성된다.
+    // section_no 는 보내지 않는다(제안값 JSON 안에 분반번호가 들어간다) — 아직 없는 분반이므로 대상 키는 과목·학기까지만.
+    { label: '＋ 없는 분반 추가 제안', target: 'section_add', targetKey: { course_code: s.course_code, year: s.year, term: s.term }, field: 'section', kind: 'sectionAdd', periods: meta.periods, professors: meta.professors },
   ];
 }

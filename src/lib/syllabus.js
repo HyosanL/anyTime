@@ -469,6 +469,32 @@ function assignSectionNos(planned, pool, codeOfProf) {
 
 // ---------- 대조(reconcile): 기존 catalog와 비교 ----------
 // catalog: { course[], professor[], section[], section_time[] }
+// 과목 이름 근접매칭 — 정규화된 '구간' 완전일치만 후보로 올린다. 편집거리(오타 유사도)는 쓰지 않는다:
+//   체육(럭비) ↔ 럭비            → 매칭(괄호 안/앞이 기존 과목명과 통째로 일치)
+//   항공체력관리론 ↔ 항공우주체력관리론 → 매칭 안 함(공유 구간 없음; 실제로 3학년/1학년 다른 과목)
+// 안전을 위해 '한쪽의 구간(base/paren)이 다른쪽 전체(full)와 정확히 같을 때'만 후보로 본다.
+// (base끼리 비교하면 체육(럭비)·체육(축구)가 서로 묶여 버린다 — 그래서 항상 상대의 full 과만 맞춘다.)
+function courseNameKeys(name) {
+  const norm = (s) => (s || '')
+    .normalize('NFC')
+    .replace(/[［【〔]/g, '(').replace(/[］】〕]/g, ')')   // 대괄호류 → 소괄호
+    .replace(/\s+/g, '')
+    .toLowerCase();
+  const str = String(name ?? '');
+  const parenRaw = (str.match(/\(([^()]+)\)/) || [])[1] || '';  // 첫 괄호 내용
+  const baseRaw = str.split('(')[0];                            // 첫 괄호 앞
+  return { full: norm(str), base: norm(baseRaw), paren: norm(parenRaw) };
+}
+function courseNamesRelated(a, b) {
+  if (!a.full || !b.full) return false;
+  if (a.full === b.full) return true;
+  if (a.paren && a.paren === b.full) return true;
+  if (a.base && a.base === b.full) return true;
+  if (b.paren && b.paren === a.full) return true;
+  if (b.base && b.base === a.full) return true;
+  return false;
+}
+
 export function reconcile(rows, periods, catalog, year, term, grids = []) {
   const courses = catalog?.course ?? [];
   const profs = catalog?.professor ?? [];
@@ -567,17 +593,36 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
   const existing = existingSections(catalog, year, term);
   const claimedByCourse = new Map(); // course_code → Set(이번 적용이 차지하는 기존 분반번호)
 
+  // 파일 과목명 → 기존 과목 매칭. 이름이 정확히 같으면 'match', 정규화 구간이 통째로 맞으면 'similar'
+  //  (후보 1개, 자동이지만 관리자가 확인) / 'ambiguous'(후보 여럿, 관리자가 고름) / 'create'(신규).
+  const existingCourseKeys = courses.map((c) => ({ course: c, keys: courseNameKeys(c.name) }));
+  function matchCourse(name) {
+    const exact = courseByName.get(name);
+    if (exact) return { code: exact.code, action: 'match', candidates: [] };
+    const k = courseNameKeys(name);
+    const near = existingCourseKeys.filter((e) => courseNamesRelated(k, e.keys));
+    const candidates = near.map((e) => ({
+      code: e.course.code, name: e.course.name, department: e.course.department ?? null,
+      sectionCount: existing.get(e.course.code)?.length ?? 0,
+    }));
+    if (candidates.length === 1) return { code: candidates[0].code, action: 'similar', candidates };
+    if (candidates.length > 1) return { code: null, action: 'ambiguous', candidates };
+    return { code: null, action: 'create', candidates: [] };
+  }
+
   const courseList = [...courseGroups.values()].map((g) => {
-    const known = courseByName.get(g.name);
+    const m = matchCourse(g.name);
     const planned = [...g.sections.values()]
       .sort((a, b) => a.sectionNo - b.sectionNo)
       .map((s) => ({ sectionNo: s.sectionNo, professorName: s.professor, times: groupTimes(s.slots), room: s.room }));
-    const pool = known ? (existing.get(known.code) ?? []) : [];
+    const pool = m.code ? (existing.get(m.code) ?? []) : [];
     const { sections: assigned, claimed } = assignSectionNos(planned, pool, (n) => codeOfProf.get(n) ?? null);
-    if (known) claimedByCourse.set(known.code, claimed);
+    if (m.code) claimedByCourse.set(m.code, claimed);
     return {
       name: g.name,
-      code: known?.code ?? null,
+      code: m.code,
+      action: m.action,            // 'match' | 'similar' | 'ambiguous' | 'create'
+      candidates: m.candidates,    // [{ code, name, department, sectionCount }]
       include: true,
       sections: assigned,
     };
@@ -630,7 +675,9 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
     gridCount: grids.length,
     stats: {
       courses: courseList.length,
-      newCourses: courseList.filter((c) => c.code == null).length,
+      newCourses: courseList.filter((c) => c.action === 'create').length,
+      similarCourses: courseList.filter((c) => c.action === 'similar').length,     // 비슷한 이름으로 기존 과목에 이어붙임 — 확인 필요
+      ambiguousCourses: courseList.filter((c) => c.action === 'ambiguous').length, // 후보 여럿 — 관리자가 골라야 함
       professors: professors.length,
       newProfessors: professors.filter((p) => p.action === 'create').length,
       ambiguous: professors.filter((p) => p.action === 'ambiguous').length,

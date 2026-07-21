@@ -141,7 +141,7 @@ COMMENT ON TABLE  app_setting                     IS '앱 전역 설정(단일 �
 COMMENT ON COLUMN app_setting.campus_lat          IS '지오펜싱 중심 위도.';
 COMMENT ON COLUMN app_setting.campus_lng          IS '지오펜싱 중심 경도.';
 COMMENT ON COLUMN app_setting.radius_m            IS '가입·재인증 허용 반경(m).';
-COMMENT ON COLUMN app_setting.review_min_days     IS '강의평 작성 자격: 해당 강의를 확정시간표에 보유해야 하는 최소 일수(기본 30).';
+COMMENT ON COLUMN app_setting.review_min_days     IS '강의평 작성 자격: 해당 강의를 확정시간표에 보유해야 하는 최소 일수(기본 30; 0=대기 없이 담는 즉시 작성 가능).';
 COMMENT ON COLUMN app_setting.geo_valid_days      IS '위치 재인증 유효기간(일, 기본 90).';
 COMMENT ON COLUMN app_setting.account_delete_days IS '위치 만료 후 계정·데이터 삭제까지 대기 일수(기본 90).';
 COMMENT ON COLUMN app_setting.board_enabled       IS '익명게시판 전체 활성화 여부. FALSE 면 글/댓글/반응/게시판 생성 차단.';
@@ -168,18 +168,19 @@ COMMENT ON COLUMN banned_word.word       IS '금지어(PK). 대소문자 무시�
 COMMENT ON COLUMN banned_word.created_at IS '등록 시각.';
 
 COMMENT ON TABLE  correction            IS '정보 수정 제안(익명). 잘못된 교수/과목/분반·시간·강의실을 사용자가 신고 → 관리자 검토·반영. 작성자 미저장. 대상 키는 단순 속성으로 분해 저장(정규화)·FK 로 참조 무결성 보장.';
-COMMENT ON COLUMN correction.target     IS '수정 대상 종류: professor | course | section | section_time.';
+COMMENT ON COLUMN correction.target     IS '수정 대상 종류: professor | course | section | section_time | section_add(없는 분반 추가 제안).';
 COMMENT ON COLUMN correction.professor_code IS '대상 교수 코드(target=professor 일 때만, professor FK).';
 COMMENT ON COLUMN correction.course_code    IS '대상 과목 코드(target=course/section/section_time 일 때, course FK).';
 COMMENT ON COLUMN correction.year           IS '대상 분반 연도(target=section/section_time 일 때, section 복합 FK).';
 COMMENT ON COLUMN correction.term           IS '대상 분반 학기구분(1/2).';
-COMMENT ON COLUMN correction.section_no     IS '대상 분반 번호.';
 COMMENT ON COLUMN correction.label      IS '사람이 읽는 대상 이름(예: "전쟁사 3분반").';
-COMMENT ON COLUMN correction.field      IS '수정 항목: name | department | office | professor | room | time.';
-COMMENT ON COLUMN correction.suggested  IS '제안값(시간은 "수3 수4 금1" 형식, 교수는 "이름 (코드)" 형식).';
+COMMENT ON COLUMN correction.section_no     IS '대상 분반 번호(section_add 는 NULL — 아직 없는 분반이라 복합 FK 미검사 대상).';
+COMMENT ON COLUMN correction.field      IS '수정 항목: name | department | office | professor | room | time | section(분반 전체 추가).';
+COMMENT ON COLUMN correction.suggested  IS '제안값(시간 "수3 수4 금1", 교수 "이름 (코드)"; section_add 는 정규화 JSON {no,prof,room,times}).';
 COMMENT ON COLUMN correction.note       IS '제안자 설명.';
 COMMENT ON COLUMN correction.status     IS '처리 상태: pending(대기) | applied(자동반영 알림 대기). 수동 반영·반려·알림확인 건은 행 삭제(미보관).';
-COMMENT ON COLUMN correction.auto_applied IS '동일 제안 3건↑로 시스템이 자동반영 처리했는지(분반 항목만). 관리자 확인 시 삭제.';
+COMMENT ON COLUMN correction.auto_applied IS '동일 제안 3건↑로 시스템이 자동반영 처리했는지(분반 항목·분반추가). 관리자 확인 시 삭제.';
+COMMENT ON COLUMN correction.prev_value IS '반영 직전 값(자동반영 알림에서 ''수정 전 → 수정 후'' 비교 표시용; 대기중엔 NULL).';
 
 -- ── 9. 익명게시판 ────────────────────────────────────────────────────
 COMMENT ON TABLE  board                  IS '익명게시판(주제별). 이름 고유. 30일 무활동 시 자동 정리.';
@@ -237,6 +238,10 @@ COMMENT ON COLUMN post_watch.subscription_id IS '알림 받을 구독(기기).';
 
 COMMENT ON TABLE  push_config               IS '웹푸시 발송 게이트 설정(1행). 클라이언트 접근 불가(RLS 전면 차단).';
 COMMENT ON COLUMN push_config.fanout_secret IS '트리거→Pages /api/push-fanout 호출 인증 시크릿. Cloudflare PUSH_SECRET 과 동일 값. NULL 이면 발송 비활성.';
+
+COMMENT ON TABLE  admin_push_subscription    IS '관리자 푸시 구독(cadet_id 저장 — 일반 push_subscription 의 완전 익명과 대비). 새 수정제안·신고 자동삭제·수정제안 자동반영을 관리자에게만 알림. 관리자 기기가 옵트인(검열 화면 진입)할 때만 쌓임. RLS 전면 차단(RPC 전용).';
+COMMENT ON COLUMN admin_push_subscription.cadet_id IS '관리자(생도) id. is_admin 확인 후 등록(admin_push_subscribe).';
+COMMENT ON COLUMN admin_push_subscription.endpoint IS '푸시서비스 endpoint URL. 발송 404/410 시 push_prune 로 함께 정리.';
 
 -- ── 검열 아카이브 ────────────────────────────────────────────────────
 COMMENT ON TABLE  deleted_content              IS '신고 누적 자동삭제된 내용의 스냅샷(오삭제 복구 안전망). 작성자 식별정보 미보관(완전 익명). 30일 뒤 자동 파기(purge_deleted_archive). 서비스롤 Edge 만 접근.';
