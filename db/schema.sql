@@ -308,6 +308,25 @@ CREATE TRIGGER trg_custom_class_no_overlap BEFORE INSERT OR UPDATE ON custom_cla
   FOR EACH ROW EXECUTE FUNCTION custom_class_no_overlap();
 
 
+-- 학점계산기: 생도별 학기·과목 성적(등급·학점). 본인만(RLS).
+-- semester(year,term) 에는 FK 를 걸지 않는다 — 과거 학기 성적은 편람 학기 목록과 무관한
+-- 개인 기록이라 카탈로그(학기 개폐)에 영향받지 않아야 한다. credit·grade 는 NULL(미입력) 허용.
+-- (과락점수계산기는 서버 저장이 아니라 로컬(localStorage)이라 테이블이 없다.)
+CREATE TABLE grade_entry (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    cadet_id    UUID     NOT NULL REFERENCES cadet(id) ON DELETE CASCADE,
+    year        SMALLINT NOT NULL,
+    term        SMALLINT NOT NULL,
+    course_name TEXT     NOT NULL CHECK (btrim(course_name) <> '' AND char_length(course_name) <= 60),
+    credit      NUMERIC(3,1) CHECK (credit IS NULL OR (credit >= 0 AND credit <= 30)),   -- NULL=미입력
+    grade       TEXT CHECK (grade IS NULL OR grade IN
+                  ('A+','A0','A-','B+','B0','B-','C+','C0','C-','D+','D0','D-','F')),     -- NULL=미입력
+    sort_order  INT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_grade_entry_cadet ON grade_entry (cadet_id, year DESC, term DESC, sort_order);
+
+
 -- =====================================================================
 --  5장. 강의평 (과목·교수 조합 참조, 익명)
 -- =====================================================================
@@ -839,6 +858,7 @@ ALTER TABLE section_time ENABLE ROW LEVEL SECURITY;
 ALTER TABLE timetable       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE timetable_entry ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_class    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grade_entry     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_report ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exam_archive  ENABLE ROW LEVEL SECURITY;
@@ -875,6 +895,10 @@ CREATE POLICY own_custom_class ON custom_class FOR ALL TO authenticated
     USING (EXISTS (SELECT 1 FROM timetable t WHERE t.id = timetable_id AND t.cadet_id = auth.uid()))
     WITH CHECK (EXISTS (SELECT 1 FROM timetable t WHERE t.id = timetable_id AND t.cadet_id = auth.uid()));
 GRANT SELECT, INSERT, UPDATE, DELETE ON custom_class TO authenticated;
+-- 학점계산기 성적: 본인 행만(timetable 과 동일 패턴)
+CREATE POLICY own_grade_entry ON grade_entry FOR ALL TO authenticated
+    USING (cadet_id = auth.uid()) WITH CHECK (cadet_id = auth.uid());
+GRANT SELECT, INSERT, UPDATE, DELETE ON grade_entry TO authenticated;
 -- class_memo / app_setting / correction : 정책 없음 → 서버 함수(RPC/service_role)만.
 -- review_report / memo_report : 정책 없음(deny-all) → report_review()/report_memo() RPC 와
 --   admin-action(service_role) 만 접근. RLS 를 빠뜨리면 Supabase 기본 GRANT 때문에
@@ -895,7 +919,7 @@ GRANT EXECUTE ON FUNCTION is_admin() TO authenticated;
 
 CREATE OR REPLACE FUNCTION haversine_m(
     lat1 DOUBLE PRECISION, lng1 DOUBLE PRECISION, lat2 DOUBLE PRECISION, lng2 DOUBLE PRECISION
-) RETURNS DOUBLE PRECISION LANGUAGE sql IMMUTABLE AS $$
+) RETURNS DOUBLE PRECISION LANGUAGE sql IMMUTABLE SET search_path = public AS $$
     SELECT 2 * 6371000 * asin(sqrt(power(sin(radians(lat2-lat1)/2),2)
         + cos(radians(lat1))*cos(radians(lat2))*power(sin(radians(lng2-lng1)/2),2)));
 $$;
@@ -2008,6 +2032,9 @@ BEGIN
     END LOOP;
 EXCEPTION WHEN others THEN RETURN;
 END; $$;
+-- ⚠️ 내부 전용(다른 SECURITY DEFINER 함수 안에서만 호출). Supabase 기본권한이 anon+authenticated
+--   양쪽에 EXECUTE 를 자동부여하므로 명시적으로 전부 회수한다(사용자 직접 호출=관리자 푸시 스푸핑).
+REVOKE ALL ON FUNCTION admin_push(TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
 
 -- 발송 시크릿 시드. ※ 라이브 적용 시 실제 값으로 치환(스윕 시크릿과 같은 방식) 후 주석 해제.
 --   Cloudflare Pages 환경변수 PUSH_SECRET 과 같은 값이어야 한다.
@@ -2309,6 +2336,63 @@ LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
 $$;
 REVOKE ALL ON FUNCTION reorder_follows(UUID[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION reorder_follows(UUID[]) TO authenticated;
+
+
+-- =====================================================================
+--  ★ 최종 하드닝 — 반드시 파일 최하단(모든 함수·테이블 정의 뒤)에 유지할 것 ★
+--  Supabase 기본권한(ALTER DEFAULT PRIVILEGES)은 새 함수마다 anon+authenticated
+--  양쪽에, 새 테이블마다 anon+authenticated SELECT 를 자동부여한다. 그래서 함수를
+--  추가하고 이 블록을 다시 안 돌리면, 사용자 직접 호출을 막았다고 믿은 내부 함수
+--  (apply_correction_row=관리자승인 우회 카탈로그변조, admin_push=관리자푸시 스푸핑,
+--   purge_* 등)가 실제로는 열려 있는 드리프트가 생긴다(2026-07-22 실측·교정).
+--  → 새 마이그레이션을 적용할 때마다 이 블록을 마지막에 함께 실행한다.
+-- =====================================================================
+
+-- 1) 함수: PUBLIC·anon 전면 회수 후, 비회원이 정당하게 쓰는 4종만 재부여.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION get_shared_post(UUID, BOOLEAN) TO anon;
+GRANT EXECUTE ON FUNCTION share_image_ok(UUID, TEXT)     TO anon;
+GRANT EXECUTE ON FUNCTION board_referenced_keys(TEXT)    TO anon;
+GRANT EXECUTE ON FUNCTION push_prune(TEXT, TEXT[])       TO anon;
+
+-- 2) 함수: authenticated 자동부여분 회수 — 프론트가 실제 .rpc() 로 부르는 함수 +
+--    RLS 헬퍼(board_enabled) 만 남기고(allow 목록), 나머지 내부/트리거/크론 함수 회수.
+--    (트리거 함수는 EXECUTE 권한과 무관하게 발화하고, SECURITY DEFINER 내부호출은
+--     소유자 권한으로 도므로 이 회수는 프론트 기능에 영향 없음.)
+--    ※ 프론트에 새 .rpc() 함수를 추가하면 이 allow 목록에 함께 넣을 것.
+DO $$
+DECLARE
+  r RECORD;
+  allow TEXT[] := ARRAY[
+    'submit_correction','is_admin','get_review_min_days','geo_verify','get_boot_info',
+    'in_primary_timetable','timetable_held_days','create_review','delete_review','like_review',
+    'report_review','create_exam','delete_exam','create_memo','get_memos','delete_memo',
+    'report_memo','board_enabled','create_board','create_post','get_post_b','board_react',
+    'create_comment_b','delete_post','delete_comment_b','create_share','get_shared_post',
+    'push_subscribe','push_unsubscribe','push_set_hot','push_watch','push_unwatch',
+    'admin_push_subscribe','admin_push_unsubscribe','set_tt_public','search_shared_users',
+    'get_shared_gallery','reorder_follows'
+  ];
+BEGIN
+  FOR r IN
+    SELECT DISTINCT p.oid::regprocedure AS sig
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN aclexplode(p.proacl) a ON true
+    JOIN pg_roles ro ON ro.oid = a.grantee
+    WHERE n.nspname = 'public' AND a.privilege_type = 'EXECUTE'
+      AND ro.rolname = 'authenticated' AND p.proname <> ALL(allow)
+  LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM authenticated', r.sig);
+  END LOOP;
+END $$;
+
+-- 3) 테이블: RPC/service_role 로만 접근하는 내부 테이블(RLS 정책 없음)의 잔여 SELECT 회수.
+--    현재도 RLS 로 전 행 차단되나, 실수로 느슨한 정책이 붙어도 새지 않도록 이중 잠금.
+REVOKE SELECT ON deleted_content, push_subscription, push_config, post_watch,
+                 admin_push_subscription, review_report, memo_report,
+                 board_share, correction, board_event, app_setting
+    FROM anon, authenticated;
 
 
 -- =====================================================================

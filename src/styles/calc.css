@@ -1,0 +1,165 @@
+/* 학점/과락점수계산 — 색은 전부 토큰(var(--...)). 다크모드는 tokens.css 가 자동 처리. */
+
+.calc-page { max-width: var(--app-w); margin: 0 auto; }
+.calc-body { padding: 0 var(--pad) 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+/* ── 탭 ─────────────────────────────────────────────── */
+.calc-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;
+  padding: 0.4rem var(--pad) 0.9rem;
+}
+.calc-tab {
+  padding: 0.65rem 0.5rem; border-radius: var(--r-md);
+  border: 1px solid var(--border); background: var(--card);
+  color: var(--text-2); font-weight: 700; font-size: 0.92rem; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.calc-tab.is-active {
+  background: var(--primary-weak); color: var(--primary-strong);
+  border-color: var(--primary-weak-border);
+}
+
+/* ── 공용 ───────────────────────────────────────────── */
+.calc-sem-row { display: flex; align-items: center; gap: 0.6rem; }
+.calc-sem-label { font-size: 0.85rem; font-weight: 700; color: var(--text-2); flex: 0 0 auto; }
+.calc-sem-select { flex: 1; }
+.calc-err { margin: 0; }
+.calc-hint { font-size: 0.82rem; margin: 0; }
+.calc-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.calc-sec-title { font-size: 0.95rem; font-weight: 700; margin: 0 0 0.6rem; color: var(--text); }
+
+/* ===================================================== */
+/*  학점계산기                                            */
+/* ===================================================== */
+.gpa-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.gpa-row {
+  display: grid; grid-template-columns: 1fr 64px 72px 34px;
+  gap: 0.4rem; align-items: center;
+}
+.gpa-row-head {
+  font-size: 0.75rem; color: var(--text-3); font-weight: 700;
+  padding: 0 0.1rem;
+}
+.gpa-row-head .gpa-c-credit, .gpa-row-head .gpa-c-grade { text-align: center; }
+
+/* 컴팩트 입력(전역 input width:100% 위에 덮어쓴다) */
+.gpa-row input.gpa-c-name { padding: 0.5rem 0.6rem; font-size: 0.9rem; }
+.gpa-row input.gpa-c-credit {
+  width: 100%; padding: 0.5rem 0.3rem; font-size: 0.9rem; text-align: center;
+}
+.gpa-c-grade { padding: 0.5rem 0.3rem; font-size: 0.9rem; text-align: center; }
+button.gpa-c-del { width: 34px; height: 34px; font-size: 0.95rem; }
+
+/* 숫자 입력 스핀 버튼은 좁은 칸에서 방해 → 감춘다 */
+.gpa-c-credit::-webkit-outer-spin-button,
+.gpa-c-credit::-webkit-inner-spin-button,
+.fc-ratio::-webkit-outer-spin-button,
+.fc-ratio::-webkit-inner-spin-button,
+.fc-score::-webkit-inner-spin-button,
+.fc-threshold input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.gpa-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.gpa-stat {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 0.8rem 0.9rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.gpa-stat-k { font-size: 0.78rem; color: var(--text-3); font-weight: 600; }
+.gpa-stat-v { font-size: 1.6rem; font-weight: 800; color: var(--primary-strong); letter-spacing: -0.02em; }
+.gpa-stat-sub { font-size: 0.75rem; color: var(--text-3); }
+
+.gpa-trend {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 0.9rem 1rem;
+}
+.gpa-chart { width: 100%; height: auto; display: block; }
+.gpa-chart-grid { stroke: var(--border); stroke-width: 1; }
+.gpa-chart-axis { fill: var(--text-3); font-size: 9px; }
+.gpa-chart-val { fill: var(--text-2); font-size: 8.5px; font-weight: 700; }
+.gpa-chart-line { stroke: var(--primary); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.gpa-chart-dot { fill: var(--primary); }
+
+/* ===================================================== */
+/*  과락점수계산기                                        */
+/* ===================================================== */
+.fc-warn-bar {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 0.8rem 1rem;
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.fc-warn-top { display: flex; justify-content: space-between; align-items: baseline; }
+.fc-warn-label { font-size: 0.85rem; font-weight: 700; color: var(--text-2); }
+.fc-warn-val { font-size: 1.2rem; font-weight: 800; color: var(--danger); }
+.fc-warn-bar input[type="range"] { width: 100%; accent-color: var(--danger); }
+.fc-warn-note { font-size: 0.78rem; margin: 0; }
+
+.fc-cards { display: flex; flex-direction: column; gap: 0.7rem; }
+.fc-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 0.8rem 0.9rem;
+  display: flex; flex-direction: column; gap: 0.55rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.fc-card.is-warn { background: var(--warn-weak); border-color: var(--warn-border); }
+
+.fc-card-head { display: flex; align-items: center; gap: 0.5rem; }
+.fc-card-head input.fc-name { flex: 1; padding: 0.5rem 0.6rem; font-size: 0.95rem; font-weight: 600; }
+.fc-threshold {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.78rem; color: var(--text-3); font-weight: 600; flex: 0 0 auto;
+}
+.fc-threshold input {
+  width: 52px; padding: 0.45rem 0.3rem; font-size: 0.85rem; text-align: center;
+}
+button.fc-del { width: 34px; height: 34px; flex: 0 0 auto; }
+
+.fc-ratio-warn { font-size: 0.75rem; color: var(--warn); margin: 0; font-weight: 600; }
+
+.fc-evals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.fc-eval {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 0.5rem 0.45rem;
+}
+.fc-eval-top { display: flex; align-items: center; justify-content: space-between; gap: 0.2rem; }
+.fc-eval-name { font-size: 0.8rem; font-weight: 700; color: var(--text-2); }
+.fc-ratio-wrap { font-size: 0.72rem; color: var(--text-3); display: inline-flex; align-items: center; gap: 1px; }
+.fc-ratio { width: 34px; padding: 0.25rem 0.15rem; font-size: 0.78rem; text-align: center; }
+
+.fc-score { width: 100%; padding: 0.5rem 0.35rem; font-size: 0.95rem; text-align: center; font-weight: 700; }
+.fc-score.is-entered { color: var(--text-3); font-weight: 500; background: var(--chip-bg); }
+
+.fc-eval-foot { text-align: center; font-size: 0.72rem; }
+.fc-eval-secured { color: var(--text-3); }
+
+/* 빈 칸의 필요값 — 탭하면 채워지는 버튼 */
+.fc-suggest {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  padding: 0.3rem 0.2rem; border-radius: var(--r-sm);
+  border: 1px dashed var(--primary-weak-border); background: var(--primary-weak);
+  cursor: pointer; transition: background 0.12s ease;
+}
+.fc-suggest:hover { background: var(--primary-weak); filter: brightness(0.97); }
+.fc-suggest-main { font-size: 1rem; font-weight: 800; color: var(--primary-strong); letter-spacing: -0.02em; }
+.fc-suggest-sub { font-size: 0.66rem; color: var(--text-3); }
+.fc-suggest.is-imp {
+  border-color: var(--danger-border); background: var(--danger-weak); cursor: not-allowed;
+}
+.fc-suggest.is-imp .fc-suggest-main { color: var(--danger); }
+
+.fc-card-foot {
+  display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: center;
+  font-size: 0.78rem; color: var(--text-2);
+  padding-top: 0.15rem; border-top: 1px solid var(--border);
+}
+.fc-card-foot b { color: var(--text); }
+.fc-need-all b { color: var(--danger); }
+.fc-imp-tag { color: var(--danger); font-weight: 700; }
+.fc-ok-tag { color: var(--success); font-weight: 700; }
+
+/* 좁은 화면(작은 폰) 미세 조정 */
+@media (max-width: 360px) {
+  .fc-evals { gap: 0.35rem; }
+  .fc-eval { padding: 0.4rem 0.3rem; }
+  .fc-suggest-main { font-size: 0.9rem; }
+}

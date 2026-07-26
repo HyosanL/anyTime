@@ -475,18 +475,19 @@ export default function Home() {
             <span className="nav-tile-sub">요일·교시로 빈 강의실 찾기</span>
           </Link>
 
-          {boardOn ? (
-            <Link to="/boards" className="nav-tile nav-tile-accent">
+          <Link to="/calc" className="nav-tile nav-tile-accent">
+            <span className="nav-tile-ic" aria-hidden="true">🧮</span>
+            <span className="nav-tile-title">학점·과락 계산</span>
+            <span className="nav-tile-sub">평점·기말 필요점수 계산</span>
+          </Link>
+
+          {/* 익명게시판: 활성화되면 관리자처럼 통칸 버튼으로 등장. 비활성이면 아예 숨김. */}
+          {boardOn && (
+            <Link to="/boards" className="nav-tile nav-tile-accent nav-tile-wide">
               <span className="nav-tile-ic" aria-hidden="true">💬</span>
               <span className="nav-tile-title">익명게시판</span>
               <span className="nav-tile-sub">자유롭게 이야기 나누기</span>
             </Link>
-          ) : (
-            <div className="nav-tile nav-tile-accent is-disabled" role="link" aria-disabled="true" title="익명게시판 준비중">
-              <span className="nav-tile-ic" aria-hidden="true">🚧</span>
-              <span className="nav-tile-title">익명게시판</span>
-              <span className="nav-tile-sub">준비중이에요</span>
-            </div>
           )}
 
           {isAdmin && (
