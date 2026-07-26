@@ -325,7 +325,17 @@ function FailTab({ catalog, uid }) {
     }
   }, [catalog, update]);
 
-  const sorted = useMemo(() => sortCourses(state.courses), [state.courses]);
+  // 정렬은 '탭에 들어온 시점'에 한 번만 고정한다 — 점수 입력 중 확보 기여분이 바뀌어도
+  // 카드가 즉시 재정렬돼 산만하지 않게. 다시 들어오면(탭 전환·페이지 재진입) 재마운트되며
+  // 아래 초기값이 다시 계산돼 위험순으로 새로고침된다. 마운트 뒤 추가·시드된 과목은 맨 아래.
+  const [order] = useState(() => sortCourses(state.courses).map((c) => c.id));
+  const ordered = useMemo(() => {
+    const byId = new Map(state.courses.map((c) => [c.id, c]));
+    const inOrder = order.filter((id) => byId.has(id)).map((id) => byId.get(id));
+    const known = new Set(order);
+    const extra = state.courses.filter((c) => !known.has(c.id));
+    return [...inOrder, ...extra];
+  }, [state.courses, order]);
 
   return (
     <div className="calc-body">
@@ -345,10 +355,10 @@ function FailTab({ catalog, uid }) {
       {msg && <p className="muted calc-hint">{msg}</p>}
       {seeded && <p className="muted calc-hint">현재 학기 시간표 과목을 불러왔어요.</p>}
 
-      {sorted.length === 0 && <p className="center muted">과목을 추가하거나 시간표에서 불러오세요.</p>}
+      {ordered.length === 0 && <p className="center muted">과목을 추가하거나 시간표에서 불러오세요.</p>}
 
       <div className="fc-cards">
-        {sorted.map((course) => (
+        {ordered.map((course) => (
           <FailCard
             key={course.id}
             course={course}
@@ -439,10 +449,11 @@ function FailCard({ course, warnThreshold, onPatchCourse, onPatchEval, onRemove 
                   className={`fc-suggest${ev.impossible ? ' is-imp' : ''}`}
                   onClick={() => { if (!ev.impossible) onPatchEval(course.id, ev.key, { score: ev.neededRaw }); }}
                   disabled={ev.impossible}
-                  title="탭하면 이 필요 원점수로 채워요"
+                  title="탭하면 이 필요한 점수로 채워요"
                 >
-                  <span className="fc-suggest-main">{ev.impossible ? '불가' : ev.display}</span>
-                  <span className="fc-suggest-sub">{ev.impossible ? '100점↑ 필요' : `필요 ${ev.neededRaw}점`}</span>
+                  {/* 원칙: 빈 칸은 '필요한 점수'(과락을 면하려면 이 평가에서 받아야 할 최저 원점수)를 크게 보여준다 */}
+                  <span className="fc-suggest-main">{ev.impossible ? '불가' : ev.neededRaw}</span>
+                  <span className="fc-suggest-sub">{ev.impossible ? '100점↑ 필요' : '필요한 점수'}</span>
                 </button>
               )}
             </div>
@@ -452,7 +463,6 @@ function FailCard({ course, warnThreshold, onPatchCourse, onPatchEval, onRemove 
 
       <div className="fc-card-foot">
         <span>현재 원점수합 <b>{c.enteredContribution}</b> / 과락 {c.threshold}</span>
-        {c.hasBlank && !c.impossible && <span className="fc-need-all">남은 평가 필요 <b>{c.neededRaw}</b>점</span>}
         {c.impossible && <span className="fc-imp-tag">현 점수로 통과 불가</span>}
         {!c.hasBlank && c.enteredContribution >= c.threshold && <span className="fc-ok-tag">통과 ✓</span>}
         {!c.hasBlank && c.enteredContribution < c.threshold && <span className="fc-imp-tag">과락</span>}
