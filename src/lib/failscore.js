@@ -92,12 +92,22 @@ export function isWarn(computed, warnThreshold) {
   return computed.hasBlank && computed.neededRaw != null && computed.neededRaw > Number(warnThreshold);
 }
 
-// 정렬: 확보 기여분 오름차순(적을수록 위험 → 위로), 동률은 이름순.
+// 한 과목에 입력된 점수가 하나라도 있나(0점도 입력).
+function hasAnyEntered(course) {
+  return (course.evals ?? []).some((ev) => isEntered(ev.score));
+}
+
+// 정렬: ① 입력이 하나라도 있는 과목 먼저, 아무것도 입력 안 한 과목은 맨 아래.
+//       ② 같은 그룹 안에서는 '필요한 점수(neededRaw)' 높은 것부터(위험한 과목이 위로).
+//       ③ 동률은 이름순.
 export function sortCourses(courses) {
   return [...courses].sort((a, b) => {
-    const sa = computeCourse(a).secured;
-    const sb = computeCourse(b).secured;
-    if (sa !== sb) return sa - sb;
+    const ga = hasAnyEntered(a) ? 0 : 1;
+    const gb = hasAnyEntered(b) ? 0 : 1;
+    if (ga !== gb) return ga - gb;
+    const na = computeCourse(a).neededRaw ?? 0;
+    const nb = computeCourse(b).neededRaw ?? 0;
+    if (na !== nb) return nb - na;
     return (a.name || '').localeCompare(b.name || '', 'ko');
   });
 }
