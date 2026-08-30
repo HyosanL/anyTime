@@ -214,7 +214,14 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
   // HWP 는 페이지가 아니라 섹션(문서 전체 분량일 수 있음) 단위라, PDF 페이지만한 크기로 재분할한다.
   // grids 는 HWP 에서 항상 비어 있다(좌표 정보 없음) — 격자 대조·컬럼 보정은 조용히 건너뛴다.
   const pages = hwp ? rawPages.flatMap((p) => chunkText(p)) : rawPages;
-  const coursePages = pages.filter((p) => p.includes('담당교수'));
+  // PDF는 인쇄 페이지마다 표 머리글("담당교수")이 다시 찍히니 그 글자로 '과목 페이지'를 골라낸다.
+  // HWP는 그렇지 않다 — 표가 이어지는 문서 흐름이라 머리글이 표 전체에서 단 한 번만 나온다
+  // (실측: 한 편람에서 표 본문 41000자 중 "담당교수" 14회뿐, 상당수 조각엔 아예 없었다).
+  // 그 글자로 조각을 걸러내면 진짜 과목 행이 담긴 조각이 통째로 빠져 '기존에는 있는데 이번
+  // 파일엔 없는 분반'이 대량으로 잘못 뜬다 — 그래서 HWP는 표지 정도로 보이는 아주 짧은
+  // 조각만 빼고 나머지는 전부 과목 페이지로 본다(AI 프롬프트가 강의가 아닌 행은 알아서 뺀다).
+  const HWP_MIN_CHUNK = 150;
+  const coursePages = hwp ? pages.filter((p) => p.trim().length >= HWP_MIN_CHUNK) : pages.filter((p) => p.includes('담당교수'));
   const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
   const token = await authHeader();
   const model = await currentModel(token);
@@ -699,6 +706,14 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
   // 격자를 못 읽었거나(양식 변경) 격자가 그 과목을 다 적지 않았으면 조용히 건너뛴다.
   const grid = crossCheck(rows, grids);
 
+  const reusedSections = courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0);
+  // 이번 파일 이전에 그 학기에 이미 있던 분반 수의 근사치(재사용됨 + 이 파일에 없음).
+  // 번호만 같아 편람 기준으로 덮어쓴 분반은 양쪽에 잡히지 않아 정확한 합은 아니지만,
+  // '연도·학기를 잘못 입력했거나 파일 일부만 분석됐다'는 경고를 띄우기엔 충분하다.
+  const existingApprox = reusedSections + stale.length;
+  // 이미 등록된 분반 대부분이 이 파일에서 안 잡혔다 — 연도/학기 오타이거나 파싱이 일부만 됐다는 신호.
+  const semesterLooksOff = existingApprox >= 10 && stale.length / existingApprox > 0.5;
+
   return {
     year, term,
     periods, includePeriods: periods.length > 0,
@@ -706,6 +721,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
     courses: courseList,
     conflicts,                   // 같은 교수·같은 교시 — 파싱 오류 신호. 적용은 막지 않고 보여만 준다.
     stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
+    semesterLooksOff,             // 연도·학기 오입력 의심 — UI 가 눈에 띄는 경고를 띄운다.
     commonBlocks,                // [{ day, start, end, label }] — 이름은 격자에서 자동, 관리자가 고칠 수 있다
     periodNos,
     grid,                        // { checked, mismatches, coverage } — 격자 대조 결과
@@ -722,7 +738,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
       // 담당교수를 못 읽은 분반. AI 가 표에서 교수 칸을 통째로 놓쳐도 조용히 '교수 미정'으로
       // 들어가 버려 눈에 안 띄었다(2026-2 영어회화Ⅳ: 12분반 중 9개가 그렇게 비었다) — 세어서 경고한다.
       noProfessor: courseList.reduce((n, c) => n + c.sections.filter((s) => !s.professorName).length, 0),
-      reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
+      reusedSections,
       // 기존 분반 중 DB 엔 없던 값(교수/강의실)을 이번 편람이 채워 줄 수 있는 것 — '빈 칸만 채우기' 대상.
       fillableSections: courseList.reduce((n, c) => n + c.sections.filter(isFillableSection).length, 0),
       staleSections: stale.length,
