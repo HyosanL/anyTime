@@ -320,7 +320,10 @@
 /* ============================================================
    수업 메모
    ============================================================ */
-.memo-head { padding: 0.7rem var(--pad) 0.2rem; }
+.memo-head {
+  padding: 0.7rem var(--pad) 0.2rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+}
 .memo-sub {
   font-size: 0.85rem;
   font-weight: 600;
