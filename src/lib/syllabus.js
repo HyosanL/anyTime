@@ -1,5 +1,5 @@
-// 강의 PDF → 구조화 → 기존 DB 대조 플랜 → 적용.
-// 흐름: pdf.js(브라우저)로 페이지 텍스트 추출 → /api/parse-syllabus(Workers AI)로 구조화
+// 강의 PDF/HWP → 구조화 → 기존 DB 대조 플랜 → 적용.
+// 흐름: pdf.js·hwp.js(브라우저)로 페이지(또는 그에 준하는) 텍스트 추출 → /api/parse-syllabus(Gemini)로 구조화
 //      → reconcile(기존 catalog와 대조: 과목 병합/교수 매칭·동명이인) → admin-action 으로 적용.
 // 무거운 pdfjs 는 이 모듈을 동적 import 하는 관리자 화면에서만 로드된다.
 import * as pdfjsLib from 'pdfjs-dist';
@@ -7,6 +7,10 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { supabase } from '../supabase';
 import { parseGridsOnPage, toItems, universalBlocks, crossCheck, fixColumnBleed } from './grid';
 import { profKey, isSubName, isPlaceholderProf } from './profname';
+import { extractHwp } from './hwp';
+import { isFillableSection } from './syllabusPlan';
+
+export { isFillableSection };
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -42,6 +46,25 @@ export async function extractPdf(file) {
     grids.push(...parseGridsOnPage(toItems(tc))); // 격자가 아니면 아무것도 안 나온다
   }
   return { pages, grids };
+}
+
+export function isHwpFile(file) {
+  return /\.hwp$/i.test(file?.name || '');
+}
+
+// HWP 는 PDF와 달리 페이지 경계가 없다(섹션 하나가 문서 전체만큼 길 수 있음). Gemini 호출을
+// PDF 페이지만한 크기로 유지하려고(캐시 단위·문맥 길이 둘 다) 문단 줄바꿈 기준으로 다시 자른다.
+// 서버가 12000자에서 텍스트를 자르므로(functions/api/parse-syllabus.js) 그보다 넉넉히 작게 잡는다.
+function chunkText(text, maxLen = 6000) {
+  const chunks = [];
+  let cur = '';
+  for (const line of text.split('\n')) {
+    if (cur && cur.length + line.length + 1 > maxLen) { chunks.push(cur); cur = ''; }
+    cur += (cur ? '\n' : '') + line;
+    if (cur.length > maxLen) { chunks.push(cur); cur = ''; } // 한 줄 자체가 길면 그대로 끊는다
+  }
+  if (cur.trim()) chunks.push(cur);
+  return chunks;
 }
 
 // ---------- Gemini 파싱 호출 ----------
@@ -184,9 +207,13 @@ function groupTimes(slots) {
   return blocks;
 }
 
-// ---------- 메인: PDF → rows + periods ----------
+// ---------- 메인: PDF/HWP → rows + periods ----------
 export async function parseSyllabus(file, { onProgress, noCache = false } = {}) {
-  const { pages, grids } = await extractPdf(file);
+  const hwp = isHwpFile(file);
+  const { pages: rawPages, grids } = hwp ? await extractHwp(file) : await extractPdf(file);
+  // HWP 는 페이지가 아니라 섹션(문서 전체 분량일 수 있음) 단위라, PDF 페이지만한 크기로 재분할한다.
+  // grids 는 HWP 에서 항상 비어 있다(좌표 정보 없음) — 격자 대조·컬럼 보정은 조용히 건너뛴다.
+  const pages = hwp ? rawPages.flatMap((p) => chunkText(p)) : rawPages;
   const coursePages = pages.filter((p) => p.includes('담당교수'));
   const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
   const token = await authHeader();
@@ -410,21 +437,28 @@ export const CSV_TEMPLATE = [
 // 그래서 번호를 믿지 않고 내용(강의시간 + 담당교수)으로 기존 분반을 먼저 찾아 그 번호를 물려받는다.
 const timesKey = (blocks) => [...(blocks ?? [])].map((b) => `${b.day}:${b.start}-${b.end}`).sort().join(',');
 
-// 이 학기 기존 분반: course_code → [{ sectionNo, professorCode, key(시간), times }]
+// 이 학기 기존 분반: course_code → [{ sectionNo, professorCode, key(시간), times, room }]
+// room 은 '빈 칸만 채우기' 필터·표시에만 쓴다(section_time 행 중 하나라도 강의실이 있으면 있음으로 본다).
 function existingSections(catalog, year, term) {
   const blocksBySec = new Map();
+  const roomBySec = new Map();
   for (const t of catalog?.section_time ?? []) {
     if (Number(t.year) !== year || Number(t.term) !== term) continue;
     const k = `${t.course_code}|${t.section_no}`;
     (blocksBySec.get(k) ?? blocksBySec.set(k, []).get(k))
       .push({ day: t.day_of_week, start: t.start_period, end: t.end_period });
+    if (t.room && !roomBySec.has(k)) roomBySec.set(k, t.room);
   }
   const byCourse = new Map();
   for (const s of catalog?.section ?? []) {
     if (Number(s.year) !== year || Number(s.term) !== term) continue;
-    const times = blocksBySec.get(`${s.course_code}|${s.section_no}`) ?? [];
+    const k = `${s.course_code}|${s.section_no}`;
+    const times = blocksBySec.get(k) ?? [];
     const list = byCourse.get(s.course_code) ?? byCourse.set(s.course_code, []).get(s.course_code);
-    list.push({ sectionNo: s.section_no, professorCode: s.professor_code ?? null, key: timesKey(times), times });
+    list.push({
+      sectionNo: s.section_no, professorCode: s.professor_code ?? null,
+      key: timesKey(times), times, room: roomBySec.get(k) ?? null,
+    });
   }
   return byCourse;
 }
@@ -447,6 +481,9 @@ function assignSectionNos(planned, pool, codeOfProf) {
     const hit = (pc && cands.find((e) => e.professorCode === pc)) || cands[0];
     s.sectionNo = hit.sectionNo;
     s.reused = true;
+    // '빈 칸만 채우기' 필터·표시용 — 지금 DB 에 이미 값이 있는지(이 편람 내용과 무관하게).
+    s.dbHasProfessor = !!hit.professorCode;
+    s.dbHasRoom = !!hit.room;
     fixed.add(s);
     taken.add(hit.sectionNo);
     claimed.add(hit.sectionNo);
@@ -686,6 +723,8 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
       // 들어가 버려 눈에 안 띄었다(2026-2 영어회화Ⅳ: 12분반 중 9개가 그렇게 비었다) — 세어서 경고한다.
       noProfessor: courseList.reduce((n, c) => n + c.sections.filter((s) => !s.professorName).length, 0),
       reusedSections: courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0),
+      // 기존 분반 중 DB 엔 없던 값(교수/강의실)을 이번 편람이 채워 줄 수 있는 것 — '빈 칸만 채우기' 대상.
+      fillableSections: courseList.reduce((n, c) => n + c.sections.filter(isFillableSection).length, 0),
       staleSections: stale.length,
       conflicts: conflicts.length,
       commonBlocks: commonBlocks.length,
@@ -794,11 +833,14 @@ async function callAdmin(action, payload) {
   return data;
 }
 
-export async function applyPlan(plan, { onProgress } = {}) {
+// partial=true(빈 칸만 채우기 모드): 이미 값이 있는 교수·분반·강의실·강의시간은 이 편람으로
+// 덮어쓰지 않고, 비어 있는 칸만 채운다. 일부 분반만 미입력인 편람을 안심하고 통째로 올릴 수 있다.
+export async function applyPlan(plan, { onProgress, partial = false } = {}) {
   // 1) 교수 + 교시
   const meta = await callAdmin('apply_syllabus_meta', {
     year: plan.year,
     term: plan.term,
+    partial,
     periods: plan.includePeriods ? plan.periods : [],
     professors: plan.professors.map((p) => ({
       name: p.name, code: p.code, department: p.department || null,
@@ -824,7 +866,7 @@ export async function applyPlan(plan, { onProgress } = {}) {
       })),
     }));
     // eslint-disable-next-line no-await-in-loop
-    const r = await callAdmin('apply_syllabus_courses', { year: plan.year, term: plan.term, courses: batch });
+    const r = await callAdmin('apply_syllabus_courses', { year: plan.year, term: plan.term, partial, courses: batch });
     totalC += r.courses || 0;
     totalS += r.sections || 0;
     done += batch.length;

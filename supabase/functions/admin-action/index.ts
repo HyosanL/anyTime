@@ -486,7 +486,10 @@ Deno.serve(async (req) => {
         return json({ status: 'OK', blocks: rows.length })
       }
       // AI 강의 일괄등록 1단계: 교수 생성/수정 + 교시. 교수 이름→코드 맵 반환.
+      // payload.partial=true(빈 칸만 채우기 모드): 기존 교수의 학과를 덮어쓰지 않고,
+      // 비어 있을 때만(department IS NULL) 채운다 — 이미 적힌 값은 편람이 달라도 보존한다.
       case 'apply_syllabus_meta': {
+        const partial = !!payload.partial
         for (const pr of ((payload.periods as any[]) ?? [])) {
           if (pr?.no != null && pr.start && pr.end) {
             await admin.from('period').upsert({ no: pr.no, start_time: pr.start, end_time: pr.end }).throwOnError()
@@ -504,18 +507,27 @@ Deno.serve(async (req) => {
               code, name, department: pf.department ?? null,
             }).throwOnError()
           } else if (pf.update) {
-            await admin.from('professor').update({
-              department: pf.department ?? null,
-            }).eq('code', code).throwOnError()
+            let q = admin.from('professor').update({ department: pf.department ?? null }).eq('code', code)
+            if (partial) {
+              if (!pf.department) continue   // 채울 값이 없으면 아무것도 하지 않는다(기존 값 보존)
+              q = q.is('department', null)   // 이미 학과가 적혀 있으면 건드리지 않는다
+            }
+            await q.throwOnError()
           }
           profCodes[name] = code
         }
         return json({ status: 'OK', profCodes })
       }
-      // AI 강의 일괄등록 2단계: 과목(병합/신규) + 분반 + 강의시간(교체). 배치로 호출됨.
+      // AI 강의 일괄등록 2단계: 과목(병합/신규) + 분반 + 강의시간. 배치로 호출됨.
+      // payload.partial=true(빈 칸만 채우기 모드): 일부 분반만 교수·강의실 등이 미입력이라
+      // 그것만 채우고 싶을 때 쓴다 — 이미 값이 있는 분반은 이 편람 내용으로 덮어쓰지 않는다.
+      //   · 담당교수: 기존 분반의 professor_code 가 NULL 일 때만 채운다.
+      //   · 강의시간: section_time 이 이미 하나라도 있으면 그대로 두고(삭제·재삽입 안 함),
+      //     강의실이 비어 있는 행만 채운다. 아예 없던 분반(시간 자체가 없음)은 통째로 새로 넣는다.
       case 'apply_syllabus_courses': {
         const year = payload.year
         const term = payload.term
+        const partial = !!payload.partial
         await ensureSemester(admin, year, term)   // 다음 학기 편람을 올려도 학기가 자동 개설된다
         let nC = 0
         let nS = 0
@@ -528,18 +540,42 @@ Deno.serve(async (req) => {
             nC++
           }
           for (const se of ((co.sections as any[]) ?? [])) {
-            await admin.from('section').upsert({
-              course_code: code, year, term, section_no: se.sectionNo, professor_code: se.professorCode ?? null,
-            }).throwOnError()
-            await admin.from('section_time').delete()
-              .match({ course_code: code, year, term, section_no: se.sectionNo }).throwOnError()
-            for (const t of ((se.times as any[]) ?? [])) {
-              if (t?.day && t?.start) {
-                await admin.from('section_time').insert({
-                  course_code: code, year, term, section_no: se.sectionNo,
-                  day_of_week: t.day, start_period: t.start, end_period: t.end ?? t.start,
-                  room: t.room ?? se.room ?? null,
-                }).throwOnError()
+            const key = { course_code: code, year, term, section_no: se.sectionNo }
+            if (partial) {
+              // 이미 있는 분반이면 손대지 않고(존재만 보장), 교수는 비어 있을 때만 채운다.
+              await admin.from('section')
+                .upsert({ ...key, professor_code: se.professorCode ?? null },
+                  { onConflict: 'course_code,year,term,section_no', ignoreDuplicates: true })
+                .throwOnError()
+              if (se.professorCode) {
+                await admin.from('section').update({ professor_code: se.professorCode })
+                  .match(key).is('professor_code', null).throwOnError()
+              }
+              const { count } = await admin.from('section_time')
+                .select('*', { count: 'exact', head: true }).match(key)
+              if (!count) {
+                for (const t of ((se.times as any[]) ?? [])) {
+                  if (t?.day && t?.start) {
+                    await admin.from('section_time').insert({
+                      ...key, day_of_week: t.day, start_period: t.start, end_period: t.end ?? t.start,
+                      room: t.room ?? se.room ?? null,
+                    }).throwOnError()
+                  }
+                }
+              } else if (se.room) {
+                // 강의시간은 이미 있으니 건드리지 않고, 강의실 빈 칸만 채운다.
+                await admin.from('section_time').update({ room: se.room }).match(key).is('room', null).throwOnError()
+              }
+            } else {
+              await admin.from('section').upsert({ ...key, professor_code: se.professorCode ?? null }).throwOnError()
+              await admin.from('section_time').delete().match(key).throwOnError()
+              for (const t of ((se.times as any[]) ?? [])) {
+                if (t?.day && t?.start) {
+                  await admin.from('section_time').insert({
+                    ...key, day_of_week: t.day, start_period: t.start, end_period: t.end ?? t.start,
+                    room: t.room ?? se.room ?? null,
+                  }).throwOnError()
+                }
               }
             }
             nS++

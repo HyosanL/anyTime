@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { getCatalog } from '../lib/cache';
+import { isFillableSection } from '../lib/syllabusPlan';
 
 const DAY = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 // 교수 매칭 결과 배지. similar = 파일의 짧은 이름("Justin")으로 기존 교수("Justin Bunting")를
@@ -37,8 +38,8 @@ function downloadCsv(name, text) {
   URL.revokeObjectURL(url);
 }
 
-// 관리자: 강의 소스(PDF 또는 CSV) → 파싱 → 기존 DB 대조 → 검토 후 적용.
-// mode='ai' : PDF(수강편람) → Workers AI 로 구조화.  mode='csv' : 표 CSV → 결정적 파싱.
+// 관리자: 강의 소스(PDF·HWP 또는 CSV) → 파싱 → 기존 DB 대조 → 검토 후 적용.
+// mode='ai' : PDF/HWP(수강편람) → Gemini 로 구조화.  mode='csv' : 표 CSV → 결정적 파싱.
 // 대조(reconcile)·검토 UI·적용(applyPlan)은 두 모드가 완전히 동일하다.
 export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaultTerm = 1, onApplied }) {
   const isCsv = mode === 'csv';
@@ -51,7 +52,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   const [plan, setPlan] = useState(null);
   const [err, setErr] = useState('');
   const [result, setResult] = useState('');
-  // 같은 PDF 재분석은 캐시로 공짜(Gemini 미호출). 파싱이 틀렸을 때만 캐시를 버리고 새로 부른다.
+  // 같은 PDF/HWP 재분석은 캐시로 공짜(Gemini 미호출). 파싱이 틀렸을 때만 캐시를 버리고 새로 부른다.
   const [noCache, setNoCache] = useState(false);
   const [cost, setCost] = useState('');
   // 직접 추가(예외용 탈출구) — 격자를 못 읽는 편람에서만 쓴다. 평소엔 접혀 있다.
@@ -59,6 +60,11 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
   const [nb, setNb] = useState({ day: 1, start: 7, end: 8, label: '' });
   // 표의 '영역/학과' 열이 과목명에 달라붙은 것을 격자로 되돌린 내역
   const [renamed, setRenamed] = useState([]);
+  // 빈 칸만 채우기 모드: 이미 값이 있는 교수·강의실·강의시간은 이 편람으로 덮어쓰지 않고,
+  // 비어 있는 칸만 채운다. 일부 분반만 미입력인 편람도 안심하고 통째로 올릴 수 있다.
+  const [partial, setPartial] = useState(false);
+  // 위 모드에서 검토 목록을 줄이려는 화면 필터 — 실제 적용 범위는 partial 이 결정한다.
+  const [onlyMissing, setOnlyMissing] = useState(false);
 
   function patchPlan(updater) {
     setPlan((p) => {
@@ -72,9 +78,9 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
 
   async function analyze() {
     if (isCsv && !paste.trim() && !file) return setErr('CSV 파일을 선택하거나 아래에 붙여넣으세요.');
-    if (!isCsv && !file) return setErr('PDF 파일을 선택하세요.');
+    if (!isCsv && !file) return setErr('PDF 또는 HWP 파일을 선택하세요.');
     setErr(''); setResult(''); setPlan(null); setBusy(true);
-    setProgress({ label: isCsv ? 'CSV 읽는 중…' : 'PDF 읽는 중…', done: 0, total: 0 });
+    setProgress({ label: isCsv ? 'CSV 읽는 중…' : '파일 읽는 중…', done: 0, total: 0 });
     try {
       const lib = await import('../lib/syllabus');
       const catalog = await getCatalog({ force: true }).catch(() => null);
@@ -97,10 +103,10 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           + (grids.length ? ` · 주간 격자 ${grids.length}장은 AI 없이 직접 읽음(무과금)` : ''));
       }
       if (!rows.length) {
-        // 서버가 실패해서 비었다면 PDF 형식 탓으로 오인시키지 말고 실제 사유를 보여준다.
+        // 서버가 실패해서 비었다면 PDF/HWP 형식 탓으로 오인시키지 말고 실제 사유를 보여준다.
         if (errors.length) setErr('분석 실패: ' + errors[0]);
         else setErr(isCsv ? '읽어들인 과목이 없습니다. 헤더(과목명/분반/담당교수/강의시간…)와 형식을 확인하세요.'
-          : '추출된 과목이 없습니다. 다른 PDF이거나 형식이 다를 수 있어요.');
+          : '추출된 과목이 없습니다. 다른 파일이거나 형식이 다를 수 있어요.');
         return;
       }
       // 일부 페이지만 실패한 경우: 결과는 보여주되 누락 가능성을 경고한다.
@@ -120,12 +126,13 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
     setProgress({ label: '적용 중…', done: 0, total });
     try {
       const lib = await import('../lib/syllabus');
-      const r = await lib.applyPlan(plan, { onProgress: (d, t) => setProgress({ label: '적용 중…', done: d, total: t }) });
+      const r = await lib.applyPlan(plan, { partial, onProgress: (d, t) => setProgress({ label: '적용 중…', done: d, total: t }) });
       const cleaned = r.removed
         ? ` 편람에 없던 기존 분반 ${r.removed.sections}개 삭제${r.removed.entries ? ` (생도 시간표 ${r.removed.entries}건에서 함께 제거됨)` : ''}.`
         : '';
       const named = r.blocks ? ` 공통 공강 시간 이름 ${r.blocks}개 저장.` : '';
-      setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.${cleaned}${named}`);
+      const partialNote = partial ? ' (빈 칸만 채우기 — 이미 값이 있던 항목은 그대로 두었습니다.)' : '';
+      setResult(`✅ 적용 완료 — 과목 ${total}개(신규 ${r.courses}), 분반 ${r.sections}개, 교수 신규 ${plan.stats.newProfessors}개.${cleaned}${named}${partialNote}`);
       setPlan(null); setFile(null); setPaste('');
       onApplied?.();
     } catch (e) {
@@ -213,6 +220,16 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       .map((s) => ({ courseName: c.name, sectionNo: s.sectionNo, times: s.times }))),
   [plan]);
 
+  // "미입력만 보기": 검토 목록을 DB에 이미 없던 값(교수/강의실)을 채울 수 있는 분반만으로 줄인다.
+  // 화면 필터일 뿐이며, 실제로 무엇을 덮어쓰는지는 partial(빈 칸만 채우기 모드)이 결정한다.
+  const visibleCourses = useMemo(() => {
+    const list = (plan?.courses ?? []).map((c, i) => ({ c, i, sections: c.sections }));
+    if (!onlyMissing) return list;
+    return list
+      .map((x) => ({ ...x, sections: x.c.sections.filter(isFillableSection) }))
+      .filter((x) => x.sections.length > 0);
+  }, [plan, onlyMissing]);
+
   return (
     <div className="syl">
       {isCsv ? (
@@ -223,10 +240,16 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
         </p>
       ) : (
         <p className="note">
-          학기 강의 PDF(수강편람)를 올리면 AI가 과목·분반·교수·시간을 뽑아 <b>기존 DB와 대조</b>합니다.
+          학기 강의 <b>PDF 또는 HWP</b>(수강편람)를 올리면 AI가 과목·분반·교수·시간을 뽑아 <b>기존 DB와 대조</b>합니다.
           교수는 <b>이름으로 매칭</b>하고(동명이인은 과목 이력으로 보정), 새 교수는 자동 등록(코드 자동). <b>적용 전 반드시 검토</b>하세요.
         </p>
       )}
+
+      <label className="note syl-partial">
+        <input type="checkbox" checked={partial} onChange={(e) => { setPartial(e.target.checked); setOnlyMissing(e.target.checked); }} />
+        {' '}<b>빈 칸만 채우기 모드</b> — 이미 교수·강의실·강의시간이 있는 분반은 이 편람으로 덮어쓰지 않고,
+        비어 있는 값만 채웁니다. 일부 분반만 미입력이라 전체 갱신이 부담스러울 때 켜세요.
+      </label>
 
       <div className="adm-form-grid">
         <label className="field"><span className="field-label">연도</span>
@@ -252,8 +275,8 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
         </>
       ) : (
         <label className="board-file-field syl-file">
-          <span className="board-file-label">📄 강의 PDF 선택{file ? ` · ${file.name}` : ''}</span>
-          <input type="file" accept="application/pdf,.pdf" onChange={(e) => { setFile(e.target.files?.[0] || null); resetOut(); }} />
+          <span className="board-file-label">📄 강의 PDF/HWP 선택{file ? ` · ${file.name}` : ''}</span>
+          <input type="file" accept="application/pdf,.pdf,.hwp" onChange={(e) => { setFile(e.target.files?.[0] || null); resetOut(); }} />
         </label>
       )}
 
@@ -265,7 +288,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       )}
 
       <button className="btn-add btn-block" disabled={busy || !canAnalyze} onClick={analyze}>
-        {busy && !plan ? '분석 중…' : (isCsv ? 'CSV 분석' : 'PDF 분석')}
+        {busy && !plan ? '분석 중…' : (isCsv ? 'CSV 분석' : 'PDF/HWP 분석')}
       </button>
 
       {progress && (
@@ -287,6 +310,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             <span className="tag">교수 {plan.stats.professors}</span>
             <span className="tag tag-primary">신규교수 {plan.stats.newProfessors}</span>
             {plan.stats.reusedSections > 0 && <span className="tag tag-success">기존분반 재사용 {plan.stats.reusedSections}</span>}
+            {plan.stats.fillableSections > 0 && <span className="tag tag-primary">빈 칸 채울 수 있음 {plan.stats.fillableSections}</span>}
             {plan.stats.ambiguous > 0 && <span className="tag tag-warn">동명이인 검토 {plan.stats.ambiguous}</span>}
             {plan.stats.similar > 0 && <span className="tag tag-warn">비슷한 이름 {plan.stats.similar}</span>}
             {plan.stats.noProfessor > 0 && <span className="tag tag-warn">교수 미정 {plan.stats.noProfessor}</span>}
@@ -482,9 +506,17 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
             ))}
           </div>
 
-          <div className="section-label adm-sub-label">과목 · 분반 ({plan.courses.length})</div>
+          <div className="section-label adm-sub-label syl-section-head">
+            <span>과목 · 분반 ({visibleCourses.length}{onlyMissing ? `/${plan.courses.length}` : ''})</span>
+            {plan.stats.fillableSections > 0 && (
+              <label className="syl-only-missing">
+                <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
+                {' '}빈 칸 채울 수 있는 분반만 보기
+              </label>
+            )}
+          </div>
           <div className="syl-list">
-            {plan.courses.map((c, i) => {
+            {visibleCourses.map(({ c, i, sections }) => {
               const warn = c.action === 'similar' || c.action === 'ambiguous';
               const [tagText, tagCls] = COURSE_TAG[c.action] ?? (c.code == null ? ['신규', 'tag-primary'] : ['통합', 'tag-success']);
               return (
@@ -493,7 +525,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   <input type="checkbox" checked={c.include !== false} onChange={(e) => setCourseInclude(i, e.target.checked)} />
                   <b>{c.name}</b>
                   <span className={`tag ${tagCls}`}>{tagText}</span>
-                  <span className="muted">{c.sections.length}분반</span>
+                  <span className="muted">{onlyMissing ? `${sections.length}/${c.sections.length}` : c.sections.length}분반</span>
                 </label>
                 {/* 비슷한 이름·후보 여럿: 기존 과목에 연결할지, 새 과목으로 등록할지 관리자가 고른다.
                     후보엔 학과·분반 수를 함께 보여 준다(예: 3학년 항공체력관리론 vs 1학년 항공우주체력관리론 구분). */}
@@ -514,9 +546,10 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   </>
                 )}
                 <div className="syl-sections">
-                  {c.sections.map((s) => (
+                  {sections.map((s) => (
                     <div className="syl-sec" key={s.sectionNo}>
                       <b>{s.sectionNo}분반</b>{s.reused ? <span className="tag tag-success">기존 분반</span> : null} · {s.professorName || '교수미정'} · {fmtTimes(s.times)}{s.room ? ` · ${s.room}` : ''}
+                      {isFillableSection(s) && <span className="tag tag-primary">빈 칸 채움</span>}
                     </div>
                   ))}
                 </div>

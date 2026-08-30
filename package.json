@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
+    "cfb": "^1.2.2",
     "idb": "^8.0.0",
     "korcen": "^1.0.1",
+    "pako": "^3.0.1",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
