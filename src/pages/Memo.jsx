@@ -5,8 +5,10 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskText, prefetchMask } from '../lib/mask';
 import { getReacted, markReacted, hasReviewed } from '../lib/reactions';
+import { correctionMeta, sectionCorrectionOptions, sectionSubject } from '../lib/correction';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
+import CorrectionModal from '../components/CorrectionModal';
 import '../styles/course.css';
 
 // 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
@@ -18,7 +20,10 @@ export default function Memo() {
   const t = Number(term);
   const sn = Number(sectionNo);
 
-  const [header, setHeader] = useState({ name: courseCode, prof: '', profCode: '', times: '' });
+  const [header, setHeader] = useState({ name: courseCode, prof: '', profCode: '', times: '', rawTimes: [] });
+  // 강의 정보 수정 제안(🚩) 입력 — 강의 검색과 같은 CorrectionModal·항목 빌더를 그대로 쓴다.
+  const [corrMeta, setCorrMeta] = useState({ periods: [], professors: [], sections: [] });
+  const [corr, setCorr] = useState(null); // { subject, options } | null
   // 자격 기준일(minDays)은 부팅 RPC 로 이미 와 있다 — 메모 화면마다 get_review_min_days() 를 부르지 않는다.
   // 보유일수(daysHeld)만 서버가 이 분반에 대해 판정해 준다.
   const minDays = settings.reviewMinDays;
@@ -51,7 +56,9 @@ export default function Memo() {
       prof: prof?.name ?? '',
       profCode: section?.professor_code ?? '',
       times: formatTimes(times),
+      rawTimes: times,
     });
+    setCorrMeta(correctionMeta(catalog));
   }
 
   // 보유일수는 서버가 판정한다 — 확정(is_primary) 시간표에 담긴 것만 인정(초안은 제외).
@@ -113,6 +120,12 @@ export default function Memo() {
     loadMemos();
   }
 
+  // sectionCorrectionOptions()가 기대하는 모양 — 강의 검색의 분반 카드(s)와 같은 필드만 맞추면 된다.
+  const sectionForCorrection = {
+    course_code: courseCode, year: y, term: t, section_no: sn,
+    course_name: header.name, professor_name: header.prof, times: header.rawTimes,
+  };
+
   const [, reactTick] = useState(0); // 신고 기록 후 버튼 상태 갱신용
 
   async function report(id) {
@@ -157,7 +170,20 @@ export default function Memo() {
         <p className="memo-sub">
           {[header.prof, header.times, `${sn}분반`].filter(Boolean).join(' · ')}
         </p>
+        <button
+          type="button"
+          className="cor-flag-btn"
+          onClick={() => setCorr({ subject: sectionSubject(sectionForCorrection), options: sectionCorrectionOptions(sectionForCorrection, corrMeta) })}
+        >
+          🚩 수정 제안
+        </button>
       </div>
+
+      {/* 카탈로그는 학교 공지를 옮겨 담은 것이라 실제와 다를 수 있다 — 고치는 길을 함께 알려 준다 */}
+      <p className="cor-notice">
+        ⚠️ 강의 정보(시간·강의실·교수)가 실제와 다를 수 있습니다.
+        틀린 곳이 보이면 강의 카드의 <b>🚩 수정 제안</b>으로 알려 주세요.
+      </p>
 
       {/* 강의평 쓰기 — 확정시간표 minDays일 이상 보유 시 활성화(눌러서 새 화면으로) */}
       <section className="memo-review">
@@ -266,6 +292,10 @@ export default function Memo() {
             ))}
           </ul>
         </>
+      )}
+
+      {corr && (
+        <CorrectionModal subject={corr.subject} options={corr.options} onClose={() => setCorr(null)} />
       )}
     </PullToRefresh>
   );
