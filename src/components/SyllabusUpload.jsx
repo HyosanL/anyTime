@@ -302,6 +302,13 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
       {plan && (
         <div className="syl-plan">
           <div className="divider adm-divider" />
+          {plan.semesterLooksOff && (
+            <p className="error-msg">
+              ⚠️ {plan.year}년 {plan.term}학기에 이미 등록된 분반 중 상당수({plan.stats.staleSections}개)가
+              이 파일에서 발견되지 않았습니다. <b>연도·학기를 잘못 입력</b>했거나, 파일이 <b>일부만 분석</b>됐을 수 있습니다 —
+              위 연도/학기와 아래 "이 파일에 없는 기존 분반" 목록을 확인한 뒤 적용하세요.
+            </p>
+          )}
           <div className="syl-stats">
             <span className="tag tag-success">과목 {plan.stats.courses}</span>
             <span className="tag tag-primary">신규과목 {plan.stats.newCourses}</span>
