@@ -611,6 +611,13 @@ code {
 .syl-plan { display: flex; flex-direction: column; gap: 0.55rem; }
 .syl-stats { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .syl-period { padding: 0.3rem 0; }
+.syl-partial { display: block; margin: 0.3rem 0; }
+.syl-section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem; }
+.syl-only-missing {
+  text-transform: none; letter-spacing: normal; font-weight: 500;
+  font-size: 0.78rem; color: var(--text-2);
+  display: inline-flex; align-items: center; gap: 0.3rem;
+}
 .syl-list {
   display: flex; flex-direction: column; gap: 0.5rem;
   max-height: 360px; overflow-y: auto; padding-right: 0.15rem;
