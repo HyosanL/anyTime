@@ -37,4 +37,5 @@ jobs:
           npx firebase-tools@latest deploy \
             --only functions,firestore:rules,firestore:indexes \
             --project anytime-rokafa \
-            --non-interactive
+            --non-interactive \
+            --force
