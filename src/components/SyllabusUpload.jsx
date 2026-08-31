@@ -334,10 +334,10 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
               2026-2 신호및시스템 1분반은 표가 '월1 월2 목1', 격자가 '화1 화2 목1' 이었다.
               AI 는 표를 충실히 옮길 뿐이라 이건 격자로만 잡힌다(AI 호출 0회). */}
           {plan.grid?.mismatches?.length > 0 && (
-            <div className="syl-conflicts">
-              <div className="section-label adm-sub-label">
+            <details className="syl-collapse is-warn" open>
+              <summary className="section-label adm-sub-label">
                 ⚠️ 주간 격자와 어긋나는 분반 ({plan.grid.mismatches.length})
-              </div>
+              </summary>
               <p className="note">
                 편람의 <b>세부내용 표</b>가 말하는 요일이 같은 편람의 <b>주간 격자</b>에 없습니다.
                 이런 경우 <b>표가 틀린 것</b>입니다(격자가 정답). 아래를 확인하고 CSV로 바로잡아 올리세요.
@@ -355,12 +355,12 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   </div>
                 ))}
               </div>
-            </div>
+            </details>
           )}
 
           {conflicts.length > 0 && (
-            <div className="syl-conflicts">
-              <div className="section-label adm-sub-label">⚠️ 같은 교수 · 같은 교시 ({conflicts.length})</div>
+            <details className="syl-collapse is-warn" open>
+              <summary className="section-label adm-sub-label">⚠️ 같은 교수 · 같은 교시 ({conflicts.length})</summary>
               <p className="note">
                 한 교수가 같은 교시에 두 분반을 <b>동시에</b> 담당하는 것으로 읽혔습니다.
                 같은 시간대에 나란히 열린 분반(예: 영어회화 4·5·6분반이 모두 목1교시)의 교수 이름을
@@ -376,15 +376,15 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   </div>
                 ))}
               </div>
-            </div>
+            </details>
           )}
 
           {/* 교수를 못 읽은 분반. 원본이 원래 빈칸이면 그대로 두면 되지만, 파싱이 교수 칸을
               놓친 것이면 여기서 잡아야 한다 — 2026-2 영어회화Ⅳ 는 12분반 중 9개가 이렇게 비어
               들어갔고, 적용 화면 어디에도 표시되지 않아 한참 뒤에야 발견됐다. */}
           {noProf.length > 0 && (
-            <div className="syl-conflicts">
-              <div className="section-label adm-sub-label">⚠️ 교수 미정 분반 ({noProf.length})</div>
+            <details className="syl-collapse is-warn" open>
+              <summary className="section-label adm-sub-label">⚠️ 교수 미정 분반 ({noProf.length})</summary>
               <p className="note">
                 담당교수를 읽지 못한 분반입니다. 원본의 교수 칸이 <b>원래 비어 있으면</b> 그대로 적용해도 됩니다(교수 미정으로 저장).
                 {isCsv
@@ -399,7 +399,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   </div>
                 ))}
               </div>
-            </div>
+            </details>
           )}
 
           {/* 표의 맨 왼쪽 '영역/학과' 열이 과목명에 달라붙는다("컴퓨터 시스템보안").
@@ -421,10 +421,11 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           {/* 전 생도 공통 비수업 시간 — 이 편람에서 어떤 분반도 열리지 않는 요일·교시.
               시각은 자동으로 나오고, 관리자는 이름만 붙인다(생도대시간·군사훈련·자율선택형교과). */}
           {plan.commonBlocks?.length > 0 && (
-            <div className="syl-blocks">
-              <div className="section-label adm-sub-label">
+            <details className="syl-collapse" open>
+              <summary className="section-label adm-sub-label">
                 공통 공강 시간 ({plan.commonBlocks.length}) — 이름 붙이기
-              </div>
+              </summary>
+              <div className="syl-blocks">
               <p className="note">
                 이 편람에서 <b>어떤 분반도 열리지 않는</b> 시간입니다. 이름은 <b>주간 격자에서 자동으로</b>
                 읽어 왔습니다(생도대·군사훈련·공통연구 …) — 그대로 두시면 됩니다. 고치거나 비워도 되고,
@@ -481,11 +482,14 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                   ＋ 직접 추가 (격자에 없는 시간을 넣어야 할 때만)
                 </button>
               )}
-            </div>
+              </div>
+            </details>
           )}
 
-          <div className="section-label adm-sub-label">교수 ({plan.professors.length}) — 매칭 확인</div>
-          <div className="syl-list">
+          {/* 교수 매칭은 대부분 그대로 맞는다 — 확인이 필요할 때(동명이인·비슷한 이름·신규)만 펼쳐 둔다. */}
+          <details className="syl-collapse" open={plan.stats.ambiguous > 0 || plan.stats.similar > 0 || plan.stats.newProfessors > 0}>
+            <summary className="section-label adm-sub-label">교수 ({plan.professors.length}) — 매칭 확인</summary>
+            <div className="syl-list">
             {plan.professors.map((p, i) => (
               <div className={`syl-prof ${p.action === 'ambiguous' || p.action === 'similar' ? 'is-warn' : ''}`} key={p.name}>
                 <div className="syl-prof-head">
@@ -515,18 +519,20 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          </details>
 
-          <div className="section-label adm-sub-label syl-section-head">
-            <span>과목 · 분반 ({visibleCourses.length}{onlyMissing ? `/${plan.courses.length}` : ''})</span>
+          <details className="syl-collapse" open>
+            <summary className="section-label adm-sub-label">
+              과목 · 분반 ({visibleCourses.length}{onlyMissing ? `/${plan.courses.length}` : ''})
+            </summary>
             {plan.stats.fillableSections > 0 && (
               <label className="syl-only-missing">
                 <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
                 {' '}빈 칸 채울 수 있는 분반만 보기
               </label>
             )}
-          </div>
-          <div className="syl-list">
+            <div className="syl-list">
             {visibleCourses.map(({ c, i, sections }) => {
               const warn = c.action === 'similar' || c.action === 'ambiguous';
               const [tagText, tagCls] = COURSE_TAG[c.action] ?? (c.code == null ? ['신규', 'tag-primary'] : ['통합', 'tag-success']);
@@ -567,11 +573,13 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
               </div>
               );
             })}
-          </div>
+            </div>
+          </details>
 
+          {/* 참고용 목록이라 기본은 접어 둔다 — 삭제 체크박스도 안에 있으니, 정리하려면 펼쳐서 본다. */}
           {plan.stale.length > 0 && (
-            <>
-              <div className="section-label adm-sub-label">이 파일에 없는 기존 분반 ({plan.stale.length})</div>
+            <details className="syl-collapse">
+              <summary className="section-label adm-sub-label">이 파일에 없는 기존 분반 ({plan.stale.length})</summary>
               <p className="note">
                 {plan.year}-{plan.term} 학기에 <b>이미 등록돼 있는데</b> 이번 파일에는 없는 분반입니다.
                 다른 소스(CSV↔PDF)로 두 번 적재해 생긴 <b>중복</b>이거나 폐강된 분반일 수 있어요.
@@ -589,7 +597,7 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
                 ))}
                 {plan.stale.length > 30 && <div className="syl-sec muted">… 외 {plan.stale.length - 30}개</div>}
               </div>
-            </>
+            </details>
           )}
 
           <button className="btn-add btn-block" disabled={busy} onClick={apply}>{busy ? '적용 중…' : '검토 완료 — DB에 적용'}</button>

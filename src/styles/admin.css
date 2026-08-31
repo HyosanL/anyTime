@@ -612,12 +612,32 @@ code {
 .syl-stats { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .syl-period { padding: 0.3rem 0; }
 .syl-partial { display: block; margin: 0.3rem 0; }
-.syl-section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.4rem; }
 .syl-only-missing {
   text-transform: none; letter-spacing: normal; font-weight: 500;
   font-size: 0.78rem; color: var(--text-2);
   display: inline-flex; align-items: center; gap: 0.3rem;
 }
+/* 검토 화면이 경고·목록·체크박스가 순서 없이 쭉 이어져 정신없다는 지적을 받아,
+   구간마다 카드로 묶고 접었다 펼 수 있게 했다(<details> — 상태 저장용 JS 없이 됨).
+   기본으로 열어 두는 건 경고류(그리드 어긋남·충돌·교수 미정)와 과목·분반뿐이고,
+   교수 매칭(대개 다 맞음)과 '이 파일에 없는 기존 분반'(참고용)은 기본으로 접는다. */
+.syl-collapse {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.syl-collapse.is-warn { border-color: var(--warn-border); background: var(--warn-weak); }
+.syl-collapse > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.4rem;
+  margin: 0; padding: 0;
+}
+.syl-collapse > summary::-webkit-details-marker { display: none; }
+.syl-collapse > summary::after { content: '▸'; color: var(--text-3); flex: none; }
+.syl-collapse[open] > summary::after { content: '▾'; }
+.syl-collapse .syl-list { max-height: 320px; }
 .syl-list {
   display: flex; flex-direction: column; gap: 0.5rem;
   max-height: 360px; overflow-y: auto; padding-right: 0.15rem;
