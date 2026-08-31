@@ -28,6 +28,18 @@ function defaultRow(o) {
   return { day: 1, start: ps[0], end: ps[0] };
 }
 
+// 지금 등록된 시간(section_time 원본, currentBlocks)이 있으면 빌더를 그걸로 채운다 —
+// 빈 칸에서 매번 새로 적게 하면, 사람들이 '틀린 한 줄'만 고치려다가 맞던 나머지 요일까지
+// 빠뜨린 제안을 보낸다(수정이 아니라 사실상 '전체 교체'가 돼 버림). 등록된 시간이 없으면
+// (신규 분반 제안 등) 빈 기본 행 한 개로 시작한다.
+function rowsFromOption(o) {
+  const blocks = o?.currentBlocks;
+  if (blocks?.length) {
+    return blocks.map((b) => ({ day: b.day_of_week, start: b.start_period, end: b.end_period }));
+  }
+  return [defaultRow(o)];
+}
+
 // 분반추가에서 고를 수 있는 분반번호 = 이미 있는 번호를 뺀 목록(1..최대+여유).
 function availableNos(existingNos) {
   const ex = new Set(existingNos || []);
@@ -40,13 +52,13 @@ function availableNos(existingNos) {
 
 export default function CorrectionModal({ subject, options, onClose }) {
   const [idx, setIdx] = useState(0);
-  const [val, setVal] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState('');
-  // 빌더 상태
-  const [rows, setRows] = useState([defaultRow(options[0])]); // 요일·교시
+  // 빌더 상태 — 첫 항목이 '시간'이고 현재 등록된 시간이 있으면 그걸로 미리 채운다.
+  const [rows, setRows] = useState(rowsFromOption(options[0])); // 요일·교시
+  const [val, setVal] = useState(options[0]?.kind === 'time' ? blocksToStr(rowsFromOption(options[0])) : '');
   const [pq, setPq] = useState('');       // 교수 검색어
   const [picked, setPicked] = useState(null); // 선택된 교수 {code,name,department}
   const [saNo, setSaNo] = useState(1);    // 분반추가: 분반번호
@@ -57,10 +69,12 @@ export default function CorrectionModal({ subject, options, onClose }) {
 
   function selectOption(i) {
     setIdx(i);
-    setVal('');
     setErr('');
-    // 분반추가도 시간이 '필수'라 기본 한 줄로 시작한다(최소 한 개는 있어야 제출됨).
-    setRows([defaultRow(options[i])]);
+    // '시간' 항목은 현재 등록된 시간으로 미리 채운다(val 도 같이 채워야 손 안 대고 그대로
+    // 제출해도 값이 비지 않는다). 다른 항목(교수·자유입력 등)은 그대로 빈 값에서 시작.
+    const initRows = rowsFromOption(options[i]);
+    setRows(initRows);
+    setVal(options[i]?.kind === 'time' ? blocksToStr(initRows) : '');
     setPq('');
     setPicked(null);
     // 분반추가: 이미 있는 번호를 뺀 첫 번째 사용가능 번호를 기본값으로.

@@ -26,7 +26,14 @@ export function sectionCorrectionOptions(s, meta) {
     .filter((x) => x.course_code === s.course_code && x.year === s.year && x.term === s.term)
     .map((x) => x.section_no);
   return [
-    { label: '요일·교시(시간)', target: 'section_time', targetKey: secKey, field: 'time', kind: 'time', periods: meta.periods, current: formatTimes(s.times) },
+    // currentBlocks: 지금 등록된 시간(section_time 원본 행) — 빌더가 이걸로 미리 채워야
+    // 사람이 '틀린 한 줄만' 고치고 나머지는 그대로 제출한다. 안 채우면 매번 빈 칸에서
+    // 새로 적어야 해서, 원래 맞던 요일·교시가 제안에서 통째로 빠지는 일이 잦았다.
+    {
+      label: '요일·교시(시간)', target: 'section_time', targetKey: secKey, field: 'time', kind: 'time',
+      periods: meta.periods, current: formatTimes(s.times),
+      currentBlocks: [...(s.times ?? [])].sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period),
+    },
     { label: '강의실', target: 'section_time', targetKey: secKey, field: 'room', placeholder: '예: 302' },
     { label: '담당교수', target: 'section', targetKey: secKey, field: 'professor', kind: 'professor', professors: meta.professors, current: s.professor_name || '' },
     { label: '과목명', target: 'course', targetKey: { code: s.course_code }, field: 'name', current: s.course_name },
