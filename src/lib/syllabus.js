@@ -221,7 +221,19 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
   // 파일엔 없는 분반'이 대량으로 잘못 뜬다 — 그래서 HWP는 표지 정도로 보이는 아주 짧은
   // 조각만 빼고 나머지는 전부 과목 페이지로 본다(AI 프롬프트가 강의가 아닌 행은 알아서 뺀다).
   const HWP_MIN_CHUNK = 150;
-  const coursePages = hwp ? pages.filter((p) => p.trim().length >= HWP_MIN_CHUNK) : pages.filter((p) => p.includes('담당교수'));
+  // 편람 뒤에는 같은 내용을 "학년별/강의실별 수업시간표"로 다시 늘어놓은 요일×반 격자 부록이
+  // 붙기도 한다(1학년 반편성 과목은 학생이 고르는 게 아니라 반 전체가 같이 듣다 보니 편람 표
+  // 자체를 이 격자로 대신하는 경우도 있다). 이 격자는 글자 좌표가 없어 어느 요일·교시 칸인지
+  // 알 길이 없다 — AI가 교수만 읽고 시간 없는 반쪽짜리 행을 만들면, 그 행이 기존 분반과
+  // 번호만 맞아 떨어져 '적용'했을 때 멀쩡한 기존 시간표를 지워 버릴 수 있다(강의시간 전체
+  // 교체 모드에서). 세부표는 시간을 "목34금3"처럼 붙여 쓰지 "3교시"로 풀어 쓰지 않으므로
+  // (실측 확인: 진짜 세부표 조각엔 "N교시"가 0회), "N교시"가 2번 이상 나오면 격자로 보고 뺀다.
+  const looksLikeWeeklyGrid = (text) => (text.match(/[1-9]교시/g) || []).length >= 2;
+  const coursePages = hwp
+    ? pages.filter((p) => p.trim().length >= HWP_MIN_CHUNK && !looksLikeWeeklyGrid(p))
+    : pages.filter((p) => p.includes('담당교수'));
+  // 격자로 판정돼 건너뛴 조각 수 — 화면에서 "그 과목들이 왜 안 보이는지" 알려주는 데 쓴다.
+  const gridPagesSkipped = hwp ? pages.filter((p) => p.trim().length >= HWP_MIN_CHUNK && looksLikeWeeklyGrid(p)).length : 0;
   const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
   const token = await authHeader();
   const model = await currentModel(token);
@@ -255,7 +267,7 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
 
   return {
     rows, periods, errors, grids, renamed: fixed,
-    pageCount: pages.length, coursePages: coursePages.length,
+    pageCount: pages.length, coursePages: coursePages.length, gridPagesSkipped,
     model, cachedPages, // 관리자 화면에서 "몇 장이 공짜(캐시)였는지" 보여주기 위함
   };
 }

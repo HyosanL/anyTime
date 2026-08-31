@@ -92,15 +92,16 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
         const text = paste.trim() ? paste : await file.text();
         ({ rows, periods } = lib.parseCsvRows(text));
       } else {
-        let model; let cachedPages; let coursePages; let renamed = [];
-        ({ rows, periods, errors = [], grids = [], renamed = [], model, cachedPages, coursePages } = await lib.parseSyllabus(file, {
+        let model; let cachedPages; let coursePages; let gridPagesSkipped; let renamed = [];
+        ({ rows, periods, errors = [], grids = [], renamed = [], model, cachedPages, coursePages, gridPagesSkipped } = await lib.parseSyllabus(file, {
           noCache,
           onProgress: (d, t) => setProgress({ label: 'AI 분석 중…', done: d, total: t }),
         }));
         setRenamed(renamed);
         const billed = coursePages - cachedPages;
         setCost(`${model} · ${coursePages}장 중 ${cachedPages}장은 캐시(무과금), ${billed}장 호출`
-          + (grids.length ? ` · 주간 격자 ${grids.length}장은 AI 없이 직접 읽음(무과금)` : ''));
+          + (grids.length ? ` · 주간 격자 ${grids.length}장은 AI 없이 직접 읽음(무과금)` : '')
+          + (gridPagesSkipped ? ` · 요일×반 격자 조각 ${gridPagesSkipped}개는 시간 인식이 안 돼 건너뜀(그 과목은 아래 "이 파일에 없는 기존 분반"에 나올 수 있음)` : ''));
       }
       if (!rows.length) {
         // 서버가 실패해서 비었다면 PDF/HWP 형식 탓으로 오인시키지 말고 실제 사유를 보여준다.
@@ -305,7 +306,10 @@ export default function SyllabusUpload({ mode = 'ai', defaultYear = 2026, defaul
           {plan.semesterLooksOff && (
             <p className="error-msg">
               ⚠️ {plan.year}년 {plan.term}학기에 이미 등록된 분반 중 상당수({plan.stats.staleSections}개)가
-              이 파일에서 발견되지 않았습니다. <b>연도·학기를 잘못 입력</b>했거나, 파일이 <b>일부만 분석</b>됐을 수 있습니다 —
+              이 파일에서 발견되지 않았습니다. <b>연도·학기를 잘못 입력</b>했거나, 파일이 <b>일부만 분석</b>됐을 수 있습니다
+              {!isCsv && /\.hwp$/i.test(file?.name || '') && (
+                <>, 또는 <b>요일×반 격자로만 표시된 과목</b>이라 HWP에서 시간을 못 읽었을 수 있습니다(정상)</>
+              )} —
               위 연도/학기와 아래 "이 파일에 없는 기존 분반" 목록을 확인한 뒤 적용하세요.
             </p>
           )}
