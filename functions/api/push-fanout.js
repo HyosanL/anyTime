@@ -46,14 +46,13 @@ async function fanout(env, { kind, post_id, title, board, path, body: msgBody },
     if (r.status === 'fulfilled' && (r.value === 404 || r.value === 410)) dead.push(targets[i].endpoint);
   });
   if (dead.length && env.PUSH_SECRET) {
-    await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/push_prune`, {
+    await fetch('https://asia-northeast3-anytime-rokafa.cloudfunctions.net/pushPrune', {
       method: 'POST',
       headers: {
-        apikey: env.SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
+        'X-Push-Secret': env.PUSH_SECRET,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ p_secret: env.PUSH_SECRET, p_endpoints: dead }),
+      body: JSON.stringify({ endpoints: dead }),
     }).catch(() => { /* 정리 실패는 다음 발송 때 재시도됨 */ });
   }
 }

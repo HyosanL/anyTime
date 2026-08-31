@@ -1,0 +1,157 @@
+rules_version = '2';
+
+// Design: docs/superpowers/specs/2026-08-31-firebase-migration-design.md
+//
+// Governance principle carried over from the old Supabase setup (see design doc §2):
+// default-deny, explicit allowlist. Every collection below either (a) is genuinely
+// owner-only data with no cross-document invariants (direct client read/write is safe),
+// or (b) is written exclusively through Cloud Functions using the Admin SDK, which
+// bypasses these rules entirely — so "write: if false" here is the correct, intentional
+// state for those, not a placeholder.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---- app config ----
+    match /config/app {
+      allow read: if isSignedIn();
+      allow write: if false; // admin gateway Cloud Function (Admin SDK) only
+    }
+    match /config/secrets {
+      allow read, write: if false; // Cloud Functions only, never client-readable
+    }
+
+    // ---- catalog: read-only to clients, admin gateway writes via Admin SDK ----
+    match /professors/{id} { allow read: if isSignedIn(); allow write: if false; }
+    match /semesters/{id} { allow read: if isSignedIn(); allow write: if false; }
+    match /courses/{id} { allow read: if isSignedIn(); allow write: if false; }
+    match /periods/{id} { allow read: if isSignedIn(); allow write: if false; }
+    match /commonBlocks/{id} { allow read: if isSignedIn(); allow write: if false; }
+    match /sections/{id} { allow read: if isSignedIn(); allow write: if false; }
+
+    // ---- users (owned-data tier) ----
+    match /users/{uid} {
+      // No cross-user reads — mirrors the old `read_own_cadet` RLS policy exactly.
+      // Cross-user lookups (search, shared-timetable gallery) go through Cloud
+      // Functions using the Admin SDK, same as the old SECURITY DEFINER RPCs did.
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if false; // signup Cloud Function only
+      allow delete: if false; // delete-account Cloud Function only
+      // Allowlist, not blocklist: only these client-preference fields may be
+      // self-edited directly. username/isAdmin/postCount/geoVerifiedAt are all
+      // server-validated (uniqueness, privilege, denormalized counter, geofence
+      // check) and must go through a Cloud Function.
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ttPublic']);
+
+      match /gradeEntries/{id} {
+        allow read, write: if isOwner(uid);
+      }
+      match /rankEntries/{id} {
+        allow read, write: if isOwner(uid);
+      }
+      match /follows/{id} {
+        allow read, write: if isOwner(uid);
+      }
+      match /favoriteBoards/{id} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Cross-document invariants (5-per-semester cap, auto-primary promotion,
+      // semester/overlap checks) can't be expressed in per-document rules —
+      // these three stay Cloud-Functions-only even though they're owned data.
+      match /timetables/{id} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+
+        match /entries/{entryId} {
+          allow read: if isOwner(uid);
+          allow write: if false;
+        }
+        match /customClasses/{ccId} {
+          allow read: if isOwner(uid);
+          allow write: if false;
+        }
+      }
+    }
+
+    // ---- reviews (writes: Cloud Functions only, reads: any signed-in user) ----
+    match /reviews/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /_private/{doc} { allow read, write: if false; }
+      match /reactions/{doc} { allow read, write: if false; }
+    }
+
+    // ---- exam archive ----
+    match /examArchive/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /_private/{doc} { allow read, write: if false; }
+    }
+
+    // ---- class memos: gated read (must hold the section in a confirmed
+    // timetable) can't be expressed here — stays a Cloud Function read, same
+    // as the old get_memos() RPC which had no SELECT policy at all. ----
+    match /classMemos/{id} {
+      allow read, write: if false;
+
+      match /_private/{doc} { allow read, write: if false; }
+      match /reactions/{doc} { allow read, write: if false; }
+    }
+
+    // ---- correction suggestions: no client access at all, same as the old
+    // schema (no RLS policy — submit_correction()/admin-action only). ----
+    match /corrections/{id} {
+      allow read, write: if false;
+    }
+
+    // ---- board & anonymity ----
+    match /boards/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+    match /boardPosts/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+
+      match /_private/{doc} { allow read, write: if false; }
+
+      match /comments/{cid} {
+        allow read: if isSignedIn();
+        allow write: if false;
+
+        match /_private/{doc} { allow read, write: if false; }
+      }
+      match /events/{eid} { allow read, write: if false; }
+      match /reactions/{aid} { allow read, write: if false; }
+      match /watchers/{wid} { allow read, write: if false; }
+    }
+
+    // ---- push notifications (fully anonymous by design — function-gated) ----
+    match /pushSubscriptions/{id} { allow read, write: if false; }
+    match /adminPushSubscriptions/{id} { allow read, write: if false; }
+
+    // ---- admin-only archive / denormalized rating aggregates ----
+    match /deletedContent/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /courseProfessorRatings/{id} { allow read: if isSignedIn(); allow write: if false; }
+    match /professorRatings/{id} { allow read: if isSignedIn(); allow write: if false; }
+  }
+}

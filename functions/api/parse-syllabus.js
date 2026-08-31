@@ -1,7 +1,7 @@
 // 강의 PDF에서 브라우저(pdf.js)가 뽑은 페이지 텍스트를 Gemini 로 구조화한다.
 // 요청(JSON): { kind: 'courses'|'periods', text: string }
 // 응답: { status:'OK', rows:[...] }  — 과목-분반 행 또는 교시 행
-// _middleware.js 가 로그인 검증을 마쳤고(data.user), 여기서 추가로 is_admin 을 확인한다.
+// _middleware.js 가 로그인 검증을 마쳤고(data.user), 여기서 추가로 관리자 여부를 확인한다.
 //
 // ※ Workers AI(무료 뉴런 10,000/일)에서 옮겨왔다. 수강편람 1회 분석에 페이지당 1회씩
 //   호출이 나가는데(이 PDF 기준 ~18회), 70B 모델로는 한 번 돌리면 하루치 무료 한도를
@@ -179,22 +179,9 @@ export function onRequestGet({ env }) {
 export async function onRequestPost(context) {
   const { request, env, data } = context;
 
-  // 관리자만 (외부 API 남용·과금 방지)
-  try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/is_admin`, {
-      method: 'POST',
-      headers: {
-        apikey: env.SUPABASE_ANON_KEY,
-        Authorization: data.token,
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-    });
-    const ok = await r.json().catch(() => false);
-    if (ok !== true) return Response.json({ status: 'FORBIDDEN' }, { status: 403 });
-  } catch {
-    return Response.json({ status: 'FORBIDDEN' }, { status: 403 });
-  }
+  // 관리자만 (외부 API 남용·과금 방지). _middleware.js 가 이미 Firebase ID 토큰의
+  // admin 커스텀 클레임을 data.user.admin 에 실어 왔으므로 별도 왕복 조회가 필요 없다.
+  if (data.user?.admin !== true) return Response.json({ status: 'FORBIDDEN' }, { status: 403 });
 
   if (!env.GEMINI_API_KEY) return Response.json({ status: 'NO_GEMINI_KEY' }, { status: 500 });
 
