@@ -283,7 +283,28 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
 //   · 시간이 비어 있는 행은, 그 번호에 시간 있는 행이 딱 하나면 거기에 흡수시킨다(정보 보강).
 const slotsKey = (r) => (r.times ?? []).map((t) => `${t.day}:${t.period}`).sort().join(',');
 
+// 과목명·교수·강의실·시간이 완전히 같은 행은 번호가 달라도 같은 분반이다. 학년별로 표를
+// 나눠 적는 편람은 여러 학년이 함께 듣는 교양선택 같은 과목을 그 표마다 그대로 되풀이해
+// 싣는데(실측: 2026-2 학위교육운영계획서에서 "수학과미래산업" 한 과목이 8개 표에 토씨 하나
+// 안 틀리고 반복 인쇄돼 있었다), AI가 그 반복을 서로 다른 분반으로 세어 번호를 새로 매기는
+// 일이 있다. 번호만 보고 묶는 아래 1)단계는 이 경우를 못 잡는다(번호 자체가 다르므로) —
+// 그래서 번호 이전에 내용으로 먼저 합친다. 시간이 비어 있는 행은 병합 근거가 없어 그대로 둔다.
+function mergeContentDuplicates(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    const tk = slotsKey(r);
+    if (!tk) { out.push(r); continue; }
+    const key = `${r.course}|${r.professor ?? ''}|${r.room ?? ''}|${tk}`;
+    if (seen.has(key)) continue; // 완전히 같은 내용 — 먼저 나온 분반 번호로 대표 행 하나만 남긴다
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
 export function dedupeSections(rows) {
+  rows = mergeContentDuplicates(rows);
   const fill = (dst, src) => {
     if (!dst.professor && src.professor) dst.professor = src.professor;
     if (!dst.department && src.department) dst.department = src.department;
