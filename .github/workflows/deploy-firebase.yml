@@ -1,0 +1,40 @@
+name: Deploy Firebase (Cloud Functions + Firestore rules/indexes)
+
+# Runs on GitHub's runners specifically because Cloud Functions deploy needs to
+# upload the source bundle to storage.googleapis.com — unreachable from some
+# sandboxed dev environments, always reachable from GitHub-hosted runners.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firebase/**'
+      - '.github/workflows/deploy-firebase.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Cloud Functions dependencies
+        working-directory: firebase/functions
+        run: npm ci
+
+      - uses: google-github-actions/auth@v2
+        id: auth
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+
+      - name: Deploy functions + Firestore rules/indexes
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: |
+          npx firebase-tools@latest deploy \
+            --only functions,firestore:rules,firestore:indexes \
+            --project anytime-rokafa \
+            --non-interactive
