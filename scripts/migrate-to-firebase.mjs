@@ -5,7 +5,10 @@
 //    반드시 --dry-run 으로 먼저 리허설 → 실제 실행은 컷오버 시점에만.
 //
 // 실행: node scripts/migrate-to-firebase.mjs [--only=cadet,timetable] [--dry-run]
-// 필요 환경변수: DATABASE_URL, FIREBASE_SERVICE_ACCOUNT_PATH (scripts/README-migration.md 참고)
+// 필요 환경변수: FIREBASE_SERVICE_ACCOUNT_PATH (scripts/README-migration.md 참고)
+// Postgres 읽기는 DATABASE_URL(비밀번호) 대신 `supabase db query --linked` 로 한다 —
+// CLI 로그인(Management API)만 있으면 되고 DB 비밀번호를 알 필요가 없다([[live-sql-apply-cli]] 와 동일한 원칙).
+// 실행 전 `supabase link`/로그인 상태여야 한다(이미 이 저장소는 linked 상태).
 //
 // 설계 원칙(코드 전체에 일관 적용, 표 어느 컬럼을 만나든 아래 규칙을 그대로 따른다):
 //  · NULL 정책: Postgres NULL 은 필드를 생략하지 않고 Firestore 에 명시적 null 로 쓴다.
@@ -21,24 +24,47 @@
 //  · 비밀번호 해시(post_password_hash)는 절대 공개 문서 필드로 두지 않는다 — {doc}/_private/auth
 //    서브컬렉션 문서로 물리 분리(설계문서 §4). 클라이언트 Rules 는 이 서브컬렉션을 항상 거부해야 한다.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import pg from 'pg';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
-const { Client } = pg;
-
 const PROGRESS_EVERY = 500;     // 이 건수마다 진행상황 로그(장시간 실행 가시성용)
 const AUTH_IMPORT_BATCH = 1000; // Firebase importUsers 1회 호출 상한
+
+// pg.Client 대신 `supabase db query --linked` 를 감싼다 — 호출부(아래 모든 pgc.query(sql))는
+// 전부 파라미터 없는 리터럴 SELECT 문이라 인터페이스만 {query,end} 로 맞추면 나머지 코드는
+// 손댈 필요가 없다. execFileSync(배열 인자) 라 쉘 인용 문제·인젝션 우려 없음.
+// CLI 는 결과를 {rows, boundary, warning} 으로 감싸 돌려준다(신뢰 불가 데이터 표시) — rows 만 취한다.
+const SQL_TMP_FILE = join(tmpdir(), 'anytime-migrate-query.sql');
+function supabaseDbQuery(sql) {
+  // --file, not an inline SQL argument: on Windows, execFileSync needs
+  // shell:true to spawn the `supabase.cmd` shim at all, but cmd.exe's own
+  // command-line reconstruction silently mangles a multi-word SQL string
+  // passed as one argv element (confirmed: it turned a real SELECT into an
+  // empty-row result with no error). A file path has no such ambiguity.
+  writeFileSync(SQL_TMP_FILE, sql, 'utf8');
+  const out = execFileSync(
+    'supabase',
+    ['db', 'query', '--linked', '--output-format', 'json', '--file', SQL_TMP_FILE],
+    { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, shell: true }
+  );
+  return { rows: JSON.parse(out).rows ?? [] };
+}
+const pgc = { query: async (sql) => supabaseDbQuery(sql), end: async () => {} };
 
 // ── 소소한 변환 헬퍼 ────────────────────────────────────────────────
 // Postgres BIGINT/NUMERIC 은 node-postgres 가 정밀도 보존을 위해 문자열로 돌려준다 →
 // Firestore 필드는 실제 number 여야 하므로 명시 변환한다(문서ID 로 쓸 String(id) 와는 별개).
 const num = (v) => (v == null ? null : Number(v));
-// TIMESTAMPTZ(JS Date) → Firestore Timestamp. TIME 컬럼(period.start_time 등)은 여기 넣지 않는다(문자열 그대로).
-const ts = (v) => (v == null ? null : Timestamp.fromDate(v));
+// TIMESTAMPTZ → Firestore Timestamp. `supabase db query --output-format json` 는 pg 드라이버와
+//달리 TIMESTAMPTZ 를 Date 객체가 아니라 ISO 문자열로 준다 — new Date() 로 한 번 감싼다.
+// TIME 컬럼(period.start_time 등)은 여기 넣지 않는다(문자열 그대로).
+const ts = (v) => (v == null ? null : Timestamp.fromDate(new Date(v)));
 
 function sectionKey(courseCode, year, term, sectionNo) {
   return `${courseCode}_${year}_${term}_${sectionNo}`;
@@ -740,10 +766,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { dryRun, only } = args;
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    console.error('❌ DATABASE_URL 환경변수가 필요합니다 (Supabase Postgres 연결 문자열).');
-    console.error('   scripts/README-migration.md 의 "DATABASE_URL 구하기" 참고.');
+  try {
+    execFileSync('supabase', ['projects', 'list'], { encoding: 'utf8', shell: true });
+  } catch {
+    console.error('❌ supabase CLI 로그인이 필요합니다 (supabase login).');
     process.exit(1);
   }
   const saPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
@@ -761,9 +787,6 @@ async function main() {
       console.warn(`   사용 가능: ${validNames.join(', ')}`);
     }
   }
-
-  const pgc = new Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
-  await pgc.connect();
 
   // service account 는 initializeApp/getFirestore 단계에선 네트워크 호출이 없다(자격증명 셋업만) —
   // dry-run 에서도 항상 초기화해 실제 실행과 코드경로를 동일하게 유지한다(문서ref 구성 등).

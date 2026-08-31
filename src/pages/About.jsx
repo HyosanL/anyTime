@@ -77,7 +77,7 @@ const EXTRA = [
 const SPEC = [
   ['프론트', 'React 19 · Vite · react-router 7 — 정적 빌드'],
   ['호스팅', 'Cloudflare Pages (anytime.rokafa.app)'],
-  ['DB · 인증', 'Supabase PostgreSQL (서울) · RLS + SECURITY DEFINER RPC'],
+  ['DB · 인증', 'Firebase Firestore · Auth · Cloud Functions (asia-northeast3)'],
   ['파일', 'Cloudflare R2 — 족보·게시판 이미지, JWT 검증 중계'],
   ['캐시', 'IndexedDB + Workbox 프리캐시'],
   ['앱', 'PWA — 홈 화면 설치 · 웹 푸시 · 오프라인'],

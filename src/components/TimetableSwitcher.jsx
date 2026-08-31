@@ -23,7 +23,7 @@ export default function TimetableSwitcher({
   const wrapRef = useRef(null);
 
   // 새 시간표의 기본 학기는 '이번 학기'(없으면 가장 최근 학기)
-  const cur = semesters.find((s) => s.is_current) ?? semesters[0];
+  const cur = semesters.find((s) => s.isCurrent) ?? semesters[0];
   const [newSem, setNewSem] = useState('');
   const [newName, setNewName] = useState('');
 
@@ -91,7 +91,7 @@ export default function TimetableSwitcher({
 
   async function remove(t) {
     const nm = t.name || '무제';
-    const msg = t.is_primary
+    const msg = t.isPrimary
       ? `'${nm}'은(는) ${t.year}-${t.term} 확정 시간표입니다.\n삭제하면 담긴 강의와 직접추가 항목도 함께 사라지고, 같은 학기의 다른 시간표가 확정이 됩니다.\n삭제할까요?`
       : `'${nm}' 시간표를 삭제할까요?\n담긴 강의와 직접추가 항목도 함께 사라집니다.`;
     if (!confirm(msg)) return;
@@ -109,7 +109,7 @@ export default function TimetableSwitcher({
         aria-expanded={open}
       >
         <span className="card-title">{label}</span>
-        {selected?.is_primary && <span className="tt-star" title="확정 시간표">★</span>}
+        {selected?.isPrimary && <span className="tt-star" title="확정 시간표">★</span>}
         <span className="tt-caret" aria-hidden="true">▾</span>
       </button>
 
@@ -125,14 +125,14 @@ export default function TimetableSwitcher({
                 >
                   <span className="tt-switch-sem">{t.year}-{t.term}</span>
                   <span className="tt-switch-name">{t.name || <em className="tt-noname">무제</em>}</span>
-                  {t.is_primary && <span className="tt-badge-primary">확정</span>}
+                  {t.isPrimary && <span className="tt-badge-primary">확정</span>}
                 </button>
                 <span className="tt-switch-ops">
                   {/* 수강신청 때 과목명·분반·교수·시간을 한눈에 — 격자를 눈으로 옮겨 적지 않게 */}
                   <button type="button" className="link-btn" disabled={busy}
                     title="수강신청용 요약표 보기"
                     onClick={() => { onSummary(t); close(); }}>요약</button>
-                  {!t.is_primary && (
+                  {!t.isPrimary && (
                     <button type="button" className="link-btn" disabled={busy}
                       title="이 학기의 확정 시간표로 지정"
                       onClick={() => run(() => onSetPrimary(t.id))}>★ 확정</button>
@@ -153,7 +153,7 @@ export default function TimetableSwitcher({
               <select value={newSem} onChange={(e) => setNewSem(e.target.value)}>
                 {semesters.map((s) => (
                   <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>
-                    {s.year}-{s.term}학기{s.is_current ? ' (이번)' : ''}
+                    {s.year}-{s.term}학기{s.isCurrent ? ' (이번)' : ''}
                   </option>
                 ))}
               </select>

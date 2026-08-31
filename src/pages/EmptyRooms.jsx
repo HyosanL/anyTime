@@ -5,7 +5,7 @@ import '../styles/rooms.css';
 
 // =====================================================================
 //  빈 강의실 찾기 — 시간표 격자에서 요일·교시 칸들을 선택하면, 그 시간에
-//  모두 비어 있는 강의실을 보여준다. 카탈로그 캐시(section_time.room)만으로
+//  모두 비어 있는 강의실을 보여준다. 카탈로그 캐시(section.sectionTimes[].room)만으로
 //  전부 클라이언트에서 계산하므로 서버 요청이 없다(egress 0).
 //  "빈 강의실" = 이번 학기 어떤 분반도 그 요일·교시에 쓰지 않는 강의실.
 //  강의실 목록 자체도 이번 학기 시간표에 등장하는 강의실로 한정된다.
@@ -50,27 +50,29 @@ export default function EmptyRooms() {
   // 현재 학기 강의시간 → 요일·교시별 사용 중 강의실 + 전체 강의실 목록
   const model = useMemo(() => {
     if (!catalog) return null;
-    const semesters = catalog.semester ?? [];
+    const semesters = catalog.semesters ?? [];
     const current =
-      semesters.find((s) => s.is_current) ??
+      semesters.find((s) => s.isCurrent) ??
       [...semesters].sort((a, b) => b.year - a.year || b.term - a.term)[0];
     if (!current) return { current: null };
 
-    const periods = [...(catalog.period ?? [])].sort((a, b) => a.no - b.no);
+    const periods = [...(catalog.periods ?? [])].sort((a, b) => a.no - b.no);
     const occupied = new Map(); // "요일-교시" → Set(강의실)
     const roomSet = new Set();
     const usedDays = new Set([1, 2, 3, 4, 5]);
-    for (const t of catalog.section_time ?? []) {
-      if (t.year !== current.year || t.term !== current.term) continue;
-      usedDays.add(t.day_of_week);
-      const room = (t.room ?? '').trim();
-      if (!room) continue;
-      roomSet.add(room);
-      for (let p = t.start_period; p <= t.end_period; p++) {
-        const k = cellKey(t.day_of_week, p);
-        let set = occupied.get(k);
-        if (!set) { set = new Set(); occupied.set(k, set); }
-        set.add(room);
+    for (const sec of catalog.sections ?? []) {
+      if (sec.year !== current.year || sec.term !== current.term) continue;
+      for (const t of sec.sectionTimes ?? []) {
+        usedDays.add(t.dayOfWeek);
+        const room = (t.room ?? '').trim();
+        if (!room) continue;
+        roomSet.add(room);
+        for (let p = t.startPeriod; p <= t.endPeriod; p++) {
+          const k = cellKey(t.dayOfWeek, p);
+          let set = occupied.get(k);
+          if (!set) { set = new Set(); occupied.set(k, set); }
+          set.add(room);
+        }
       }
     }
     const days = [...usedDays].sort((a, b) => a - b);
@@ -126,10 +128,10 @@ export default function EmptyRooms() {
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const cur =
       model.periods.find((p) => {
-        const s = parseHM(p.start_time);
-        const e = parseHM(p.end_time);
+        const s = parseHM(p.startTime);
+        const e = parseHM(p.endTime);
         return s != null && e != null && s <= nowMin && nowMin < e;
-      }) ?? model.periods.find((p) => (parseHM(p.start_time) ?? -1) > nowMin);
+      }) ?? model.periods.find((p) => (parseHM(p.startTime) ?? -1) > nowMin);
     if (!cur) {
       setNowMsg('오늘 교시가 모두 끝났어요. 칸을 직접 선택해 주세요.');
       return;
@@ -195,7 +197,7 @@ export default function EmptyRooms() {
                         <th className="er-period">
                           <button type="button" className="er-pbtn" onClick={() => togglePeriod(p.no)}>
                             <span className="er-pno">{p.no}</span>
-                            <span className="er-ptime">{hm(p.start_time)}</span>
+                            <span className="er-ptime">{hm(p.startTime)}</span>
                           </button>
                         </th>
                         {model.days.map((d) => {

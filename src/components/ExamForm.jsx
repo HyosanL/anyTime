@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../supabase';
+import { callFn } from '../lib/functions';
 import { uploadExamFiles, EXAM_RETENTION_YEARS } from '../lib/storage';
 import { maskText, prefetchMask } from '../lib/mask';
 
@@ -8,7 +8,7 @@ const CUR_YEAR = new Date().getFullYear();
 const MIN_YEAR = 2000;
 const MAX_FILES = 10;
 
-// 족보 업로드 폼: 파일(다중) → Storage 업로드 → create_exam(메타+files) RPC.
+// 족보 업로드 폼: 파일(다중) → R2 업로드(storage.js, 이관 범위 밖) → createExam Cloud Function(메타+files).
 export default function ExamForm({ courseCode, onDone }) {
   const [title, setTitle] = useState('');
   const [examType, setExamType] = useState('중간고사');
@@ -46,18 +46,18 @@ export default function ExamForm({ courseCode, onDone }) {
     setSubmitting(true);
     try {
       const uploaded = await uploadExamFiles(courseCode, files); // [{key,name,size,mime}]
-      const { error } = await supabase.rpc('create_exam', {
-        p_post_password: password,
-        p_course_code: courseCode,
-        p_src_year: srcYear,
-        p_src_term: srcTerm ? Number(srcTerm) : null,
-        p_title: await maskText(title.trim()),
-        p_exam_type: examType,
-        p_description: (await maskText(description.trim())) || null,
-        p_files: uploaded,   // 서버가 exam_file 릴레이션으로 정규화 저장
+      const r = await callFn('createExam', {
+        courseCode,
+        srcYear,
+        srcTerm: srcTerm ? Number(srcTerm) : null,
+        title: await maskText(title.trim()),
+        examType,
+        description: (await maskText(description.trim())) || null,
+        files: uploaded,   // createExam 이 embedded files 배열로 그대로 저장
+        postPassword: password,
       });
-      if (error) {
-        setError(error.message || '등록에 실패했습니다.');
+      if (!r.ok) {
+        setError(r.message || '등록에 실패했습니다.');
         return;
       }
       onDone?.();

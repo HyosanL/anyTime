@@ -17,7 +17,7 @@ import '../styles/course.css';
 // 검색 대상 학기 = 그 시간표의 학기(지난 학기 기록·다음 학기 초안도 짤 수 있어야 하므로).
 export default function CourseSearch() {
   const { session } = useAuthContext();
-  const uid = session?.user?.id;
+  const uid = session?.uid;
 
   const [catalog, setCatalog] = useState(null);
   const [timetables, setTimetables] = useState([]);
@@ -83,7 +83,7 @@ export default function CourseSearch() {
     if (!targetId) { setRegistered(new Set()); return; }
     let active = true;
     listEntries(targetId)
-      .then((rows) => { if (active) setRegistered(new Set(rows.map((r) => r.section_id))); })
+      .then((rows) => { if (active) setRegistered(new Set(rows.map((r) => r.sectionId))); })
       .catch(() => { /* 오프라인 */ });
     return () => { active = false; };
   }, [targetId]);
@@ -99,9 +99,9 @@ export default function CourseSearch() {
     if (!q) return [];
     return sections.filter(
       (s) =>
-        s.course_name.toLowerCase().includes(q) ||
-        s.course_code.toLowerCase().includes(q) ||
-        (s.professor_name ?? '').toLowerCase().includes(q)
+        s.courseName.toLowerCase().includes(q) ||
+        s.courseCode.toLowerCase().includes(q) ||
+        (s.professorName ?? '').toLowerCase().includes(q)
     );
   }, [sections, q]);
 
@@ -115,7 +115,7 @@ export default function CourseSearch() {
     setBusyKey(s.key);
     setError('');
     try {
-      await addSection(targetId, s.id);
+      await addSection(targetId, s);
       setRegistered((prev) => new Set(prev).add(s.id));
     } catch (e) {
       setError(isOverlapError(e)
@@ -130,7 +130,7 @@ export default function CourseSearch() {
     setBusyKey(s.key);
     setError('');
     try {
-      await removeSection(targetId, s.id);
+      await removeSection(targetId, s);
       setRegistered((prev) => {
         const next = new Set(prev);
         next.delete(s.id);
@@ -149,11 +149,11 @@ export default function CourseSearch() {
       <li key={s.key} className={`section-card${on ? ' is-on' : ''}`}>
         <div className="section-info">
           <p className="section-title">
-            <span className="section-name">{s.course_name}</span>
-            <span className="section-code">{s.course_code}-{s.section_no}</span>
+            <span className="section-name">{s.courseName}</span>
+            <span className="section-code">{s.courseCode}-{s.sectionNo}</span>
           </p>
           <p className="section-sub">
-            {s.professor_name ?? '교수 미정'}
+            {s.professorName ?? '교수 미정'}
           </p>
           <p className="section-times">
             <span className="section-time-ic" aria-hidden="true">🕒</span>
@@ -162,11 +162,11 @@ export default function CourseSearch() {
           <span className="section-links">
             <Link
               className="section-review-link"
-              to={`/reviews/${s.course_code}${s.professor_code ? `?prof=${s.professor_code}` : ''}`}
+              to={`/reviews/${s.courseCode}${s.professorCode ? `?prof=${s.professorCode}` : ''}`}
             >
               강의평 →
             </Link>
-            <Link className="section-review-link" to={`/exams/${s.course_code}`}>
+            <Link className="section-review-link" to={`/exams/${s.courseCode}`}>
               족보 →
             </Link>
             <button
@@ -210,13 +210,13 @@ export default function CourseSearch() {
         <span className="search-target-label">담을 시간표</span>
         <select
           value={targetId ?? ''}
-          onChange={(e) => changeTarget(Number(e.target.value))}
+          onChange={(e) => changeTarget(e.target.value)}
           disabled={timetables.length === 0}
         >
           {timetables.length === 0 && <option value="">시간표 없음</option>}
           {timetables.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.year}-{t.term} {t.name}{t.is_primary ? ' ★확정' : ''}
+              {t.year}-{t.term} {t.name}{t.isPrimary ? ' ★확정' : ''}
             </option>
           ))}
         </select>

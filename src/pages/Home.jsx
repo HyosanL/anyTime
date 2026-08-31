@@ -72,11 +72,11 @@ function CustomClassForm({ onAdd }) {
 export default function Home() {
   const { cadet, session, settings, logout } = useAuthContext();
   const navigate = useNavigate();
-  const uid = session?.user?.id;
-  const count = cadet?.post_count ?? 0;
+  const uid = session?.uid;
+  const count = cadet?.postCount ?? 0;
   const tier = badgeOf(count);
   // 관리자 여부는 이미 cadet 프로필에 실려 온다(useAuth) — 별도 is_admin RPC 왕복 불필요.
-  const isAdmin = !!cadet?.is_admin;
+  const isAdmin = !!cadet?.isAdmin;
 
   const [catalog, setCatalog] = useState(null);
   const [timetables, setTimetables] = useState([]);
@@ -360,12 +360,12 @@ export default function Home() {
   const handleDeleteCustom = useCallback(async (id, title) => {
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
     try {
-      await removeCustomClass(id);
+      await removeCustomClass(selectedId, id);
       await reloadCustom();
     } catch {
       alert('삭제에 실패했습니다. 잠시 후 다시 시도하세요.');
     }
-  }, [reloadCustom]);
+  }, [selectedId, reloadCustom]);
 
   return (
     <PullToRefresh className="page home" onRefresh={handleRefresh}>
@@ -449,7 +449,7 @@ export default function Home() {
               <button type="button" className="link-btn" onClick={handleUnhideBlocks}>되돌리기</button>
             </p>
           )}
-          {selected && !selected.is_primary && (
+          {selected && !selected.isPrimary && (
             <p className="tt-draft-note">
               초안 시간표입니다. 강의평·수업메모는 <strong>확정</strong> 시간표에 담긴 강의만 열립니다.
             </p>

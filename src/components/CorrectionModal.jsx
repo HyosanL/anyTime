@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { supabase } from '../supabase';
+import { callFn } from '../lib/functions';
 import '../styles/correction.css';
 
 // 정보 수정 제안 모달 (익명). options: [{label, target, targetKey, field, placeholder, current, kind?, periods?, professors?}]
@@ -7,7 +7,7 @@ import '../styles/correction.css';
 //  - kind:'professor'  → 교수 검색·선택(동명이인은 코드로 확정, val="이름 (코드)")
 //  - kind:'sectionAdd' → 없는 분반 추가 제안(분반번호·교수·시간·강의실 → 정규화 JSON 한 벌로 제출)
 //  - kind 없음         → 기존 자유 텍스트 입력
-// 제출은 submit_correction RPC(SECURITY DEFINER) — 작성자 미저장.
+// 제출은 submitCorrection Cloud Function(익명 — 작성자 미저장, corrections/{id}는 클라이언트 접근 전면 차단).
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금']];
 const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
 
@@ -138,16 +138,16 @@ export default function CorrectionModal({ subject, options, onClose }) {
       return setErr('올바른 값이나 설명 중 하나는 입력하세요.');
     }
     setBusy(true); setErr('');
-    const { error } = await supabase.rpc('submit_correction', {
-      p_target: opt.target,
-      p_target_key: opt.targetKey,
-      p_label: subject,
-      p_field: opt.field,
-      p_suggested: suggested,
-      p_note: note.trim(),
+    const r = await callFn('submitCorrection', {
+      target: opt.target,
+      targetKey: opt.targetKey,
+      label: subject,
+      field: opt.field,
+      suggested,
+      note: note.trim(),
     });
     setBusy(false);
-    if (error) return setErr(error.message || '제출에 실패했습니다.');
+    if (!r.ok) return setErr(r.message || '제출에 실패했습니다.');
     setDone(true);
   }
 

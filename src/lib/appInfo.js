@@ -1,16 +1,19 @@
 // =====================================================================
-//  부팅 시 서버에서 한 번 읽는 값 묶음 (get_boot_info RPC)
-//  - geo_valid_days  : 위치 재인증 유효기간
-//  - catalog_version : 카탈로그 변경 일련번호(관리자가 강의 정보를 고칠 때마다 +1)
-//  - board_enabled   : 익명게시판 전체 활성화(관리자 긴급 차단 스위치)
-//  - share_enabled   : 공유링크 비회원 열람 허용
-//  - review_min_days : 강의평 작성 자격 일수
+//  부팅 시 서버에서 한 번 읽는 값 묶음 (config/app 문서)
+//  - geoValidDays  : 위치 재인증 유효기간
+//  - catalogVersion: 카탈로그 변경 일련번호(관리자가 강의 정보를 고칠 때마다 +1)
+//  - boardEnabled  : 익명게시판 전체 활성화(관리자 긴급 차단 스위치)
+//  - shareEnabled  : 공유링크 비회원 열람 허용
+//  - reviewMinDays : 강의평 작성 자격 일수
 //
-//  요청을 새로 늘리지 않는 것이 요점이다. app_setting 한 행에서 나오는 값은 전부 여기에 싣는다.
+//  요청을 새로 늘리지 않는 것이 요점이다. config/app 문서 하나에서 나오는 값은 전부 여기에 싣는다.
 //  이 자리가 없을 때는 화면마다 board_enabled()·get_review_min_days() 를 따로 불러
 //  홈·게시판·메모에 들어갈 때마다 RPC 가 한 번씩 더 나갔다(가장 자주 열리는 화면들이라 합이 크다).
+//  get_boot_info() 는 Cloud Function 으로 포팅되지 않았다 — config/app 은 로그인 사용자면
+//  누구나 읽을 수 있게 Rules 가 이미 열려 있어 직접 읽기로 충분하다(설계 문서 §3).
 // =====================================================================
-import { supabase } from '../supabase';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // 서버 응답 전(그리고 오프라인)에 쓰는 기본값. 게시판·공유는 '열림'이 기본이라 첫 화면이 깜빡이지 않는다.
 export const BOOT_DEFAULTS = {
@@ -26,16 +29,18 @@ let inFlight = null;
 
 export function fetchBootInfo() {
   if (inFlight) return inFlight;
-  inFlight = supabase
-    .rpc('get_boot_info')
-    .then(({ data }) => ({
-      // 오프라인이면 supabase-js 가 throw 대신 data:null 을 준다 → 기본값으로 계속 굴러간다.
-      geoValidDays: data?.geo_valid_days ?? BOOT_DEFAULTS.geoValidDays,
-      catalogVersion: data?.catalog_version ?? BOOT_DEFAULTS.catalogVersion,
-      boardEnabled: data?.board_enabled ?? BOOT_DEFAULTS.boardEnabled,
-      shareEnabled: data?.share_enabled ?? BOOT_DEFAULTS.shareEnabled,
-      reviewMinDays: data?.review_min_days ?? BOOT_DEFAULTS.reviewMinDays,
-    }))
+  inFlight = getDoc(doc(db, 'config', 'app'))
+    .then((snap) => {
+      // 오프라인이면 getDoc 이 throw 한다 → 아래 catch 에서 기본값으로 계속 굴러간다.
+      const data = snap.data();
+      return {
+        geoValidDays: data?.geoValidDays ?? BOOT_DEFAULTS.geoValidDays,
+        catalogVersion: data?.catalogVersion ?? BOOT_DEFAULTS.catalogVersion,
+        boardEnabled: data?.boardEnabled ?? BOOT_DEFAULTS.boardEnabled,
+        shareEnabled: data?.shareEnabled ?? BOOT_DEFAULTS.shareEnabled,
+        reviewMinDays: data?.reviewMinDays ?? BOOT_DEFAULTS.reviewMinDays,
+      };
+    })
     .catch(() => BOOT_DEFAULTS)
     .finally(() => { inFlight = null; });
   return inFlight;

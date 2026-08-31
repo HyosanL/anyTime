@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { callFn } from './functions';
 
 // 웹푸시 클라이언트 — 익명성 원칙: 서버에 보내는 식별자는 endpoint(브라우저가 발급한
 // 임의 URL)뿐이고, 계정(uid)과는 어디서도 연결하지 않는다. "내가 지켜보는 글"의
@@ -49,11 +49,9 @@ async function subscribe(reg) {
 
 async function registerToServer(sub) {
   const j = sub.toJSON();
-  await supabase.rpc('push_subscribe', {
-    p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth,
-  });
+  await callFn('pushSubscribe', { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
   if (localStorage.getItem(HOT_KEY) === '0') {
-    await supabase.rpc('push_set_hot', { p_endpoint: j.endpoint, p_on: false });
+    await callFn('pushSetHot', { endpoint: j.endpoint, on: false });
   }
 }
 
@@ -80,23 +78,24 @@ export async function disablePush() {
   try {
     const sub = await getSubscription();
     if (sub) {
-      await supabase.rpc('push_unsubscribe', { p_endpoint: sub.endpoint });
-      await supabase.rpc('admin_push_unsubscribe', { p_endpoint: sub.endpoint }); // 관리자 구독도 정리(관리자 아니면 무해)
+      await callFn('pushUnsubscribe', { endpoint: sub.endpoint });
+      await callFn('adminPushUnsubscribe', { endpoint: sub.endpoint }); // 관리자 구독도 정리(관리자 아니면 무해)
       await sub.unsubscribe();
     }
   } catch { /* 이미 해지됐으면 무시 */ }
 }
 
 // 관리자 기기 등록 — 수정제안·신고삭제·자동반영 알림 대상. 일반 구독(완전 익명)과 별도 표에
-// cadet_id 와 함께 저장한다(관리자 기기만). 관리자 전용 화면 진입 시 호출한다.
-// admin_push_subscribe 는 서버에서 is_admin() 을 확인하므로, 비관리자가 불러도 아무 일도 없다.
+// uid 와 함께 저장한다(관리자 기기만). 관리자 전용 화면 진입 시 호출한다.
+// adminPushSubscribe CF는 비관리자면 permission-denied 를 던지지만 callFn 이 그 실패를
+// {ok:false}로 삼켜 여기선 무해하게 무시된다(옛 admin_push_subscribe() 의 조용한 no-op과 같은 결과).
 export async function syncAdminPush() {
   if (!pushEnabled()) return;
   try {
     const sub = await getSubscription();
     if (!sub) return;
     const j = sub.toJSON();
-    await supabase.rpc('admin_push_subscribe', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    await callFn('adminPushSubscribe', { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
   } catch { /* 오프라인 등 — 다음 진입 때 재시도 */ }
 }
 
@@ -135,7 +134,8 @@ export function isWatched(postId) { return !!watchedMap()[postId]; }
 export async function watchPost(postId, reason = 'watch') {
   const sub = await getSubscription();
   if (!sub) return;
-  await supabase.rpc('push_watch', { p_endpoint: sub.endpoint, p_post_id: Number(postId) });
+  // postId 는 이제 Firestore 문서ID(문자열) — 옛 bigint 라 걸었던 Number() 변환은 버린다.
+  await callFn('pushWatch', { endpoint: sub.endpoint, postId });
   const all = watchedMap();
   all[postId] = reason;
   saveWatched(all);
@@ -147,7 +147,7 @@ export async function unwatchPost(postId) {
   saveWatched(all);
   const sub = await getSubscription();
   if (!sub) return;
-  await supabase.rpc('push_unwatch', { p_endpoint: sub.endpoint, p_post_id: Number(postId) });
+  await callFn('pushUnwatch', { endpoint: sub.endpoint, postId });
 }
 
 // ── 알림 클릭 딥링크 ─────────────────────────────────────────────────
@@ -184,7 +184,7 @@ export async function setHotAlerts(on) {
   try { localStorage.setItem(HOT_KEY, on ? '1' : '0'); } catch { /* 무시 */ }
   const sub = await getSubscription();
   if (!sub) return;
-  await supabase.rpc('push_set_hot', { p_endpoint: sub.endpoint, p_on: !!on });
+  await callFn('pushSetHot', { endpoint: sub.endpoint, on: !!on });
 }
 
 // ── 방해금지 시간(디바이스 시간 기준, 기기별 설정) ────────────────────

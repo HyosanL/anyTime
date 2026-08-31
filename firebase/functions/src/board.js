@@ -408,17 +408,24 @@ export const getSharedPost = onCall(async (request) => {
 // Cloudflare Pages Function (/api/share-image) on behalf of anonymous
 // visitors who followed a share link but have no Firebase session (port of
 // share_image_ok()).
-export const shareImageOk = onCall(async (request) => {
-  const { token, key } = request.data ?? {};
-  if (!token || !key) return false;
+// onRequest, not onCall: functions/api/share-image.js (a Cloudflare Pages
+// Function, no Firebase SDK available there) calls this over plain HTTP —
+// same reasoning as boardReferencedKeys below. No secret gate needed, unlike
+// that one — the unguessable share token itself is the access control here,
+// matching the old anon-callable RPC's design.
+export const shareImageOk = onRequest(async (req, res) => {
+  const token = req.query.token;
+  const key = req.query.key;
+  if (!token || !key) { res.status(200).json(false); return; }
 
   const appConfigSnap = await db.doc('config/app').get();
-  if (!(appConfigSnap.get('shareEnabled') ?? true)) return false;
+  if (!(appConfigSnap.get('shareEnabled') ?? true)) { res.status(200).json(false); return; }
 
   const snap = await db.collection('boardPosts').where('shareToken', '==', token).limit(1).get();
-  if (snap.empty) return false;
+  if (snap.empty) { res.status(200).json(false); return; }
   const images = snap.docs[0].get('images') || [];
-  return images.some((img) => img.objectKey === key || `${img.objectKey}.thumb` === key);
+  const ok = images.some((img) => img.objectKey === key || `${img.objectKey}.thumb` === key);
+  res.status(200).json(ok);
 });
 
 // Secret-gated HTTP endpoint (NOT onCall) — invoked by a cron job with no

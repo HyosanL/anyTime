@@ -6,21 +6,18 @@
 먼저 리허설한 뒤 실행한다. 결정론적 문서ID + `bulkWriter.set()`(덮어쓰기)로 만들어져
 있어 여러 번 재실행해도 중복이 생기지 않는다(멱등).
 
-## 필요 환경변수
+## 필요한 것
 
-- **`DATABASE_URL`** — Supabase Postgres 연결 문자열.
-  Supabase 대시보드 → 해당 프로젝트 → Project Settings → Database → Connection string
-  (URI 탭, "Session pooler" 또는 "Direct connection" 중 하나 — 대량 읽기라 pooler 권장).
-  비밀번호는 같은 화면의 "Database password"(프로젝트 생성 시 설정한 값, 분실 시 재설정 가능).
-- **`FIREBASE_SERVICE_ACCOUNT_PATH`** — Firebase 서비스 계정 키 JSON 파일 경로.
+- **Supabase CLI 로그인 + 프로젝트 link** — DB 비밀번호는 필요 없다. 스크립트가 내부적으로
+  `supabase db query --linked`(Management API 경유)로 읽는다 — 이미 이 저장소는 linked 상태면
+  별도 조치 불필요, 아니라면 `supabase login` → `supabase link --project-ref yxolswmfbwisesnoyucr`.
+- **`FIREBASE_SERVICE_ACCOUNT_PATH`** — Firebase 서비스 계정 키 JSON 파일 경로 (환경변수).
   Firebase 콘솔 → `anytime-rokafa` 프로젝트 → 프로젝트 설정 → 서비스 계정 →
   "새 비공개 키 생성" → 다운로드한 JSON 파일의 로컬 경로를 지정.
-  **이 파일은 절대 커밋하지 않는다** — `.gitignore`에 걸리지 않는 위치(예: 저장소 밖)에 둘 것.
-
-두 값 다 스크립트가 코드로 절대 하드코딩하지 않는다 — 실행할 때 셸에서만 넘긴다:
+  **이 파일은 절대 커밋하지 않는다** — `.gitignore`에 걸리지 않는 위치(예: 저장소 밖)에 두고,
+  작업이 끝나면 삭제한다.
 
 ```bash
-DATABASE_URL="postgresql://postgres.xxxx:PASSWORD@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres" \
 FIREBASE_SERVICE_ACCOUNT_PATH="/절대/경로/anytime-rokafa-service-account.json" \
 node scripts/migrate-to-firebase.mjs --dry-run
 ```

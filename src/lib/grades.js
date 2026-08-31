@@ -1,11 +1,15 @@
 // =====================================================================
-//  학점계산기 — 성적 저장(서버 grade_entry) + 평점 계산(순수)
+//  학점계산기 — 성적 저장(users/{uid}/gradeEntries) + 평점 계산(순수)
 //
 //  학점(평점) 기록은 학기별 누적·추이라 계정에 묶어 기기 간 동기화한다(서버 저장).
-//  RLS: 본인 행만(cadet_id = auth.uid()). 과목·학점·성적등급은 생도가 직접 넣는다.
+//  Rules: 본인 서브컬렉션만(isOwner(uid)) — Cloud Function 없이 직접 R/W(설계 §1, 교차문서
+//  불변조건이 없는 순수 소유 데이터).
 //  평점은 4.3 만점(등급→평점 고정 매핑). 학점(credit)·등급 둘 다 있는 행만 집계한다.
 // =====================================================================
-import { supabase } from '../supabase';
+import {
+  addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc, writeBatch,
+} from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 // 등급 → 평점(4.3 만점)
 export const GRADE_POINTS = {
@@ -18,66 +22,80 @@ export const GRADE_POINTS = {
 // 셀렉트 옵션 순서(높은 등급 → 낮은 등급 → F)
 export const GRADE_ORDER = ['A+', 'A0', 'A-', 'B+', 'B0', 'B-', 'C+', 'C0', 'C-', 'D+', 'D0', 'D-', 'F'];
 
-const COLS = 'id, year, term, course_name, credit, grade, sort_order';
+function col(uid) {
+  return collection(db, 'users', uid, 'gradeEntries');
+}
 
-// 내 전 학기 성적 행(최신 학기 → sort_order).
+// 성적행은 옛 COLS 가 created_at 을 아예 select 하지 않던 것과 마찬가지로 화면에 안 실어 보낸다.
+function rowFromDoc(d) {
+  const data = d.data();
+  return {
+    id: d.id,
+    year: data.year,
+    term: data.term,
+    courseName: data.courseName,
+    credit: data.credit ?? null,
+    grade: data.grade ?? null,
+    sortOrder: data.sortOrder ?? 0,
+  };
+}
+
+// 내 전 학기 성적 행(최신 학기 → sortOrder). firestore.indexes.json 의 gradeEntries
+// 복합색인(year DESC, term DESC, sortOrder ASC)과 정확히 맞춘 순서.
 export async function listGrades() {
-  const { data, error } = await supabase
-    .from('grade_entry')
-    .select(COLS)
-    .order('year', { ascending: false })
-    .order('term', { ascending: false })
-    .order('sort_order', { ascending: true })
-    .order('id', { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  const uid = auth.currentUser?.uid;
+  if (!uid) return [];
+  const snap = await getDocs(
+    query(col(uid), orderBy('year', 'desc'), orderBy('term', 'desc'), orderBy('sortOrder', 'asc'))
+  );
+  return snap.docs.map(rowFromDoc);
+}
+
+function toEntryData(row) {
+  return {
+    year: row.year,
+    term: row.term,
+    courseName: row.courseName,
+    credit: row.credit ?? null,
+    grade: row.grade ?? null,
+    sortOrder: row.sortOrder ?? 0,
+  };
 }
 
 export async function addGrade(cadetId, row) {
-  const { data, error } = await supabase
-    .from('grade_entry')
-    .insert({
-      cadet_id: cadetId,
-      year: row.year,
-      term: row.term,
-      course_name: row.course_name,
-      credit: row.credit ?? null,
-      grade: row.grade ?? null,
-      sort_order: row.sort_order ?? 0,
-    })
-    .select(COLS)
-    .single();
-  if (error) throw error;
-  return data;
+  const uid = cadetId || auth.currentUser?.uid;
+  if (!uid) throw new Error('로그인이 필요합니다.');
+  const data = toEntryData(row);
+  const ref = await addDoc(col(uid), data);
+  return { id: ref.id, ...data };
 }
 
-// 시드 벌크(시간표 불러오기). 이름만 있는 행들을 한 번에 넣는다.
+// 시드 벌크(시간표 불러오기). 이름만 있는 행들을 한 번에 넣는다 — writeBatch 로 왕복 1회.
 export async function addGrades(cadetId, rows) {
   if (!rows.length) return [];
-  const { data, error } = await supabase
-    .from('grade_entry')
-    .insert(rows.map((r) => ({
-      cadet_id: cadetId,
-      year: r.year,
-      term: r.term,
-      course_name: r.course_name,
-      credit: r.credit ?? null,
-      grade: r.grade ?? null,
-      sort_order: r.sort_order ?? 0,
-    })))
-    .select(COLS);
-  if (error) throw error;
-  return data ?? [];
+  const uid = cadetId || auth.currentUser?.uid;
+  if (!uid) throw new Error('로그인이 필요합니다.');
+  const batch = writeBatch(db);
+  const made = rows.map((r) => {
+    const ref = doc(col(uid));
+    const data = toEntryData(r);
+    batch.set(ref, data);
+    return { id: ref.id, ...data };
+  });
+  await batch.commit();
+  return made;
 }
 
 export async function updateGrade(id, patch) {
-  const { error } = await supabase.from('grade_entry').update(patch).eq('id', id);
-  if (error) throw error;
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('로그인이 필요합니다.');
+  await updateDoc(doc(col(uid), id), patch);
 }
 
 export async function deleteGrade(id) {
-  const { error } = await supabase.from('grade_entry').delete().eq('id', id);
-  if (error) throw error;
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('로그인이 필요합니다.');
+  await deleteDoc(doc(col(uid), id));
 }
 
 // ── 순수 계산 ─────────────────────────────────────────────────────────

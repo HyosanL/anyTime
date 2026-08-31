@@ -41,13 +41,13 @@ function toMin(t) {
 // 강의시간 한 칸: 교시("월 1~2교시")와 시각("08:10~10:00")을 나눠 둔다.
 // 한 줄로 붙이면 좁은 화면에서 표가 가로로 넘친다 — 수강신청 참고표는 네 열이 한눈에 보여야 한다.
 function slotOf(t, periodByNo) {
-  const range = t.start_period === t.end_period
-    ? `${t.start_period}교시`
-    : `${t.start_period}~${t.end_period}교시`;
-  const s = hm(periodByNo[t.start_period]?.start_time);
-  const e = hm(periodByNo[t.end_period]?.end_time);
+  const range = t.startPeriod === t.endPeriod
+    ? `${t.startPeriod}교시`
+    : `${t.startPeriod}~${t.endPeriod}교시`;
+  const s = hm(periodByNo[t.startPeriod]?.startTime);
+  const e = hm(periodByNo[t.endPeriod]?.endTime);
   return {
-    period: `${dayLabel(t.day_of_week)} ${range}`,
+    period: `${dayLabel(t.dayOfWeek)} ${range}`,
     clock: s && e ? `${s}~${e}` : '',
   };
 }
@@ -79,14 +79,14 @@ export default function TimetableSummary({
       const slots = (s.times ?? [])
         .map((t) => ({
           ...slotOf(t, periodByNo),
-          sort: t.day_of_week * 10000 + (toMin(periodByNo[t.start_period]?.start_time) ?? 0),
+          sort: t.dayOfWeek * 10000 + (toMin(periodByNo[t.startPeriod]?.startTime) ?? 0),
         }))
         .sort((a, b) => a.sort - b.sort);
       return {
         key: `s:${s.id}`,
-        course: s.course_name,
-        section: `${s.section_no}분반`,
-        prof: s.professor_name ?? '미정',
+        course: s.courseName,
+        section: `${s.sectionNo}분반`,
+        prof: s.professorName ?? '미정',
         slots,
         sort: slots[0]?.sort ?? Infinity,
       };

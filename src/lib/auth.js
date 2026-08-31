@@ -1,6 +1,14 @@
-import { supabase } from '../supabase';
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+} from 'firebase/auth';
+import { auth } from '../firebase';
+import { callFn } from './functions.js';
 
-// 아이디 → 합성 이메일 매핑. RLS/세션은 auth.uid() 기반으로 동작.
+// 아이디 → 합성 이메일 매핑. Firebase Auth 는 이메일/비번 로그인만 지원.
 export function synthEmail(username) {
   return `${username.trim().toLowerCase()}@anytime.app`;
 }
@@ -20,55 +28,53 @@ export function getPosition() {
   });
 }
 
-// 가입: Edge Function 으로 가입코드+지오펜싱 서버검증 후 계정 생성.
+// 가입: Cloud Function 으로 가입코드+지오펜싱 서버검증 후 계정 생성.
 // 반환: { status, ... }  status='OK' 면 곧바로 로그인 시도 권장.
+//
+// signup Cloud Function 은 HttpsError.code 로만 실패를 구분한다(already-exists /
+// invalid-argument / permission-denied / internal) — 옛 Edge Function 이 주던
+// INVALID_CODE/OUT_OF_AREA/USERNAME_TAKEN/WEAK_PASSWORD/BAD_REQUEST 세분화보다
+// 얕다. Onboarding.jsx 는 이 세분화된 문자열로 분기하므로(이번 작업 범위 밖이라
+// 못 고침), 서버가 고정으로 내려주는 한국어 메시지를 되짚어 옛 상태값으로 복원한다.
 export async function signup({ username, password, code, lat, lng }) {
-  const { data, error } = await supabase.functions.invoke('signup', {
-    body: { username: username.trim(), password, code: code.trim(), lat, lng },
-  });
-  // Edge Function 이 4xx/5xx 로 응답하면 supabase-js 가 error 를 채우고 data 는 비어 있을 수 있음.
-  if (error) {
-    // FunctionsHttpError 의 경우 본문에서 status 를 꺼낸다.
-    try {
-      const body = await error.context?.json?.();
-      if (body?.status) return body;
-    } catch {
-      /* ignore */
-    }
-    return { status: 'ERROR', detail: error.message };
-  }
-  return data ?? { status: 'ERROR' };
+  const r = await callFn('signup', { username: username.trim(), password, code: code.trim(), lat, lng });
+  if (r.ok) return { status: 'OK', username: r.data?.username };
+  const msg = r.message || '';
+  if (r.status === 'already-exists') return { status: 'USERNAME_TAKEN' };
+  if (r.status === 'invalid-argument') return { status: msg.includes('비밀번호') ? 'WEAK_PASSWORD' : 'BAD_REQUEST' };
+  if (r.status === 'permission-denied') return { status: msg.includes('코드') ? 'INVALID_CODE' : 'OUT_OF_AREA' };
+  return { status: 'ERROR' };
 }
 
-// 로그인: 합성 이메일로 Auth 로그인 → 세션(JWT) 발급.
+// 로그인: 합성 이메일로 Auth 로그인 → 세션(ID 토큰) 발급.
 export async function login(username, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: synthEmail(username),
-    password,
-  });
-  if (error) throw error;
-  return data;
+  return signInWithEmailAndPassword(auth, synthEmail(username), password);
 }
 
 export async function logout() {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  await signOut(auth);
 }
 
-// 비밀번호 변경 (로그인 상태에서)
+// 비밀번호 변경 (로그인 상태에서). Firebase 는 민감한 작업에 "최근 재로그인"을
+// 요구한다 — 세션이 오래됐으면 auth/requires-recent-login 을 던진다(Supabase 엔
+// 없던 제약). 호출자(Profile.jsx)가 err.code 로 분기해 안내 문구를 낸다.
 export async function changePassword(newPassword) {
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) throw error;
+  await updatePassword(auth.currentUser, newPassword);
 }
 
-// 회원 탈퇴: 비번 재확인 후 서버에서 계정 삭제(cadet/timetable/admin cascade).
+// 회원 탈퇴: 비번 재확인 후 서버에서 계정 삭제(users 서브트리 + Auth 계정).
+// deleteAccount Cloud Function 은 비번을 다시 검증하지 않는다(Admin SDK 로 해시
+// 비교할 방법이 없음) — 대신 클라이언트에서 reauthenticateWithCredential 로 먼저
+// 재인증해, 옛 'BAD_PASSWORD' 두 갈래 UX 를 그대로 재현한다.
 // 반환 status: 'OK' | 'BAD_PASSWORD' | 'UNAUTH' | 'ERROR'
 export async function deleteAccount(password) {
-  const { data, error } = await supabase.functions.invoke('delete-account', { body: { password } });
-  let status = data?.status;
-  if (error) {
-    try { status = (await error.context?.json?.())?.status; } catch { /* ignore */ }
-    if (!status) status = 'ERROR';
+  const user = auth.currentUser;
+  if (!user) return 'UNAUTH';
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
+  } catch {
+    return 'BAD_PASSWORD';
   }
-  return status;
+  const r = await callFn('deleteAccount');
+  return r.ok ? 'OK' : 'ERROR';
 }

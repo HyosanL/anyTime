@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { httpsCallable } from 'firebase/functions';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { db, functions } from '../firebase';
 import { getCatalog } from '../lib/cache';
 import { useAuthContext } from '../contexts/AuthContext';
 import { dupProfessorGroups, isPlaceholderProf } from '../lib/profname';
@@ -11,21 +13,38 @@ import '../styles/admin.css';
 import '../styles/course.css';
 import '../styles/board.css';
 
-// 화면9: 관리자. is_admin 게이트. 작업은 admin-action Edge Function(service-role).
+// 화면9: 관리자. isAdmin 게이트. 작업은 adminAction Cloud Function(커스텀 클레임 admin 검증).
 // 라우팅: '/admin'=허브, '/admin/:section'=기능 화면. '/admin/moderation'은 별도 페이지(Moderation.jsx),
 // 과목 하나를 고치는 '/admin/courses/:code'도 별도 페이지(AdminCourse.jsx) — 여기서 새 탭으로 연다.
 
-// 교수 명단 동기화(sync-professors) 는 admin-action 이 아니라 전용 Edge Function.
+// 교수 명단 동기화(syncProfessors) 는 adminAction 게이트웨이가 아니라 별도 Cloud Function —
+// 옛 admin-action 체계에서도 전용 Edge Function 이었던 것과 동일 구도. 설계 문서 §5/§10:
+// 이 함수는 이번 이관 범위 밖(월간·비활성)이라 firebase/functions 에 아직 포팅되어 있지 않다 —
+// 배포되기 전까지 이 버튼은 'not-found' 로 실패한다(기능 자체는 옛 스키마에서도 비활성이었다).
 async function invokeSync(mode) {
-  let { data, error } = await supabase.functions.invoke('sync-professors', { body: { mode } });
-  if (error) { try { data = await error.context?.json?.(); } catch { data = null; } }
-  return { ok: data?.status === 'OK', status: data?.status ?? 'ERROR', data: data ?? {} };
+  try {
+    const { data } = await httpsCallable(functions, 'syncProfessors')({ mode });
+    return { ok: data?.status === 'OK', status: data?.status ?? 'ERROR', data: data ?? {} };
+  } catch (e) {
+    return { ok: false, status: e.code || 'ERROR', data: {} };
+  }
 }
 
-const fmtDateTime = (iso) => {
-  if (!iso) return '없음';
-  try { return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }); }
-  catch { return iso; }
+// Cloud Function 응답의 Firestore Timestamp 는 {_seconds,_nanoseconds}(또는 {seconds,nanoseconds})로
+// 오고, ISO 문자열·Date 인스턴스로 오는 필드도 섞여 있다(board.js 의 toIso 와 같은 이유) — 화면
+// 표시 직전에 여기서 한 번에 흡수한다.
+function tsMillis(ts) {
+  if (!ts) return 0;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts).getTime() || 0;
+  const secs = ts._seconds ?? ts.seconds;
+  return typeof secs === 'number' ? secs * 1000 : 0;
+}
+const fmtDateTime = (ts) => {
+  const ms = tsMillis(ts);
+  if (!ms) return '없음';
+  try { return new Date(ms).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch { return '없음'; }
 };
 
 // 기능 카드: 이모지 아이콘 + 제목 + 한 줄 설명 + 본문
@@ -157,8 +176,8 @@ function ProfessorSyncCard({ syncedAt, onApplied }) {
 
 // 교시 표의 한 행: 시작·종료 시각을 즉석에서 수정하고 저장.
 function PeriodRow({ p, run }) {
-  const s0 = String(p.start_time).slice(0, 5);
-  const e0 = String(p.end_time).slice(0, 5);
+  const s0 = String(p.startTime).slice(0, 5);
+  const e0 = String(p.endTime).slice(0, 5);
   const [start, setStart] = useState(s0);
   const [end, setEnd] = useState(e0);
   const dirty = start !== s0 || end !== e0;
@@ -169,7 +188,7 @@ function PeriodRow({ p, run }) {
       <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
       <div className="adm-pt-acts">
         <button className="btn-add btn-sm" disabled={!dirty || !start || !end}
-          onClick={() => run('set_period', { no: p.no, start_time: start, end_time: end }, `${p.no}교시 저장`)}>저장</button>
+          onClick={() => run('set_period', { no: p.no, startTime: start, endTime: end }, `${p.no}교시 저장`)}>저장</button>
         <button className="rev-del-btn" title="삭제"
           onClick={() => run('delete_catalog', { table: 'period', key: { no: p.no } }, '교시 삭제')}>×</button>
       </div>
@@ -217,24 +236,24 @@ function BlockFields({ f, setF, periods }) {
 }
 
 function BlockRow({ b, run, periods }) {
-  const [f, setF] = useState({ day: b.day_of_week, start: b.start_period, end: b.end_period, label: b.label });
-  const dirty = f.day !== b.day_of_week || f.start !== b.start_period
-    || f.end !== b.end_period || f.label !== b.label;
+  const [f, setF] = useState({ day: b.dayOfWeek, start: b.startPeriod, end: b.endPeriod, label: b.label });
+  const dirty = f.day !== b.dayOfWeek || f.start !== b.startPeriod
+    || f.end !== b.endPeriod || f.label !== b.label;
   const valid = f.label.trim() && f.end >= f.start;
   const when = `${DAY_NAMES[f.day]}${f.start}${f.end > f.start ? `~${f.end}` : ''}교시`;
 
   // 요일·시작교시는 PK 다 — 자리를 옮기면 옛 행을 지우고 새 자리에 넣어야 한다(old 로 알려준다).
   const save = () => run('set_common_block', {
     year: b.year, term: b.term,
-    day_of_week: f.day, start_period: f.start, end_period: f.end, label: f.label.trim(),
-    old: { day_of_week: b.day_of_week, start_period: b.start_period },
+    dayOfWeek: f.day, startPeriod: f.start, endPeriod: f.end, label: f.label.trim(),
+    old: { dayOfWeek: b.dayOfWeek, startPeriod: b.startPeriod },
   }, `${when} 저장`);
 
   const remove = () => {
-    if (!confirm(`${DAY_NAMES[b.day_of_week]}${b.start_period}교시 ‘${b.label}’ 을(를) 삭제할까요?`)) return;
+    if (!confirm(`${DAY_NAMES[b.dayOfWeek]}${b.startPeriod}교시 ‘${b.label}’ 을(를) 삭제할까요?`)) return;
     run('delete_catalog', {
-      table: 'common_block',
-      key: { year: b.year, term: b.term, day_of_week: b.day_of_week, start_period: b.start_period },
+      table: 'commonBlock',
+      key: { year: b.year, term: b.term, dayOfWeek: b.dayOfWeek, startPeriod: b.startPeriod },
     }, '공통 공강 시간 삭제');
   };
 
@@ -260,7 +279,7 @@ function NewBlockRow({ run, year, term, periods }) {
       <div className="adm-blk-acts">
         <button className="btn-add btn-sm btn-block" disabled={!valid}
           onClick={() => run('set_common_block', {
-            year, term, day_of_week: f.day, start_period: f.start, end_period: f.end, label: f.label.trim(),
+            year, term, dayOfWeek: f.day, startPeriod: f.start, endPeriod: f.end, label: f.label.trim(),
           }, '공통 공강 시간 추가')}>
           ＋ 추가
         </button>
@@ -270,12 +289,12 @@ function NewBlockRow({ run, year, term, periods }) {
 }
 
 function NewPeriodRow({ run, nextNo }) {
-  const [f, setF] = useState({ no: nextNo, start_time: '09:00', end_time: '09:50' });
+  const [f, setF] = useState({ no: nextNo, startTime: '09:00', endTime: '09:50' });
   return (
     <div className="adm-pt-row adm-pt-new">
       <input className="adm-pt-no-input" type="number" value={f.no} onChange={(e) => setF({ ...f, no: +e.target.value })} />
-      <input type="time" value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} />
-      <input type="time" value={f.end_time} onChange={(e) => setF({ ...f, end_time: e.target.value })} />
+      <input type="time" value={f.startTime} onChange={(e) => setF({ ...f, startTime: e.target.value })} />
+      <input type="time" value={f.endTime} onChange={(e) => setF({ ...f, endTime: e.target.value })} />
       <div className="adm-pt-acts">
         <button className="btn-add btn-sm"
           onClick={() => run('set_period', f, `${f.no}교시 추가`)}>추가</button>
@@ -308,10 +327,10 @@ const TITLE_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title]));
 
 export default function Admin() {
   const { section } = useParams();
-  // 관리자 여부는 cadet 프로필에 이미 실려 온다(useAuth) — is_admin RPC 를 따로 부르지 않는다.
-  // 프로필이 아직 없으면(null) '확인 중'. 모든 관리자 액션은 서버(admin-action)가 다시 검증한다.
+  // 관리자 여부는 cadet 프로필에 이미 실려 온다(useAuth) — isAdmin 을 별도로 조회하지 않는다.
+  // 프로필이 아직 없으면(null) '확인 중'. 모든 관리자 액션은 서버(adminAction)가 다시 검증한다.
   const { cadet } = useAuthContext();
-  const isAdmin = cadet ? !!cadet.is_admin : null;
+  const isAdmin = cadet ? !!cadet.isAdmin : null;
   const [cat, setCat] = useState(null);
   const [msg, setMsg] = useState('');
 
@@ -349,7 +368,10 @@ export default function Admin() {
     call('get_app_setting').then((r) => r.ok && setSetting(r.data.setting ?? {}));
     call('list_notices').then((r) => r.ok && setNotices(r.data.items ?? []));
     call('list_banned_words').then((r) => r.ok && setBannedWords(r.data.words ?? []));
-    supabase.from('board').select('id, name').order('last_activity_at', { ascending: false }).then(({ data }) => setBoardsList(data || []));
+    // 게시판 목록은 카탈로그가 아니지만 어느 로그인 사용자든 직접 읽을 수 있다(firestore.rules: /boards/{id}).
+    getDocs(query(collection(db, 'boards'), orderBy('lastActivityAt', 'desc')))
+      .then((snap) => setBoardsList(snap.docs.map((d) => ({ id: d.id, name: d.get('name') }))))
+      .catch(() => setBoardsList([]));
   }
   async function loadCatalog(force = false) {
     setCat(await getCatalog({ force }).catch(() => null));
@@ -370,9 +392,9 @@ export default function Admin() {
   // ── 공통 비수업 시간 탭 ──────────────────────────────────────────────
   // 기본 학기 = 현재 학기(없으면 가장 최근). 카탈로그가 늦게 와도 한 번은 잡아 준다.
   useEffect(() => {
-    if (blockSem || !cat?.semester?.length) return;
-    const cur = cat.semester.find((s) => s.is_current)
-      ?? [...cat.semester].sort((a, b) => b.year - a.year || b.term - a.term)[0];
+    if (blockSem || !cat?.semesters?.length) return;
+    const cur = cat.semesters.find((s) => s.isCurrent)
+      ?? [...cat.semesters].sort((a, b) => b.year - a.year || b.term - a.term)[0];
     if (cur) setBlockSem(`${cur.year}-${cur.term}`);
   }, [cat, blockSem]);
 
@@ -382,27 +404,27 @@ export default function Admin() {
   }, [blockSem]);
 
   const blocksOfSem = useMemo(() => (
-    (cat?.common_block ?? [])
+    (cat?.commonBlocks ?? [])
       .filter((b) => blockSemYT && b.year === blockSemYT.year && b.term === blockSemYT.term)
-      .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period)
+      .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startPeriod - b.startPeriod)
   ), [cat, blockSemYT]);
 
   // 교시 드롭다운의 선택지(등록된 교시 번호). 교시가 없으면 1~8 로 폴백한다.
   const periodNos = useMemo(
-    () => [...(cat?.period ?? [])].map((p) => p.no).sort((a, b) => a - b),
+    () => [...(cat?.periods ?? [])].map((p) => p.no).sort((a, b) => a - b),
     [cat]
   );
 
   // ── 교수 통합 ────────────────────────────────────────────────────────
   // 같은 사람이 두 벌로 등록된 묶음(이름만 다르게 적혀 새로 생긴 것). 검색과 무관하게 항상 보여준다.
-  const dupGroups = useMemo(() => dupProfessorGroups(cat?.professor ?? []), [cat]);
+  const dupGroups = useMemo(() => dupProfessorGroups(cat?.professors ?? []), [cat]);
   // 사람이 아닌 교수("신임교수"·"미정" …). 옛 일괄등록이 담당교수 칸을 그대로 교수로 만든 흔적 —
   // 지우면 그 강의는 '교수 미정'이 된다(FK ON DELETE SET NULL). 지금은 파싱 단계에서 걸러진다.
   const fakeProfs = useMemo(
-    () => (cat?.professor ?? []).filter((p) => isPlaceholderProf(p.name)),
+    () => (cat?.professors ?? []).filter((p) => isPlaceholderProf(p.name)),
     [cat]
   );
-  const secCountOf = (code) => (cat?.section ?? []).filter((s) => s.professor_code === code).length;
+  const secCountOf = (code) => (cat?.sections ?? []).filter((s) => s.professorCode === code).length;
 
   function deleteFakeProf(p) {
     const n = secCountOf(p.code);
@@ -418,7 +440,7 @@ export default function Admin() {
     run('delete_catalog', { table: 'professor', key: { code: p.code } }, `'${p.name}' 삭제 — 해당 분반은 교수 미정`);
   }
   const profByCode = useMemo(
-    () => new Map((cat?.professor ?? []).map((p) => [p.code, p])),
+    () => new Map((cat?.professors ?? []).map((p) => [p.code, p])),
     [cat]
   );
   const selProfs = useMemo(
@@ -482,7 +504,7 @@ export default function Admin() {
   // 되돌릴 방법이 없으므로(백업 복원뿐) 학기명을 그대로 입력해야만 실행한다.
   function deleteSemester(s) {
     const key = `${s.year}-${s.term}`;
-    const n = (cat?.section ?? []).filter((x) => x.year === s.year && x.term === s.term).length;
+    const n = (cat?.sections ?? []).filter((x) => x.year === s.year && x.term === s.term).length;
     const typed = prompt(
       `⚠️ ${key} 학기를 삭제하면 되돌릴 수 없습니다.\n\n`
       + `함께 사라지는 것:\n`
@@ -518,12 +540,12 @@ export default function Admin() {
     if (r.ok) setNewWord('');
   }
 
-  const courses = cat?.course ?? [];
+  const courses = cat?.courses ?? [];
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     return courses.filter((c) => !s || c.name.toLowerCase().includes(s) || c.code.toLowerCase().includes(s));
   }, [courses, q]);
-  const secOf = (code) => (cat?.section ?? []).filter((x) => x.course_code === code);
+  const secOf = (code) => (cat?.sections ?? []).filter((x) => x.courseCode === code);
 
   if (isAdmin === null) return <div className="page-center">확인 중…</div>;
   if (!isAdmin) return (
@@ -605,15 +627,15 @@ export default function Admin() {
             ) : (
               <ul className="list adm-list">
                 {notices.map((n) => {
-                  const live = n.is_active && new Date(n.expires_at) > new Date();
+                  const live = n.isActive && tsMillis(n.expiresAt) > Date.now();
                   return (
                     <li key={n.id} className="adm-item">
                       <div className="adm-item-row">
                         <div className="adm-item-body">
                           <div className="adm-item-title">
-                            <span className={`tag ${live ? 'tag-success' : 'tag-warn'}`}>{!n.is_active ? '내려짐' : live ? '게시 중' : '만료'}</span> {n.title}
+                            <span className={`tag ${live ? 'tag-success' : 'tag-warn'}`}>{!n.isActive ? '내려짐' : live ? '게시 중' : '만료'}</span> {n.title}
                           </div>
-                          <div className="adm-item-sub">{fmtDateTime(n.created_at)}{live ? ` · ${fmtDateTime(n.expires_at)} 까지` : ''}</div>
+                          <div className="adm-item-sub">{fmtDateTime(n.createdAt)}{live ? ` · ${fmtDateTime(n.expiresAt)} 까지` : ''}</div>
                         </div>
                         <div className="adm-item-acts">
                           <button className="btn-ghost btn-sm" onClick={() => run('set_notice_active', { id: n.id, value: !live }, live ? '공지 내림' : '공지 게시(48시간)')}>{live ? '내리기' : '게시(48h)'}</button>
@@ -713,8 +735,8 @@ export default function Admin() {
           <Card icon="🤖" title="AI 강의 일괄등록" desc="학기 강의 PDF(수강편람)를 올리면 AI가 과목·분반·교수·시간을 추출해 기존 DB와 대조하고, 검토 후 적용합니다. 교수코드를 몰라도 이름으로 자동 매칭됩니다.">
             <SyllabusUpload
               mode="ai"
-              defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
-              defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
+              defaultYear={cat?.semesters?.find((s) => s.isCurrent)?.year || 2026}
+              defaultTerm={cat?.semesters?.find((s) => s.isCurrent)?.term || 1}
               onApplied={reloadWithCatalog}
             />
           </Card>
@@ -724,8 +746,8 @@ export default function Admin() {
           <Card icon="📄" title="CSV 강의 일괄등록" desc="과목·분반 표를 CSV로 올리거나 붙여넣으면 기존 DB와 대조 후 적용합니다. 결정적(고정)이라 AI보다 정확합니다. 양식을 내려받아 채우거나, 수강편람에서 추출한 CSV를 그대로 올리세요.">
             <SyllabusUpload
               mode="csv"
-              defaultYear={cat?.semester?.find((s) => s.is_current)?.year || 2026}
-              defaultTerm={cat?.semester?.find((s) => s.is_current)?.term || 1}
+              defaultYear={cat?.semesters?.find((s) => s.isCurrent)?.year || 2026}
+              defaultTerm={cat?.semesters?.find((s) => s.isCurrent)?.term || 1}
               onApplied={reloadWithCatalog}
             />
           </Card>
@@ -840,7 +862,7 @@ export default function Admin() {
               <p className="note adm-empty-row">성명 또는 학과로 검색하세요.</p>
             ) : (() => {
               const s = pq.trim().toLowerCase();
-              const list = (cat?.professor ?? []).filter((p) => [p.name, p.department, p.code].some((v) => (v || '').toLowerCase().includes(s)));
+              const list = (cat?.professors ?? []).filter((p) => [p.name, p.department, p.code].some((v) => (v || '').toLowerCase().includes(s)));
               return (
                 <ul className="list adm-list adm-list-scroll">
                   {list.length === 0 && <li className="note adm-empty-row">검색 결과가 없습니다.</li>}
@@ -883,7 +905,7 @@ export default function Admin() {
         )}
 
         {section === 'professors-sync' && (
-          <ProfessorSyncCard syncedAt={setting.professors_synced_at} onApplied={reloadWithCatalog} />
+          <ProfessorSyncCard syncedAt={setting.professorsSyncedAt} onApplied={reloadWithCatalog} />
         )}
 
         {section === 'blocks' && (
@@ -892,12 +914,12 @@ export default function Admin() {
             <div className="adm-form-grid">
               <label className="field"><span className="field-label">학기</span>
                 <select value={blockSem} onChange={(e) => setBlockSem(e.target.value)}>
-                  {(cat?.semester ?? []).length === 0 && <option value="">등록된 학기 없음</option>}
-                  {[...(cat?.semester ?? [])]
+                  {(cat?.semesters ?? []).length === 0 && <option value="">등록된 학기 없음</option>}
+                  {[...(cat?.semesters ?? [])]
                     .sort((a, b) => b.year - a.year || b.term - a.term)
                     .map((s) => (
                       <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>
-                        {s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
+                        {s.year}-{s.term}{s.isCurrent ? ' (현재)' : ''}
                       </option>
                     ))}
                 </select>
@@ -913,7 +935,7 @@ export default function Admin() {
             {blockSemYT && (
               <div className="adm-blk-list">
                 {blocksOfSem.map((b) => (
-                  <BlockRow key={`${b.day_of_week}-${b.start_period}`} b={b} run={run} periods={periodNos} />
+                  <BlockRow key={`${b.dayOfWeek}-${b.startPeriod}`} b={b} run={run} periods={periodNos} />
                 ))}
                 <NewBlockRow key={`new-${blockSem}-${blocksOfSem.length}`} run={run}
                   year={blockSemYT.year} term={blockSemYT.term} periods={periodNos} />
@@ -929,8 +951,8 @@ export default function Admin() {
           <>
             <Card icon="🗓️" title="학기" desc="학기를 추가하거나 현재 학기를 지정합니다. 다음 학기를 미리 열려면 '학기 추가'만 하세요 — 생도가 그 학기 시간표를 미리 짤 수 있고, 현재 학기는 그대로 유지됩니다. ⚠️ 학기 삭제는 그 학기의 분반·강의시간과 생도들이 저장한 시간표까지 전부 지웁니다(되돌릴 수 없음).">
               <div className="adm-tags">
-                {cat?.semester?.length ? cat.semester.map((s) => (
-                  <span key={s.year + '' + s.term} className={`tag ${s.is_current ? 'tag-primary' : ''}`}>{s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
+                {cat?.semesters?.length ? cat.semesters.map((s) => (
+                  <span key={s.year + '' + s.term} className={`tag ${s.isCurrent ? 'tag-primary' : ''}`}>{s.year}-{s.term}{s.isCurrent ? ' (현재)' : ''}
                     <button className="x" title="이 학기 삭제 (분반·생도 시간표까지 연쇄 삭제)"
                       onClick={() => deleteSemester(s)}>×</button>
                   </span>
@@ -943,21 +965,21 @@ export default function Admin() {
                 </label>
               </div>
               <div className="adm-btn-row">
-                <button className="btn-add" onClick={() => run('set_semester', { ...sem, is_current: false }, `${sem.year}-${sem.term} 학기 추가`)}>＋ 학기 추가</button>
-                <button className="btn-ghost" onClick={() => run('set_semester', { ...sem, is_current: true }, '현재 학기 설정')}>현재 학기로 설정</button>
+                <button className="btn-add" onClick={() => run('set_semester', { ...sem, isCurrent: false }, `${sem.year}-${sem.term} 학기 추가`)}>＋ 학기 추가</button>
+                <button className="btn-ghost" onClick={() => run('set_semester', { ...sem, isCurrent: true }, '현재 학기 설정')}>현재 학기로 설정</button>
               </div>
             </Card>
 
             <Card icon="⏰" title="교시" desc="각 교시의 시작·종료 시각을 표에서 바로 수정합니다. 맨 아래 줄에서 새 교시를 추가하세요.">
               <div className="adm-period-table">
                 <div className="adm-pt-head"><span>교시</span><span>시작</span><span>끝</span><span /></div>
-                {(cat?.period ? [...cat.period].sort((a, b) => a.no - b.no) : []).map((p) => (
+                {(cat?.periods ? [...cat.periods].sort((a, b) => a.no - b.no) : []).map((p) => (
                   <PeriodRow key={p.no} p={p} run={run} />
                 ))}
-                <NewPeriodRow key={`new-${cat?.period?.length ?? 0}`} run={run}
-                  nextNo={(cat?.period?.reduce((m, p) => Math.max(m, p.no), 0) ?? 0) + 1} />
+                <NewPeriodRow key={`new-${cat?.periods?.length ?? 0}`} run={run}
+                  nextNo={(cat?.periods?.reduce((m, p) => Math.max(m, p.no), 0) ?? 0) + 1} />
               </div>
-              {!cat?.period?.length && <p className="note">등록된 교시가 없습니다. 아래 줄에서 추가하세요.</p>}
+              {!cat?.periods?.length && <p className="note">등록된 교시가 없습니다. 아래 줄에서 추가하세요.</p>}
             </Card>
           </>
         )}
@@ -976,11 +998,11 @@ export default function Admin() {
         {section === 'settings' && (
           <Card icon="⚙️" title="계정 위치 인증 및 인증 기간" desc="위치 인증·계정 삭제 대기 기간과 캠퍼스 위치·반경을 설정합니다. 항목별로 따로 저장합니다. (강의평 작성 자격 일수는 ‘기준값 설정’에서 관리합니다.)">
             {[
-              ['geo_valid_days', '위치 재인증 유효기간', '일'],
-              ['account_delete_days', '만료 후 계정삭제 대기', '일'],
-              ['radius_m', '지오펜싱 반경', 'm'],
-              ['campus_lat', '캠퍼스 위도', '위도'],
-              ['campus_lng', '캠퍼스 경도', '경도'],
+              ['geoValidDays', '위치 재인증 유효기간', '일'],
+              ['accountDeleteDays', '만료 후 계정삭제 대기', '일'],
+              ['radiusM', '지오펜싱 반경', 'm'],
+              ['campusLat', '캠퍼스 위도', '위도'],
+              ['campusLng', '캠퍼스 경도', '경도'],
             ].map(([k, label, unit]) => (
               <div className="adm-setting-row" key={k}>
                 <label className="field adm-setting-field">
@@ -996,10 +1018,10 @@ export default function Admin() {
         {section === 'thresholds' && (
           <Card icon="🎚️" title="기준값 설정" desc="자동화 기준을 관리자가 직접 정합니다. 값을 바꾸면 즉시 반영됩니다(이미 쌓인 신고/반응에도 다음 이벤트부터 새 기준 적용). 항목별로 따로 저장하세요.">
             {[
-              ['hot_threshold', 'HOT 게시판 승격 기준', '개', '30분 안에 좋아요·싫어요·댓글이 이 수 이상 달리면 HOT으로 올라갑니다.', 1],
-              ['report_delete_count', '신고 누적 자동삭제', '건', '한 글의 누적 신고수가 이 값에 도달하면 자동으로 숨겨집니다(아카이브 후 삭제, 복구 가능). 강의평·강의메모·게시글 공통.', 1],
-              ['report_burst_count', '신고 급증 자동삭제 (15분)', '건', '15분 안에 신고가 이 수만큼 몰리면 담합·오신고로 보고 자동삭제합니다. 강의평·강의메모·게시글 공통.', 1],
-              ['review_min_days', '강의평 작성 자격', '일', '해당 강의를 확정 시간표에 이 일수 이상 보유해야 강의평을 쓸 수 있습니다. 0으로 두면 담는 즉시 작성할 수 있습니다.', 0],
+              ['hotThreshold', 'HOT 게시판 승격 기준', '개', '30분 안에 좋아요·싫어요·댓글이 이 수 이상 달리면 HOT으로 올라갑니다.', 1],
+              ['reportDeleteCount', '신고 누적 자동삭제', '건', '한 글의 누적 신고수가 이 값에 도달하면 자동으로 숨겨집니다(아카이브 후 삭제, 복구 가능). 강의평·강의메모·게시글 공통.', 1],
+              ['reportBurstCount', '신고 급증 자동삭제 (15분)', '건', '15분 안에 신고가 이 수만큼 몰리면 담합·오신고로 보고 자동삭제합니다. 강의평·강의메모·게시글 공통.', 1],
+              ['reviewMinDays', '강의평 작성 자격', '일', '해당 강의를 확정 시간표에 이 일수 이상 보유해야 강의평을 쓸 수 있습니다. 0으로 두면 담는 즉시 작성할 수 있습니다.', 0],
             ].map(([k, label, unit, hint, min]) => (
               <div className="adm-thr-item" key={k}>
                 <p className="note adm-thr-hint">{hint}</p>
@@ -1022,10 +1044,10 @@ export default function Admin() {
             <div className="adm-toggle-row">
               <div className="adm-toggle-body">
                 <span className="adm-toggle-label">게시판 활성화</span>
-                <span className={`tag ${setting.board_enabled === false ? 'tag-warn' : 'tag-success'}`}>{setting.board_enabled === false ? '비활성' : '활성'}</span>
+                <span className={`tag ${setting.boardEnabled === false ? 'tag-warn' : 'tag-success'}`}>{setting.boardEnabled === false ? '비활성' : '활성'}</span>
               </div>
-              <button className="btn-ghost btn-sm" onClick={() => run('set_board_enabled', { value: !(setting.board_enabled !== false) }, '게시판 활성화 변경')}>
-                {setting.board_enabled === false ? '활성화' : '비활성화'}
+              <button className="btn-ghost btn-sm" onClick={() => run('set_board_enabled', { value: !(setting.boardEnabled !== false) }, '게시판 활성화 변경')}>
+                {setting.boardEnabled === false ? '활성화' : '비활성화'}
               </button>
             </div>
 
@@ -1034,10 +1056,10 @@ export default function Admin() {
             <div className="adm-toggle-row">
               <div className="adm-toggle-body">
                 <span className="adm-toggle-label">비회원 공유 열람</span>
-                <span className={`tag ${setting.share_enabled === false ? 'tag-warn' : 'tag-success'}`}>{setting.share_enabled === false ? '차단' : '허용'}</span>
+                <span className={`tag ${setting.shareEnabled === false ? 'tag-warn' : 'tag-success'}`}>{setting.shareEnabled === false ? '차단' : '허용'}</span>
               </div>
-              <button className="btn-ghost btn-sm" onClick={() => run('set_share_enabled', { value: !(setting.share_enabled !== false) }, '비회원 공유 열람 변경')}>
-                {setting.share_enabled === false ? '허용' : '차단'}
+              <button className="btn-ghost btn-sm" onClick={() => run('set_share_enabled', { value: !(setting.shareEnabled !== false) }, '비회원 공유 열람 변경')}>
+                {setting.shareEnabled === false ? '허용' : '차단'}
               </button>
             </div>
 

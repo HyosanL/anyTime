@@ -33,12 +33,12 @@ function MiniGrid({ groups, picked, periodNos, days, colorOf, fg, noClass, block
   for (const g of groups) {
     const s = picked(g);
     for (const t of g.times ?? []) {
-      const ps = periodNos.filter((p) => p >= t.start_period && p <= t.end_period);
+      const ps = periodNos.filter((p) => p >= t.startPeriod && p <= t.endPeriod);
       ps.forEach((p, i) => {
-        cells[`${t.day_of_week}-${p}`] = {
-          title: s.course_name,
-          no: s.section_no,
-          color: colorOf(s.course_code),
+        cells[`${t.dayOfWeek}-${p}`] = {
+          title: s.courseName,
+          no: s.sectionNo,
+          color: colorOf(s.courseCode),
           fg,
           span: i === 0 ? ps.length : 0,
           skip: i > 0,
@@ -114,7 +114,7 @@ function CandChips({ stats }) {
 export default function Wizard() {
   const { session } = useAuthContext();
   const navigate = useNavigate();
-  const uid = session?.user?.id;
+  const uid = session?.uid;
 
   const [catalog, setCatalog] = useState(null);
   const [timetables, setTimetables] = useState([]);
@@ -156,12 +156,12 @@ export default function Wizard() {
       if (draft && known.has(draft.semKey)) {
         const [y, t] = draft.semKey.split('-').map(Number);
         const secs = buildSections(cat, { year: y, term: t }).sections;
-        const codeSet = new Set(secs.map((s) => s.course_code));
+        const codeSet = new Set(secs.map((s) => s.courseCode));
         const idSet = new Set(secs.map((s) => s.id));
         // 과목별 현재 시간 묶음 키 — 시간이 바뀐 옛 offKey 는 여기 없으니 버려진다(그 묶음은 다시 켜진다).
         const keysByCode = new Map();
         for (const c of secs) {
-          const set = keysByCode.get(c.course_code) ?? keysByCode.set(c.course_code, new Set()).get(c.course_code);
+          const set = keysByCode.get(c.courseCode) ?? keysByCode.set(c.courseCode, new Set()).get(c.courseCode);
           set.add(timeKey(c.times));
         }
 
@@ -236,7 +236,7 @@ export default function Wizard() {
   );
 
   const periodNos = useMemo(
-    () => [...(catalog?.period ?? [])].map((p) => p.no).sort((a, b) => a - b),
+    () => [...(catalog?.periods ?? [])].map((p) => p.no).sort((a, b) => a - b),
     [catalog]
   );
 
@@ -244,14 +244,14 @@ export default function Wizard() {
   const corrMeta = useMemo(() => correctionMeta(catalog), [catalog]);
   const openCorr = (s) => setCorr({ subject: sectionSubject(s), options: sectionCorrectionOptions(s, corrMeta) });
 
-  // 관리자가 이름 붙인 비수업 시간(common_block). 자동 유도로는 잡히지 않는 것도 여기 들어온다 —
+  // 관리자가 이름 붙인 비수업 시간(commonBlocks). 자동 유도로는 잡히지 않는 것도 여기 들어온다 —
   // 예: 월7·8, 수7·8 은 '자율선택형교과' 시간이라 일반 강의는 없지만 체육(무도·체력단련)이
   // 열려 있어서 '개설 0개' 규칙에 걸리지 않는다. 그래서 관리자가 직접 등록한다.
   const blockLabel = useMemo(() => {
     const map = {};
-    for (const b of catalog?.common_block ?? []) {
+    for (const b of catalog?.commonBlocks ?? []) {
       if (!sem || b.year !== sem.year || b.term !== sem.term) continue;
-      for (let p = b.start_period; p <= b.end_period; p++) map[`${b.day_of_week}-${p}`] = b.label;
+      for (let p = b.startPeriod; p <= b.endPeriod; p++) map[`${b.dayOfWeek}-${p}`] = b.label;
     }
     return map;
   }, [catalog, sem]);
@@ -267,13 +267,13 @@ export default function Wizard() {
   const courses = useMemo(() => {
     const m = new Map();
     for (const s of sections) {
-      if (!m.has(s.course_code)) {
-        m.set(s.course_code, { code: s.course_code, name: s.course_name, sections: [] });
+      if (!m.has(s.courseCode)) {
+        m.set(s.courseCode, { code: s.courseCode, name: s.courseName, sections: [] });
       }
-      m.get(s.course_code).sections.push(s);
+      m.get(s.courseCode).sections.push(s);
     }
     for (const c of m.values()) {
-      c.sections.sort((a, b) => a.section_no - b.section_no);
+      c.sections.sort((a, b) => a.sectionNo - b.sectionNo);
       c.groups = groupByTime(c.sections);        // [{ key, times, sections:[교수별 분반] }]
     }
     return m;
@@ -307,7 +307,7 @@ export default function Wizard() {
   // 표시 요일: 평일 + 실제로 쓰이는 토·일
   const days = useMemo(() => {
     const set = new Set([1, 2, 3, 4, 5]);
-    for (const it of items) for (const s of it.course.sections) for (const t of s.times ?? []) set.add(t.day_of_week);
+    for (const it of items) for (const s of it.course.sections) for (const t of s.times ?? []) set.add(t.dayOfWeek);
     return [...set].sort((a, b) => a - b);
   }, [items]);
 
@@ -326,7 +326,7 @@ export default function Wizard() {
   // 한 시간 묶음에서 실제로 담을 분반(교수). 고르지 않았으면 첫 분반.
   const pickedSection = useCallback(
     (g) => {
-      const code = g.sections[0].course_code;
+      const code = g.sections[0].courseCode;
       const id = profPick[pickKey(code, g.key)];
       return g.sections.find((s) => s.id === id) ?? g.sections[0];
     },
@@ -382,7 +382,7 @@ export default function Wizard() {
       .filter((c) =>
         c.name.toLowerCase().includes(q) ||
         c.code.toLowerCase().includes(q) ||
-        c.sections.some((s) => (s.professor_name ?? '').toLowerCase().includes(q))
+        c.sections.some((s) => (s.professorName ?? '').toLowerCase().includes(q))
       )
       .slice(0, 20);
   }, [q, courses, picked]);
@@ -530,7 +530,7 @@ export default function Wizard() {
         const combo = view.list.find((c) => c.sig === p.sig);
         if (!combo) continue;
         const name = (p.name || '').trim().slice(0, NAME_MAX) || '내 시간표';
-        const sectionIds = combo.groups.map((g) => pickedSection(g).id);   // 고른 교수의 분반
+        const chosenSections = combo.groups.map((g) => pickedSection(g));   // 고른 교수의 분반(전체 객체 — 대리키 없음)
         let id = null;
         let created = false;
         try {
@@ -545,7 +545,7 @@ export default function Wizard() {
             created = true;
           }
           // eslint-disable-next-line no-await-in-loop
-          await addSections(id, sectionIds);
+          await addSections(id, chosenSections);
         } catch (e) {
           // 만들기는 됐는데 강의를 못 담았다면 껍데기 시간표를 남기지 않는다 —
           // 남기면 학기당 5칸을 갉아먹고, 재시도할 때마다 빈 시간표가 하나씩 더 쌓인다.
@@ -580,7 +580,7 @@ export default function Wizard() {
     writeDraft(uid, { step: 4, semKey, picked, blocked, sortMode, profPick, savedSigs: sigs });
     const list = await listTimetables().catch(() => timetables);
     setTimetables(list);
-    const cur = list.find((t) => t.year === sem.year && t.term === sem.term && t.is_primary);
+    const cur = list.find((t) => t.year === sem.year && t.term === sem.term && t.isPrimary);
     const curIsCandidate = cur ? done.some((d) => d.id === cur.id) : false;
     setKeepPrimary(cur && !curIsCandidate ? cur : null);
     setPrimaryId(curIsCandidate ? cur.id : (cur ? null : done[0]?.id ?? null));
@@ -723,7 +723,7 @@ export default function Wizard() {
               <select value={semKey} onChange={(e) => changeSem(e.target.value)}>
                 {semesters.map((s) => (
                   <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>
-                    {s.year}-{s.term}학기{s.is_current ? ' (이번)' : ''}
+                    {s.year}-{s.term}학기{s.isCurrent ? ' (이번)' : ''}
                   </option>
                 ))}
               </select>
@@ -832,7 +832,7 @@ export default function Wizard() {
                         const many = g.sections.length > 1;
                         // 분반 번호가 먼저다 — 사람은 '몇 분반'으로 강의를 고른다.
                         // 같은 시간에 교수만 다르면 그 분반들을 함께 적는다(1·2·3분반).
-                        const nos = g.sections.map((s) => s.section_no).join('·');
+                        const nos = g.sections.map((s) => s.sectionNo).join('·');
                         return (
                           <li key={g.key}>
                             <div className="wz-sec-row">
@@ -844,7 +844,7 @@ export default function Wizard() {
                                     <span className="wz-sec-prof">
                                       {many
                                         ? `교수 ${g.sections.length}명`
-                                        : (g.sections[0].professor_name ?? '교수 미정')}
+                                        : (g.sections[0].professorName ?? '교수 미정')}
                                     </span>
                                   </span>
                                   <span className="wz-sec-time">{formatTimes(g.times)}</span>
@@ -878,12 +878,12 @@ export default function Wizard() {
                                           checked={pon}
                                           onChange={() => toggleSection(it.course.code, s.id)}
                                         />
-                                        <span>{s.section_no}분반 {s.professor_name ?? '교수 미정'}</span>
+                                        <span>{s.sectionNo}분반 {s.professorName ?? '교수 미정'}</span>
                                       </label>
                                       <button
                                         type="button"
                                         className="cor-flag-btn wz-flag"
-                                        aria-label={`${s.section_no}분반 정보 수정 제안`}
+                                        aria-label={`${s.sectionNo}분반 정보 수정 제안`}
                                         onClick={() => openCorr(s)}
                                       >
                                         🚩
@@ -901,7 +901,7 @@ export default function Wizard() {
                     {n === 0 && <p className="wz-warn">분반을 하나 이상 켜거나, 이 과목을 빼세요.</p>}
                     {onSecs > 0 && onSecs < allSecs && (
                       <p className="wz-note">
-                        {it.options.flatMap((g) => g.sections.map((s) => s.section_no)).sort((a, b) => a - b).join('·')}분반만 사용합니다.
+                        {it.options.flatMap((g) => g.sections.map((s) => s.sectionNo)).sort((a, b) => a - b).join('·')}분반만 사용합니다.
                       </p>
                     )}
                   </li>
@@ -1085,30 +1085,30 @@ export default function Wizard() {
                           </summary>
                           <ul className="wz-cand-secs">
                             {c.groups.map((g) => {
-                              const code = g.sections[0].course_code;
+                              const code = g.sections[0].courseCode;
                               const cur = pickedSection(g);
                               return (
                                 <li key={g.key}>
                                   <span className="wz-dot" style={{ background: colorOf(code) }} aria-hidden="true" />
-                                  <span className="wz-cand-course">{g.sections[0].course_name}</span>
+                                  <span className="wz-cand-course">{g.sections[0].courseName}</span>
                                   <span className="wz-cand-time">{formatTimes(g.times)}</span>
                                   {g.sections.length > 1 ? (
                                     <select
                                       className="wz-prof-pick"
                                       value={cur.id}
                                       onChange={(e) =>
-                                        setProfPick((prev) => ({ ...prev, [pickKey(code, g.key)]: Number(e.target.value) }))
+                                        setProfPick((prev) => ({ ...prev, [pickKey(code, g.key)]: e.target.value }))
                                       }
                                     >
                                       {g.sections.map((s) => (
                                         <option key={s.id} value={s.id}>
-                                          {s.section_no}분반 · {s.professor_name ?? '교수 미정'}
+                                          {s.sectionNo}분반 · {s.professorName ?? '교수 미정'}
                                         </option>
                                       ))}
                                     </select>
                                   ) : (
                                     <span className="muted">
-                                      {cur.section_no}분반 · {cur.professor_name ?? '교수 미정'}
+                                      {cur.sectionNo}분반 · {cur.professorName ?? '교수 미정'}
                                     </span>
                                   )}
                                 </li>

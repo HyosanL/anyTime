@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog } from '../lib/cache';
-import { downloadExam, deleteExam, examFiles, examExpiry } from '../lib/storage';
+import { downloadExam, examExpiry } from '../lib/storage';
+import { callFn } from '../lib/functions';
 import ExamForm from '../components/ExamForm';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
@@ -21,11 +23,25 @@ function fmtDate(d) {
   if (!d) return '';
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
+// createdAt(Firestore Timestamp) → Date. storage.js의 examExpiry는 Date-호환 입력을 받는다.
+function toDate(ts) {
+  if (!ts) return null;
+  return typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+}
+// examArchive 문서의 files는 embedded 배열({seq, objectKey, filename, fileSize, mimeType}) —
+// 다운로드/표시용으로 {key,name,size,mime} 모양으로 맞춘다(storage.js의 옛 exam_file 조인 헬퍼 대체).
+function filesOf(ex) {
+  return [...(ex.files ?? [])]
+    .sort((a, b) => (a.seq || 0) - (b.seq || 0))
+    .map((f) => ({ key: f.objectKey, name: f.filename, size: f.fileSize, mime: f.mimeType }));
+}
 
+// callFn 실패 시 e.code(FunctionsErrorCode)를 그대로 status 로 넘겨받는다 — 옛 Pages
+// Function 의 REST 상태 문자열(BAD_PASSWORD 등) 대신 Firebase HttpsError 코드로 분기.
 const DEL_MSG = {
-  BAD_PASSWORD: '비밀번호가 일치하지 않습니다.',
+  'permission-denied': '비밀번호가 일치하지 않습니다.',
+  'invalid-argument': '잘못된 요청입니다.',
   NOT_FOUND: '이미 삭제되었거나 없는 글입니다.',
-  BAD_REQUEST: '잘못된 요청입니다.',
   ERROR: '삭제 중 오류가 발생했습니다.',
 };
 
@@ -33,7 +49,7 @@ const DEL_MSG = {
 export default function Exams() {
   const { courseCode } = useParams();
   const { cadet } = useAuthContext();
-  const isAdmin = !!cadet?.is_admin;
+  const isAdmin = !!cadet?.isAdmin;
   const [courseName, setCourseName] = useState(courseCode);
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,18 +64,18 @@ export default function Exams() {
   async function loadAll(silent = false) {
     if (!silent) setLoading(true);
     const catalog = await getCatalog().catch(() => null);
-    const course = catalog?.course?.find((c) => c.code === courseCode);
+    const course = catalog?.courses?.find((c) => c.code === courseCode);
     if (course) setCourseName(course.name);
 
-    // 비밀번호 해시(bcrypt)는 받지 않는다 — 삭제 UI 는 has_password 로만 분기한다('*' 금지).
-    const { data } = await supabase
-      .from('exam_archive')
-      .select('id, course_code, src_year, src_term, title, exam_type, description, created_at, '
-        + 'has_password, exam_file(seq, object_key, file_name, file_size, mime_type)')
-      .eq('course_code', courseCode)
-      .order('created_at', { ascending: false })
-      .limit(100);
-    setExams(data ?? []);
+    // 비밀번호 해시는 애초에 이 컬렉션에 없다(_private/auth 서브문서로 분리) — '*' 금지 규칙이
+    // Firestore 에선 서브컬렉션 분리로 이미 지켜진다. 삭제 UI 는 hasPassword 로만 분기.
+    const snap = await getDocs(query(
+      collection(db, 'examArchive'),
+      where('courseCode', '==', courseCode),
+      orderBy('createdAt', 'desc'),
+      limit(100)
+    ));
+    setExams(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     setLoading(false);
   }
 
@@ -82,21 +98,21 @@ export default function Exams() {
   // 비번 없는(누구나 삭제 가능) 족보: 확인 후 바로 삭제
   async function deleteOpen(id) {
     if (!confirm('이 족보를 삭제할까요?')) return;
-    const status = await deleteExam(id, '');
-    if (status === 'OK') { setExams((prev) => prev.filter((e) => e.id !== id)); return; }
-    alert(DEL_MSG[status] || DEL_MSG.ERROR);
+    const r = await callFn('deleteExam', { id, postPassword: '' });
+    if (r.ok && r.data?.deleted) { setExams((prev) => prev.filter((e) => e.id !== id)); return; }
+    alert(DEL_MSG[r.ok ? 'NOT_FOUND' : r.status] || DEL_MSG.ERROR);
   }
 
   async function confirmDelete() {
     setDelErr('');
-    const status = await deleteExam(delTarget, delPw);
-    if (status === 'OK') {
+    const r = await callFn('deleteExam', { id: delTarget, postPassword: delPw });
+    if (r.ok && r.data?.deleted) {
       setExams((prev) => prev.filter((e) => e.id !== delTarget));
       setDelTarget(null);
       setDelPw('');
       return;
     }
-    setDelErr(DEL_MSG[status] || DEL_MSG.ERROR);
+    setDelErr(DEL_MSG[r.ok ? 'NOT_FOUND' : r.status] || DEL_MSG.ERROR);
   }
 
   return (
@@ -132,17 +148,17 @@ export default function Exams() {
           </li>
         ) : (
           exams.map((ex) => {
-            const files = examFiles(ex);
-            const expiry = examExpiry(ex.created_at);
+            const files = filesOf(ex);
+            const expiry = examExpiry(toDate(ex.createdAt));
             return (
             <li key={ex.id} className="rev-card exam-card">
               <div className="rev-card-top">
                 <strong>{ex.title}</strong>
-                <span className="tag tag-accent">{ex.exam_type ?? '기타'}</span>
+                <span className="tag tag-accent">{ex.examType ?? '기타'}</span>
               </div>
               <p className="exam-meta">
                 <span className="exam-meta-ic" aria-hidden="true">📅</span>
-                {ex.src_year ? `${ex.src_year}-${ex.src_term ?? '?'}학기 출처` : '출처 미상'}
+                {ex.srcYear ? `${ex.srcYear}-${ex.srcTerm ?? '?'}학기 출처` : '출처 미상'}
               </p>
               {ex.description && <p className="rev-comment">{ex.description}</p>}
 
@@ -174,7 +190,7 @@ export default function Exams() {
               )}
 
               <div className="rev-card-bottom exam-card-bottom">
-                {ex.has_password && !isAdmin ? (
+                {ex.hasPassword && !isAdmin ? (
                   delTarget === ex.id ? (
                     <span className="rev-del">
                       <input

@@ -28,7 +28,7 @@ export default function Friends() {
   const { cadet } = useAuthContext();
   const uid = cadet?.id;
 
-  const [pub, setPub] = useState(() => !!cadet?.tt_public);
+  const [pub, setPub] = useState(() => !!cadet?.ttPublic);
   const [pubBusy, setPubBusy] = useState(false);
 
   const [catalog, setCatalog] = useState(null);
@@ -57,7 +57,7 @@ export default function Friends() {
   useEffect(() => { loadGallery(); }, [loadGallery]);
 
   // 내 프로필의 공개값이 뒤늦게 로드되면 반영
-  useEffect(() => { if (cadet) setPub(!!cadet.tt_public); }, [cadet?.tt_public]);
+  useEffect(() => { if (cadet) setPub(!!cadet.ttPublic); }, [cadet?.ttPublic]);
 
   async function togglePublic() {
     setPubBusy(true);
@@ -95,13 +95,13 @@ export default function Friends() {
   async function editNick(item) {
     const nick = prompt(`'${item.username}' 별칭`, item.nickname || '');
     if (nick === null) return;
-    try { await setNickname(uid, item.followee_id, nick); await loadGallery(); }
+    try { await setNickname(uid, item.followeeId, nick); await loadGallery(); }
     catch { alert('별칭 변경에 실패했어요.'); }
   }
 
   async function unfollow(item) {
     if (!confirm(`${item.nickname || item.username} 님을 목록에서 지울까요?`)) return;
-    try { await unfollowUser(uid, item.followee_id); await loadGallery(); }
+    try { await unfollowUser(uid, item.followeeId); await loadGallery(); }
     catch { alert('삭제에 실패했어요.'); }
   }
 
@@ -109,7 +109,7 @@ export default function Friends() {
   async function reorderTo(ids) {
     setGallery((prev) => {
       if (!prev) return prev;
-      const byId = new Map(prev.map((g) => [g.followee_id, g]));
+      const byId = new Map(prev.map((g) => [g.followeeId, g]));
       return ids.map((id) => byId.get(id)).filter(Boolean);
     });
     try { await reorderFollows(ids); }
@@ -180,7 +180,7 @@ export default function Friends() {
           ) : (
             <div className="fr-gallery" style={{ '--fr-top': `${headTop}px` }}>
               {gallery.map((item) => (
-                <div key={item.followee_id} className="fr-card">
+                <div key={item.followeeId} className="fr-card">
                   <div className="fr-card-head">
                     <span className="fr-card-name">{item.nickname || item.username}</span>
                     {item.nickname && <span className="fr-card-sub">{item.username}</span>}
@@ -228,7 +228,7 @@ function ReorderSheet({ items, onReorder, onClose }) {
     const rect = listRef.current.getBoundingClientRect();
     let idx = Math.floor((e.clientY - rect.top) / ROW_H);
     idx = Math.max(0, Math.min(order.length - 1, idx));
-    const from = order.findIndex((o) => o.followee_id === dragId);
+    const from = order.findIndex((o) => o.followeeId === dragId);
     if (from === -1 || from === idx) return;
     const next = order.slice();
     const [moved] = next.splice(from, 1);
@@ -238,7 +238,7 @@ function ReorderSheet({ items, onReorder, onClose }) {
   function onUp() {
     if (dragId == null) return;
     setDragId(null);
-    onReorder(order.map((o) => o.followee_id));   // 저장 + 갤러리 반영
+    onReorder(order.map((o) => o.followeeId));   // 저장 + 갤러리 반영
   }
 
   return (
@@ -252,10 +252,10 @@ function ReorderSheet({ items, onReorder, onClose }) {
         <ul className="fr-reorder-list" ref={listRef}>
           {order.map((o) => (
             <li
-              key={o.followee_id}
-              className={`fr-reorder-row${dragId === o.followee_id ? ' dragging' : ''}`}
+              key={o.followeeId}
+              className={`fr-reorder-row${dragId === o.followeeId ? ' dragging' : ''}`}
               style={{ height: ROW_H }}
-              onPointerDown={(e) => onDown(e, o.followee_id)}
+              onPointerDown={(e) => onDown(e, o.followeeId)}
               onPointerMove={onMove}
               onPointerUp={onUp}
               onPointerCancel={onUp}

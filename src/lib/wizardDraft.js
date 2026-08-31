@@ -26,7 +26,9 @@ export function readDraft(uid) {
       .map((p) => ({
         code: p.code,
         offKeys: Array.isArray(p.offKeys) ? p.offKeys.filter((k) => typeof k === 'string') : [],
-        offSecs: Array.isArray(p.offSecs) ? p.offSecs.filter(Number.isInteger) : [],
+        // 분반 id 는 옛 BIGINT 대체키가 아니라 Firestore 문서ID(자연키) 문자열이다 — Number.isInteger 로
+        // 거르면 전부 버려진다(2026-08-31 이관, 대리키 제거).
+        offSecs: Array.isArray(p.offSecs) ? p.offSecs.filter((id) => typeof id === 'string') : [],
       }));
     if (picked.length === 0) return null;      // 담은 과목이 없으면 되살릴 것도 없다
 
@@ -73,14 +75,14 @@ export function clearDraft() {
 // ── 시간표 → 마법사 초안 시드 ─────────────────────────────────────────
 // 홈에서 '수업정보가 바뀌어 겹치게 된' 시간표를 마법사로 넘겨 고칠 때 쓴다. 그 시간표의 과목을
 // 그대로 담고(분반은 전부 켠 채) 원래 교수를 미리 골라 둔 초안을 만들어, 4단계에서 겹치지 않는
-// 조합을 다시 고르게 한다. mine = buildMyTimetable 의 결과(course_code·times·id 를 가진 분반들).
+// 조합을 다시 고르게 한다. mine = buildMyTimetable 의 결과(courseCode·times·id 를 가진 분반들).
 export function buildSeed(mine, semKey) {
-  const picked = [...new Set((mine ?? []).map((s) => s.course_code))].map((code) => ({
+  const picked = [...new Set((mine ?? []).map((s) => s.courseCode))].map((code) => ({
     code, offKeys: [], offSecs: [],
   }));
   // 같은 시간 묶음(교수만 다른 분반)에서 원래 담겼던 분반을 미리 고른다 — timeKey 는 wizard 와 같은 규칙.
   const profPick = {};
-  for (const s of mine ?? []) profPick[`${s.course_code}@${timeKey(s.times)}`] = s.id;
+  for (const s of mine ?? []) profPick[`${s.courseCode}@${timeKey(s.times)}`] = s.id;
   return { semKey, picked, profPick };
 }
 

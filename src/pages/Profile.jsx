@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
-import { supabase } from '../supabase';
 import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendTestPush } from '../lib/push';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
@@ -161,11 +160,11 @@ function PushSettings() {
   );
 }
 
-// 화면8: 레벨/프로필. cadet.post_count 기준 본인 뱃지(badgeOf) + 다음 등급까지 진행.
+// 화면8: 레벨/프로필. cadet.postCount 기준 본인 뱃지(badgeOf) + 다음 등급까지 진행.
 export default function Profile() {
-  const { cadet } = useAuthContext();
+  const { cadet, logout } = useAuthContext();
   const navigate = useNavigate();
-  const count = cadet?.post_count ?? 0;
+  const count = cadet?.postCount ?? 0;
   const tier = badgeOf(count);
 
   const [pw, setPw] = useState('');
@@ -187,7 +186,10 @@ export default function Profile() {
       setPw(''); setPw2('');
       setPwMsg('✅ 비밀번호가 변경되었습니다.');
     } catch (err) {
-      setPwMsg(err.message || '변경에 실패했습니다.');
+      // 민감한 작업이라 Firebase 가 최근 재로그인을 요구할 수 있다(Supabase 엔 없던 제약).
+      setPwMsg(err.code === 'auth/requires-recent-login'
+        ? '보안을 위해 다시 로그인한 뒤 시도해주세요.'
+        : err.message || '변경에 실패했습니다.');
     } finally {
       setBusy(false);
     }
@@ -200,7 +202,7 @@ export default function Profile() {
     const status = await deleteAccount(delPw);
     setBusy(false);
     if (status === 'OK') {
-      await supabase.auth.signOut();
+      await logout();
       navigate('/login', { replace: true });
       return;
     }

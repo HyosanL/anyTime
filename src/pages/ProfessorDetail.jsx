@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { collection, doc, getDoc, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { db } from '../firebase';
 import { getCatalog, buildSections } from '../lib/cache';
+import { callFn } from '../lib/functions';
 import { getReacted, markReacted } from '../lib/reactions';
-import { summarize, REVIEW_COLS, REVIEW_LIMIT } from '../lib/reviews';
 import TimetableGrid from '../components/TimetableGrid';
 import CorrectionModal from '../components/CorrectionModal';
 import PullToRefresh from '../components/PullToRefresh';
@@ -25,11 +26,14 @@ function Stars({ value }) {
 }
 
 const METRICS = [
-  ['avg_workload', '과제량'],
-  ['avg_progress', '진도'],
-  ['avg_difficulty', '난이도'],
-  ['avg_class_time', '수업시간'],
+  ['avgWorkload', '과제량'],
+  ['avgProgress', '진도'],
+  ['avgDifficulty', '난이도'],
+  ['avgClassTime', '수업시간'],
 ];
+
+// 한 교수의 강의평을 무한정 받지 않는다(인기 교수는 계속 쌓인다) — 최신 N개.
+const REVIEW_LIMIT = 200;
 
 // 교수 상세: 담당 시간표(현재 학기) + 교수별 강의평(과목별 집계 + 개별 후기).
 export default function ProfessorDetail() {
@@ -39,33 +43,43 @@ export default function ProfessorDetail() {
   const [current, setCurrent] = useState(null);   // 현재 학기
   const [sections, setSections] = useState([]);   // 이 교수 담당 분반(현재 학기, 시간 포함)
   const [periods, setPeriods] = useState([]);
-  const [courseNames, setCourseNames] = useState({}); // course_code -> name
-  const [reviews, setReviews] = useState([]);     // review rows (이 교수)
+  const [courseNames, setCourseNames] = useState({}); // courseCode -> name
+  const [reviews, setReviews] = useState([]);     // review 문서 (이 교수)
+  const [summary, setSummary] = useState([]);     // courseProfessorRatings(이 교수, 과목별)
+  const [overall, setOverall] = useState({ avgOverall: null, reviewCount: 0 }); // professorRatings 집계 문서
   const [loading, setLoading] = useState(true);
   const [corr, setCorr] = useState(false);
-
-  // 과목별 집계 — 받아 온 강의평에서 바로 계산(서버 집계뷰 왕복 없음).
-  const summary = useMemo(() => summarize(reviews, (r) => r.course_code), [reviews]);
 
   // silent: 당겨서 새로고침 때는 화면을 '불러오는 중…'으로 갈아치우지 않는다
   async function loadAll(silent = false) {
     if (!silent) setLoading(true);
     const catalog = await getCatalog().catch(() => null);
     if (catalog) {
-      const p = (catalog.professor ?? []).find((x) => x.code === code);
+      const p = (catalog.professors ?? []).find((x) => x.code === code);
       setProf(p || { code, name: code, department: null });
-      setCourseNames(Object.fromEntries((catalog.course ?? []).map((c) => [c.code, c.name])));
+      setCourseNames(Object.fromEntries((catalog.courses ?? []).map((c) => [c.code, c.name])));
       const built = buildSections(catalog);
       setCurrent(built.current);
-      setSections(built.sections.filter((s) => s.professor_code === code));
-      setPeriods([...(catalog.period ?? [])].sort((a, b) => a.no - b.no));
+      setSections(built.sections.filter((s) => s.professorCode === code));
+      setPeriods([...(catalog.periods ?? [])].sort((a, b) => a.no - b.no));
     }
 
-    // 강의평 목록 1회. 과목별 집계는 이 행들로 만든다(집계뷰 요청 없음).
-    const { data } = await supabase
-      .from('review').select(REVIEW_COLS).eq('professor_code', code)
-      .order('created_at', { ascending: false }).limit(REVIEW_LIMIT);
-    setReviews(data ?? []);
+    // 개별 강의평, 과목별 집계(courseProfessorRatings), 전 과목 통합 집계(professorRatings)를
+    // 병렬로 direct read — 예전처럼 강의평 행을 받아 클라이언트에서 GROUP BY 하지 않는다
+    // (review 쓰기 트리거가 두 집계 문서를 이미 갱신해 두고 있다, design doc §3).
+    const [reviewsSnap, ratingsSnap, overallSnap] = await Promise.all([
+      getDocs(query(
+        collection(db, 'reviews'),
+        where('professorCode', '==', code),
+        orderBy('createdAt', 'desc'),
+        limit(REVIEW_LIMIT)
+      )),
+      getDocs(query(collection(db, 'courseProfessorRatings'), where('professorCode', '==', code))),
+      getDoc(doc(db, 'professorRatings', code)),
+    ]);
+    setReviews(reviewsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    setSummary(ratingsSnap.docs.map((d) => d.data()).sort((a, b) => b.reviewCount - a.reviewCount));
+    setOverall(overallSnap.exists() ? overallSnap.data() : { avgOverall: null, reviewCount: 0 });
     setLoading(false);
   }
 
@@ -74,27 +88,11 @@ export default function ProfessorDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  // 전 과목 통합 총평점(후기수 가중평균)
-  const overall = useMemo(() => {
-    let n = 0;
-    let sum = 0;
-    for (const s of summary) {
-      if (s.avg_overall != null) {
-        sum += Number(s.avg_overall) * (s.review_count || 0);
-        n += s.review_count || 0;
-      }
-    }
-    return n ? sum / n : null;
-  }, [summary]);
-  const totalReviews = useMemo(
-    () => summary.reduce((a, s) => a + (s.review_count || 0), 0),
-    [summary]
-  );
-
   async function like(id) {
-    const { data } = await supabase.rpc('like_review', { p_id: id });
-    if (data != null) {
-      setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, like_count: data } : r)));
+    const r = await callFn('likeReview', { id });
+    // likeReview 는 새 카운트를 돌려주지 않는다(increment 는 서버측 원자 연산) — 낙관적 +1.
+    if (r.ok && r.status !== 'NOT_FOUND') {
+      setReviews((prev) => prev.map((rv) => (rv.id === id ? { ...rv, likeCount: (rv.likeCount || 0) + 1 } : rv)));
     }
   }
 
@@ -104,15 +102,18 @@ export default function ProfessorDetail() {
     if (getReacted('review', id).report) return;
     if (!confirm('이 강의평을 신고할까요?')) return;
     markReacted('review', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
-    const { data } = await supabase.rpc('report_review', { p_id: id });
-    if (data === 'DELETED') {
-      setReviews((prev) => prev.filter((r) => r.id !== id));
+    const r = await callFn('reportReview', { id });
+    const status = r.ok ? r.status : 'ERROR';
+    if (status === 'DELETED') {
+      setReviews((prev) => prev.filter((rv) => rv.id !== id));
       alert('신고 누적으로 삭제되었습니다.');
-    } else if (data === 'ALREADY') alert('이미 신고한 강의평입니다.');
+    } else if (status === 'ALREADY') alert('이미 신고한 강의평입니다.');
+    else if (status === 'ERROR') alert('신고에 실패했습니다.');
     else alert('신고되었습니다.');
   }
 
   const profName = prof?.name ?? code;
+  const totalReviews = overall.reviewCount ?? 0;
 
   return (
     <PullToRefresh className="page" onRefresh={() => loadAll(true)}>
@@ -129,7 +130,7 @@ export default function ProfessorDetail() {
           {prof?.office && <p className="prof-head-office">📍 {prof.office}</p>}
         </div>
         <div className="prof-head-rating">
-          <Stars value={overall} />
+          <Stars value={overall.avgOverall} />
           <span className="prof-head-count">강의평 {totalReviews}개</span>
           <button type="button" className="cor-flag-btn" onClick={() => setCorr(true)}>🚩 정보 수정 제안</button>
         </div>
@@ -177,15 +178,15 @@ export default function ProfessorDetail() {
             {summary
               .map((s) => (
                 <Link
-                  key={s.key}
-                  to={`/reviews/${s.key}?prof=${code}`}
+                  key={s.courseCode}
+                  to={`/reviews/${s.courseCode}?prof=${code}`}
                   className="rev-sum-card prof-course-card"
                 >
                   <div className="rev-sum-top">
-                    <strong>{courseNames[s.key] ?? s.key}</strong>
-                    <span className="tag tag-primary">{s.review_count}개</span>
+                    <strong>{courseNames[s.courseCode] ?? s.courseCode}</strong>
+                    <span className="tag tag-primary">{s.reviewCount}개</span>
                   </div>
-                  <Stars value={s.avg_overall} />
+                  <Stars value={s.avgOverall} />
                   <div className="rev-metrics">
                     {METRICS.map(([k, label]) => (
                       <span key={k} className="rev-metric">
@@ -198,7 +199,7 @@ export default function ProfessorDetail() {
                     <span className="rev-metric rev-fail">
                       <span className="rev-metric-label">과락률</span>
                       <span className="rev-metric-value">
-                        {Math.round((s.fail_ratio ?? 0) * 100)}%
+                        {Math.round((s.failRatio ?? 0) * 100)}%
                       </span>
                     </span>
                   </div>
@@ -215,7 +216,7 @@ export default function ProfessorDetail() {
           {reviews.map((r) => (
             <li key={r.id} className="rev-card">
               <div className="rev-card-top">
-                <strong>{courseNames[r.course_code] ?? r.course_code}</strong>
+                <strong>{courseNames[r.courseCode] ?? r.courseCode}</strong>
                 <Stars value={r.overall} />
               </div>
               {(r.fail || r.teamplay || r.presentation) && (
@@ -225,16 +226,16 @@ export default function ProfessorDetail() {
                   {r.presentation && <span className="tag">발표</span>}
                 </div>
               )}
-              {r.prof_comment && <p className="rev-comment">👤 {r.prof_comment}</p>}
-              {r.course_comment && <p className="rev-comment">📘 {r.course_comment}</p>}
+              {r.profComment && <p className="rev-comment">👤 {r.profComment}</p>}
+              {r.courseComment && <p className="rev-comment">📘 {r.courseComment}</p>}
               <div className="rev-card-bottom">
                 <span className="rev-actions-left">
-                  <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
+                  <button className="rev-like" onClick={() => like(r.id)}>♥ {r.likeCount}</button>
                   {getReacted('review', r.id).report
                     ? <span className="rev-reported">🚨 신고됨</span>
                     : <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>}
                 </span>
-                <Link className="rev-del-btn" to={`/reviews/${r.course_code}?prof=${code}`}>
+                <Link className="rev-del-btn" to={`/reviews/${r.courseCode}?prof=${code}`}>
                   자세히 →
                 </Link>
               </div>

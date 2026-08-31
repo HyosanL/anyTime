@@ -19,11 +19,11 @@ async function timetableCourseNames(catalog, year, term) {
   const list = await listTimetables();
   const tt = list
     .filter((t) => t.year === year && t.term === term)
-    .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0) || new Date(b.created_at) - new Date(a.created_at))[0];
+    .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0) || (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))[0];
   if (!tt) return [];
   const entries = await listEntries(tt.id);
   const { mine } = buildMyTimetable(catalog, entries, { year, term });
-  return mine.map((s) => s.course_name);
+  return mine.map((s) => s.courseName);
 }
 
 // =====================================================================
@@ -91,7 +91,7 @@ function GpaTab({ catalog, uid }) {
   // 전체를 upsert 한다(행이 없으면 새로 만들어짐). 값이 하나도 없어지면 null 로 저장한다.
   const patchRank = useCallback((field, value) => {
     if (!sem || !uid) return;
-    const base = rankRow ?? { academic_rank: null, academic_total: null, training_rank: null, training_total: null };
+    const base = rankRow ?? { academicRank: null, academicTotal: null, trainingRank: null, trainingTotal: null };
     const patch = { ...base, [field]: value };
     delete patch.id; delete patch.year; delete patch.term;
     setRanks((prev) => {
@@ -112,9 +112,9 @@ function GpaTab({ catalog, uid }) {
   const handleAddRow = useCallback(async () => {
     if (!sem) return;
     setErr('');
-    const order = (semRows.reduce((m, r) => Math.max(m, r.sort_order ?? 0), 0)) + 1;
+    const order = (semRows.reduce((m, r) => Math.max(m, r.sortOrder ?? 0), 0)) + 1;
     try {
-      const made = await addGrade(uid, { year: sem.year, term: sem.term, course_name: '새 과목', credit: null, grade: null, sort_order: order });
+      const made = await addGrade(uid, { year: sem.year, term: sem.term, courseName: '새 과목', credit: null, grade: null, sortOrder: order });
       setRows((prev) => [...(prev ?? []), made]);
     } catch {
       setErr('과목 추가에 실패했어요.');
@@ -127,11 +127,11 @@ function GpaTab({ catalog, uid }) {
     setSeeding(true);
     try {
       const names = await timetableCourseNames(catalog, sem.year, sem.term);
-      const have = new Set(semRows.map((r) => r.course_name.trim()));
+      const have = new Set(semRows.map((r) => r.courseName.trim()));
       const fresh = names.filter((n) => n && !have.has(n.trim()));
       if (!fresh.length) { setErr('시간표에서 새로 가져올 과목이 없어요.'); setSeeding(false); return; }
-      let order = semRows.reduce((m, r) => Math.max(m, r.sort_order ?? 0), 0);
-      const made = await addGrades(uid, fresh.map((n) => ({ year: sem.year, term: sem.term, course_name: n, credit: null, grade: null, sort_order: ++order })));
+      let order = semRows.reduce((m, r) => Math.max(m, r.sortOrder ?? 0), 0);
+      const made = await addGrades(uid, fresh.map((n) => ({ year: sem.year, term: sem.term, courseName: n, credit: null, grade: null, sortOrder: ++order })));
       setRows((prev) => [...(prev ?? []), ...made]);
     } catch {
       setErr('시간표에서 불러오지 못했어요.');
@@ -181,12 +181,12 @@ function GpaTab({ catalog, uid }) {
               <div className="gpa-row" key={r.id}>
                 <input
                   className="gpa-c-name"
-                  defaultValue={r.course_name}
+                  defaultValue={r.courseName}
                   maxLength={60}
                   onBlur={(e) => {
                     const v = e.target.value.trim();
-                    if (v && v !== r.course_name) patchRow(r.id, { course_name: v });
-                    else if (!v) e.target.value = r.course_name;
+                    if (v && v !== r.courseName) patchRow(r.id, { courseName: v });
+                    else if (!v) e.target.value = r.courseName;
                   }}
                 />
                 <input
@@ -240,17 +240,17 @@ function GpaTab({ catalog, uid }) {
             <div className="calc-sec-title">이 학기 등수</div>
             <RankRow
               label="학위교육과목"
-              rank={rankRow?.academic_rank}
-              total={rankRow?.academic_total}
-              onRank={(v) => patchRank('academic_rank', v)}
-              onTotal={(v) => patchRank('academic_total', v)}
+              rank={rankRow?.academicRank}
+              total={rankRow?.academicTotal}
+              onRank={(v) => patchRank('academicRank', v)}
+              onTotal={(v) => patchRank('academicTotal', v)}
             />
             <RankRow
               label="생활/훈련과목"
-              rank={rankRow?.training_rank}
-              total={rankRow?.training_total}
-              onRank={(v) => patchRank('training_rank', v)}
-              onTotal={(v) => patchRank('training_total', v)}
+              rank={rankRow?.trainingRank}
+              total={rankRow?.trainingTotal}
+              onRank={(v) => patchRank('trainingRank', v)}
+              onTotal={(v) => patchRank('trainingTotal', v)}
             />
           </div>
         </>

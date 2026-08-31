@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog } from '../lib/cache';
-import { summarize, REVIEW_COLS, REVIEW_LIMIT } from '../lib/reviews';
+import { callFn } from '../lib/functions';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
@@ -24,11 +25,14 @@ function Stars({ value }) {
 }
 
 const METRICS = [
-  ['avg_workload', '과제량'],
-  ['avg_progress', '진도'],
-  ['avg_difficulty', '난이도'],
-  ['avg_class_time', '수업시간'],
+  ['avgWorkload', '과제량'],
+  ['avgProgress', '진도'],
+  ['avgDifficulty', '난이도'],
+  ['avgClassTime', '수업시간'],
 ];
+
+// 한 과목의 강의평을 무한정 받지 않는다(인기 과목은 계속 쌓인다) — 최신 N개.
+const REVIEW_LIMIT = 200;
 
 // 화면5: 강의평 (조회는 누구나 / 작성은 자격자만)
 export default function Reviews() {
@@ -36,11 +40,12 @@ export default function Reviews() {
   const [sp] = useSearchParams();
   const profFilter = sp.get('prof') || '';
   const { cadet } = useAuthContext();
-  const isAdmin = !!cadet?.is_admin;
+  const isAdmin = !!cadet?.isAdmin;
 
   const [courseName, setCourseName] = useState(courseCode);
   const [professors, setProfessors] = useState([]); // [{code,name}]
   const [reviews, setReviews] = useState([]);
+  const [summary, setSummary] = useState([]); // courseProfessorRatings 집계 문서(이 과목의 교수별)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -56,24 +61,33 @@ export default function Reviews() {
     // 과목명·교수 목록은 카탈로그 캐시에서
     const catalog = await getCatalog().catch(() => null);
     if (catalog) {
-      const course = (catalog.course ?? []).find((c) => c.code === courseCode);
+      const course = (catalog.courses ?? []).find((c) => c.code === courseCode);
       if (course) setCourseName(course.name);
-      const profByCode = Object.fromEntries((catalog.professor ?? []).map((p) => [p.code, p.name]));
+      const profByCode = Object.fromEntries((catalog.professors ?? []).map((p) => [p.code, p.name]));
       const codes = [
         ...new Set(
-          (catalog.section ?? [])
-            .filter((s) => s.course_code === courseCode && s.professor_code)
-            .map((s) => s.professor_code)
+          (catalog.sections ?? [])
+            .filter((s) => s.courseCode === courseCode && s.professorCode)
+            .map((s) => s.professorCode)
         ),
       ];
       setProfessors(codes.map((code) => ({ code, name: profByCode[code] ?? code })));
     }
 
-    // 강의평 목록 1회. 교수별 집계는 이 행들로 아래에서 만든다(집계뷰 요청 없음).
-    const { data } = await supabase
-      .from('review').select(REVIEW_COLS).eq('course_code', courseCode)
-      .order('created_at', { ascending: false }).limit(REVIEW_LIMIT);
-    setReviews(data ?? []);
+    // 강의평 목록과 교수별 집계(courseProfessorRatings — review 쓰기 트리거가 갱신)를 병렬로.
+    // 예전엔 강의평 행을 받아 클라이언트에서 GROUP BY 했지만, 이제 그 집계가 서버 문서로
+    // 이미 마련돼 있어(design doc §3) 왕복 1회로 둘 다 direct read 로 끝난다.
+    const [reviewsSnap, ratingsSnap] = await Promise.all([
+      getDocs(query(
+        collection(db, 'reviews'),
+        where('courseCode', '==', courseCode),
+        orderBy('createdAt', 'desc'),
+        limit(REVIEW_LIMIT)
+      )),
+      getDocs(query(collection(db, 'courseProfessorRatings'), where('courseCode', '==', courseCode))),
+    ]);
+    setReviews(reviewsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    setSummary(ratingsSnap.docs.map((d) => d.data()).sort((a, b) => b.reviewCount - a.reviewCount));
     setLoading(false);
   }
 
@@ -84,16 +98,20 @@ export default function Reviews() {
 
   // profFilter/데이터가 바뀔 때만 필터(삭제 비번 입력 등 무관한 키 입력마다 재필터하지 않도록).
   const shownReviews = useMemo(
-    () => (profFilter ? reviews.filter((r) => r.professor_code === profFilter) : reviews),
+    () => (profFilter ? reviews.filter((r) => r.professorCode === profFilter) : reviews),
     [reviews, profFilter]
   );
-  // 교수별 집계 — 보고 있는 강의평에서 바로 계산한다(서버 집계뷰 왕복 없음).
-  const shownSummary = useMemo(() => summarize(shownReviews, (r) => r.professor_code), [shownReviews]);
+  const shownSummary = useMemo(
+    () => (profFilter ? summary.filter((s) => s.professorCode === profFilter) : summary),
+    [summary, profFilter]
+  );
 
   async function like(id) {
-    const { data } = await supabase.rpc('like_review', { p_id: id });
-    if (data != null) {
-      setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, like_count: data } : r)));
+    const r = await callFn('likeReview', { id });
+    // likeReview 는 새 카운트를 돌려주지 않는다(Firestore increment 는 서버측 원자 연산이라
+    // 응답에 결과 값을 싣지 않음) — 낙관적으로 +1 만 반영한다.
+    if (r.ok && r.status !== 'NOT_FOUND') {
+      setReviews((prev) => prev.map((r2) => (r2.id === id ? { ...r2, likeCount: (r2.likeCount || 0) + 1 } : r2)));
     }
   }
 
@@ -103,9 +121,11 @@ export default function Reviews() {
     if (getReacted('review', id).report) return;
     if (!confirm('이 강의평을 신고할까요?')) return;
     markReacted('review', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
-    const { data } = await supabase.rpc('report_review', { p_id: id });
-    if (data === 'DELETED') { setReviews((prev) => prev.filter((r) => r.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
-    else if (data === 'ALREADY') alert('이미 신고한 강의평입니다.');
+    const r = await callFn('reportReview', { id });
+    const status = r.ok ? r.status : 'ERROR';
+    if (status === 'DELETED') { setReviews((prev) => prev.filter((rv) => rv.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
+    else if (status === 'ALREADY') alert('이미 신고한 강의평입니다.');
+    else if (status === 'ERROR') alert('신고에 실패했습니다.');
     else alert('신고되었습니다.');
   }
 
@@ -116,26 +136,23 @@ export default function Reviews() {
   // 비번 없는(누구나 삭제 가능) 강의평: 확인 후 바로 삭제
   async function deleteOpen(id) {
     if (!confirm('이 강의평을 삭제할까요?')) return;
-    const { data, error } = await supabase.rpc('delete_review', { p_id: id, p_post_password: '' });
-    if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
-    setReviews((prev) => prev.filter((r) => r.id !== id));
+    const r = await callFn('deleteReview', { id, postPassword: '' });
+    if (!r.ok || !r.data?.deleted) { alert('삭제에 실패했습니다.'); return; }
+    setReviews((prev) => prev.filter((rv) => rv.id !== id));
   }
 
   async function confirmDelete() {
     setDelErr('');
-    const { data, error } = await supabase.rpc('delete_review', {
-      p_id: delTarget,
-      p_post_password: delPw,
-    });
-    if (error) {
-      setDelErr(error.message || '삭제 실패');
+    const r = await callFn('deleteReview', { id: delTarget, postPassword: delPw });
+    if (!r.ok) {
+      setDelErr(r.message || '삭제 실패');
       return;
     }
-    if (data === false) {
+    if (!r.data?.deleted) {
       setDelErr('이미 삭제되었거나 없는 글입니다.');
       return;
     }
-    setReviews((prev) => prev.filter((r) => r.id !== delTarget));
+    setReviews((prev) => prev.filter((rv) => rv.id !== delTarget));
     setDelTarget(null);
     setDelPw('');
   }
@@ -158,12 +175,12 @@ export default function Reviews() {
           </div>
         ) : (
           shownSummary.map((s) => (
-            <div key={s.key ?? 'none'} className="rev-sum-card">
+            <div key={s.professorCode ?? 'none'} className="rev-sum-card">
               <div className="rev-sum-top">
-                <strong>{profNameByCode[s.key] ?? '교수 미정'}</strong>
-                <span className="tag tag-primary">{s.review_count}개</span>
+                <strong>{profNameByCode[s.professorCode] ?? '교수 미정'}</strong>
+                <span className="tag tag-primary">{s.reviewCount}개</span>
               </div>
-              <Stars value={s.avg_overall} />
+              <Stars value={s.avgOverall} />
               <div className="rev-metrics">
                 {METRICS.map(([k, label]) => (
                   <span key={k} className="rev-metric">
@@ -173,7 +190,7 @@ export default function Reviews() {
                 ))}
                 <span className="rev-metric rev-fail">
                   <span className="rev-metric-label">과락률</span>
-                  <span className="rev-metric-value">{Math.round((s.fail_ratio ?? 0) * 100)}%</span>
+                  <span className="rev-metric-value">{Math.round((s.failRatio ?? 0) * 100)}%</span>
                 </span>
               </div>
             </div>
@@ -198,7 +215,7 @@ export default function Reviews() {
         {shownReviews.map((r) => (
           <li key={r.id} className="rev-card">
             <div className="rev-card-top">
-              <strong>{profNameByCode[r.professor_code] ?? '교수 미정'}</strong>
+              <strong>{profNameByCode[r.professorCode] ?? '교수 미정'}</strong>
               <Stars value={r.overall} />
             </div>
             {(r.fail || r.teamplay || r.presentation) && (
@@ -208,16 +225,16 @@ export default function Reviews() {
                 {r.presentation && <span className="tag">발표</span>}
               </div>
             )}
-            {r.prof_comment && <p className="rev-comment">👤 {r.prof_comment}</p>}
-            {r.course_comment && <p className="rev-comment">📘 {r.course_comment}</p>}
+            {r.profComment && <p className="rev-comment">👤 {r.profComment}</p>}
+            {r.courseComment && <p className="rev-comment">📘 {r.courseComment}</p>}
             <div className="rev-card-bottom">
               <span className="rev-actions-left">
-                <button className="rev-like" onClick={() => like(r.id)}>♥ {r.like_count}</button>
+                <button className="rev-like" onClick={() => like(r.id)}>♥ {r.likeCount}</button>
                 {getReacted('review', r.id).report
                   ? <span className="rev-reported">🚨 신고됨</span>
                   : <button className="rev-del-btn rev-report" onClick={() => report(r.id)}>🚨 신고</button>}
               </span>
-              {r.has_password && !isAdmin ? (
+              {r.hasPassword && !isAdmin ? (
                 delTarget === r.id ? (
                   <span className="rev-del">
                     <input

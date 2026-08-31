@@ -1,28 +1,46 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { getCatalog, buildSections, kvGet, kvSet } from '../lib/cache';
-import { listPrimarySectionIds } from '../lib/timetable';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
 import '../styles/course.css';
 
+// 확정시간표들(모든 학기)에 담긴 분반 id — '내가 듣는 강의' 표시용.
+// lib/timetable.js 는 아직 Supabase 그대로라(이관 범위 밖) 여기서 직접 Firestore 로 읽는다:
+// users/{uid}/timetables 중 isPrimary 인 것들의 entries 서브컬렉션을 모아 sectionId 를 모은다.
+async function myPrimarySectionIds() {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return new Set();
+  const ttSnap = await getDocs(query(collection(db, 'users', uid, 'timetables'), where('isPrimary', '==', true)));
+  const entrySnaps = await Promise.all(
+    ttSnap.docs.map((t) => getDocs(collection(db, 'users', uid, 'timetables', t.id, 'entries')))
+  );
+  const ids = new Set();
+  entrySnaps.forEach((snap) => snap.docs.forEach((e) => {
+    const sectionId = e.data().sectionId;
+    if (sectionId) ids.add(sectionId);
+  }));
+  return ids;
+}
+
 // 교수 검색: 교수명·학과로 찾아 교수 상세(강의평·시간표)로 이동.
 // - 내 확정시간표 담당 교수를 상단에 노출(검색 전에도).
 // - 검색 결과는 검색어가 있을 때만 표시.
-// 카탈로그(professor/section)는 IndexedDB 캐시 우선(오프라인 가능),
-// 강의평 집계(professor_rating)는 온라인일 때만 병행 로드(실패해도 검색 가능).
+// 카탈로그(professors/sections)는 IndexedDB 캐시 우선(오프라인 가능),
+// 강의평 집계(professorRatings)는 온라인일 때만 병행 로드(실패해도 검색 가능).
 export default function ProfessorSearch() {
   const [professors, setProfessors] = useState([]);     // [{code,name,department}]
-  const [ratings, setRatings] = useState({});           // code -> {review_count, avg_overall}
+  const [ratings, setRatings] = useState({});           // code -> {reviewCount, avgOverall}
   const [myProfCodes, setMyProfCodes] = useState([]);   // 내 확정시간표 담당 교수 코드
-  const [query, setQuery] = useState('');
+  const [query_, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // 교수 평점 집계(professor_rating)는 review 테이블 전체를 GROUP BY 하는 뷰다. 검색 화면을 열 때마다
-  // 이걸 부르면 강의평이 쌓일수록 느려지고 비싸진다. 별점은 '검색 결과에 곁들이는 정보'라 조금 낡아도
-  // 무방하므로 SWR: 캐시가 있으면 즉시 쓰고, 하루가 지났을 때만 뒤에서 다시 받는다.
+  // 교수 평점 집계(professorRatings)는 review 쓰기 트리거가 갱신하는 문서라 그 자체는 가볍지만,
+  // 검색 화면을 열 때마다 컬렉션 전체를 다시 받을 필요는 없다. 별점은 '검색 결과에 곁들이는 정보'라
+  // 조금 낡아도 무방하므로 SWR: 캐시가 있으면 즉시 쓰고, 하루가 지났을 때만 뒤에서 다시 받는다.
   const RATINGS_KEY = 'prof:ratings';
   const RATINGS_TTL = 24 * 60 * 60 * 1000;
 
@@ -31,10 +49,13 @@ export default function ProfessorSearch() {
     const fresh = cached && Date.now() - cached.at < RATINGS_TTL;
     if (cached) setRatings(cached.byCode);
     if (fresh && !force) return;
-    const { data } = await supabase
-      .from('professor_rating').select('professor_code, review_count, avg_overall');
-    if (!data) return;   // 오프라인 → 캐시 유지
-    const byCode = Object.fromEntries(data.map((r) => [r.professor_code, r]));
+    let byCode;
+    try {
+      const snap = await getDocs(collection(db, 'professorRatings'));
+      byCode = Object.fromEntries(snap.docs.map((d) => [d.id, d.data()]));
+    } catch {
+      return; // 오프라인 → 캐시 유지
+    }
     setRatings(byCode);
     kvSet(RATINGS_KEY, { at: Date.now(), byCode });
   }
@@ -46,7 +67,7 @@ export default function ProfessorSearch() {
     let sections = [];
     try {
       const catalog = await getCatalog();
-      setProfessors(catalog.professor ?? []);
+      setProfessors(catalog.professors ?? []);
       sections = buildSections(catalog).sections;
     } catch {
       setError('교수 목록을 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
@@ -54,12 +75,12 @@ export default function ProfessorSearch() {
     // 내 확정시간표(담당 교수 코드용)와 강의평 집계는 서로 독립 → 병렬.
     // 초안 시간표는 세지 않는다(확정에 담은 강의 = 내가 듣는 강의).
     const [regIds] = await Promise.all([
-      listPrimarySectionIds().catch(() => new Set()),
+      myPrimarySectionIds().catch(() => new Set()),
       loadRatings(force),   // 당겨서 새로고침이면 캐시를 무시하고 다시 받는다
     ]);
     if (regIds.size && sections.length) {
       const codes = new Set();
-      sections.forEach((s) => { if (regIds.has(s.id) && s.professor_code) codes.add(s.professor_code); });
+      sections.forEach((s) => { if (regIds.has(s.id) && s.professorCode) codes.add(s.professorCode); });
       setMyProfCodes([...codes]);
     }
     setLoading(false);
@@ -70,7 +91,7 @@ export default function ProfessorSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const q = query.trim().toLowerCase();
+  const q = query_.trim().toLowerCase();
   const withRatings = useMemo(
     () => professors.map((p) => ({ ...p, ...(ratings[p.code] || {}) })),
     [professors, ratings]
@@ -98,7 +119,7 @@ export default function ProfessorSearch() {
           (p.department ?? '').toLowerCase().includes(q)
       )
       .sort((a, b) => {
-        const rc = (b.review_count || 0) - (a.review_count || 0);
+        const rc = (b.reviewCount || 0) - (a.reviewCount || 0);
         return rc || a.name.localeCompare(b.name, 'ko');
       });
   }, [withRatings, q]);
@@ -109,14 +130,14 @@ export default function ProfessorSearch() {
         <div className="section-info">
           <p className="section-title">
             <span className="section-name">{p.name}</span>
-            {(p.review_count || 0) > 0 && (
-              <span className="tag tag-primary">강의평 {p.review_count}</span>
+            {(p.reviewCount || 0) > 0 && (
+              <span className="tag tag-primary">강의평 {p.reviewCount}</span>
             )}
           </p>
           <p className="section-sub">
             {p.department || '학과 미정'}
-            {p.avg_overall != null && (
-              <span className="dot">★ {Number(p.avg_overall).toFixed(1)}</span>
+            {p.avgOverall != null && (
+              <span className="dot">★ {Number(p.avgOverall).toFixed(1)}</span>
             )}
           </p>
           {p.office && <p className="section-sub prof-office-sub">📍 {p.office}</p>}
@@ -136,7 +157,7 @@ export default function ProfessorSearch() {
       <div className="search-bar">
         <input
           type="search"
-          value={query}
+          value={query_}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="교수명 · 학과 검색"
         />

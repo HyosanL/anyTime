@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabase';
+import { useParams } from 'react-router-dom';
+import { callFn } from '../lib/functions';
 import { maskText, prefetchMask } from '../lib/mask';
 import { markReviewed } from '../lib/reactions';
 
@@ -8,7 +9,7 @@ const SCORES = [
   ['workload', '과제량', false],
   ['progress', '진도', false],
   ['difficulty', '난이도', false],
-  ['class_time', '수업시간', false],
+  ['classTime', '수업시간', false],
 ];
 
 function ScoreRow({ label, required, value, onChange }) {
@@ -32,19 +33,28 @@ function ScoreRow({ label, required, value, onChange }) {
   );
 }
 
-// 강의평 작성 폼. create_review 호출(자격 검사는 서버 RPC).
+// 강의평 작성 폼. createReview Cloud Function 호출(자격 검사는 서버가 함).
+// createReview 는 course_code/professor_code 만으로 아무 시간표 항목에나 매칭하던 옛
+// create_review() RPC와 달리 정확한 분반(year/term/sectionNo)을 요구한다 — 이 컴포넌트는
+// 항상 /review-write/:courseCode/:year/:term/:sectionNo 라우트(ReviewWrite) 아래에서만
+// 렌더되므로, props 로 받지 않고 useParams 로 그 분반 정보를 그대로 읽는다.
 export default function ReviewForm({ courseCode, professors, defaultProf, onDone }) {
+  const { year, term, sectionNo } = useParams();
+  const y = Number(year);
+  const t = Number(term);
+  const sn = Number(sectionNo);
+
   const [prof, setProf] = useState(defaultProf || (professors[0]?.code ?? ''));
   // defaultProf·professors 는 부모(ReviewWrite)가 카탈로그를 '마운트 뒤에' 비동기로 읽어 채운다.
   // useState 초기값은 그 전(빈 값)에 한 번만 잡히므로, 뒤늦게 도착한 기본 교수를 여기서 반영한다.
-  // 이게 없으면 <select>는 교수 이름을 보여주면서도 값은 '' 인 채 제출돼 professor_code=null → '교수 미정'으로 저장된다.
+  // 이게 없으면 <select>는 교수 이름을 보여주면서도 값은 '' 인 채 제출돼 professorCode=null → '교수 미정'으로 저장된다.
   const firstCode = professors[0]?.code;
   useEffect(() => {
     if (prof) return;                        // 사용자가 이미 고른 값은 건드리지 않는다
     const next = defaultProf || firstCode;
     if (next) setProf(next);                 // 도착한 기본 교수를 채택(없으면 진짜 '교수 미정' — 그대로 둔다)
   }, [defaultProf, firstCode, prof]);
-  const [scores, setScores] = useState({ overall: null, workload: null, progress: null, difficulty: null, class_time: null });
+  const [scores, setScores] = useState({ overall: null, workload: null, progress: null, difficulty: null, classTime: null });
   const [fail, setFail] = useState(false);
   const [teamplay, setTeamplay] = useState(false);
   const [presentation, setPresentation] = useState(false);
@@ -62,29 +72,37 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
     e.preventDefault();
     setError('');
     if (!scores.overall) return setError('종합 평점은 필수입니다.');
-    // 교수 선택지가 있는데 값이 비어 있으면 막는다 — 비면 professor_code=null 로 '교수 미정'에 저장돼 버린다.
+    // 교수 선택지가 있는데 값이 비어 있으면 막는다 — 비면 professorCode=null 로 '교수 미정'에 저장돼 버린다.
     if (professors.length > 0 && !prof) return setError('교수를 선택해주세요.');
+    // 라우트에 분반 정보가 없으면(예: 잘못된 진입) 서버가 어차피 거부하지만, 자격 검사 에러로
+    // 뭉뚱그려 보이지 않도록 여기서 먼저 걸러 명확한 메시지를 준다.
+    if (!courseCode || !Number.isFinite(y) || !Number.isFinite(t) || !Number.isFinite(sn)) {
+      return setError('분반 정보를 확인할 수 없습니다. 시간표에서 다시 들어와 주세요.');
+    }
 
     setSubmitting(true);
-    const { error } = await supabase.rpc('create_review', {
-      p_post_password: password,
-      p_course_code: courseCode,
-      p_professor_code: prof || null,
-      p_overall: scores.overall,
-      p_workload: scores.workload,
-      p_progress: scores.progress,
-      p_difficulty: scores.difficulty,
-      p_class_time: scores.class_time,
-      p_prof_comment: (await maskText(profComment.trim())) || null,
-      p_course_comment: (await maskText(courseComment.trim())) || null,
-      p_fail: fail,
-      p_teamplay: teamplay,
-      p_presentation: presentation,
+    const r = await callFn('createReview', {
+      courseCode,
+      professorCode: prof || null,
+      year: y,
+      term: t,
+      sectionNo: sn,
+      overall: scores.overall,
+      workload: scores.workload,
+      progress: scores.progress,
+      difficulty: scores.difficulty,
+      classTime: scores.classTime,
+      profComment: (await maskText(profComment.trim())) || null,
+      courseComment: (await maskText(courseComment.trim())) || null,
+      fail,
+      teamplay,
+      presentation,
+      postPassword: password,
     });
     setSubmitting(false);
 
-    if (error) {
-      setError(error.message || '작성에 실패했습니다.');
+    if (!r.ok) {
+      setError(r.message || '작성에 실패했습니다.');
       return;
     }
     markReviewed(courseCode, prof);   // 이 과목·교수 재작성 잠금(기기 로컬 — 서버는 익명 다건)

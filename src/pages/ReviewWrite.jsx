@@ -20,15 +20,15 @@ export default function ReviewWrite() {
     (async () => {
       const catalog = await getCatalog().catch(() => null);
       if (!catalog) return;
-      const course = catalog.course?.find((c) => c.code === courseCode);
-      const section = catalog.section?.find(
-        (s) => s.course_code === courseCode && s.year === y && s.term === t && s.section_no === sn
+      const course = catalog.courses?.find((c) => c.code === courseCode);
+      const section = catalog.sections?.find(
+        (s) => s.courseCode === courseCode && s.year === y && s.term === t && s.sectionNo === sn
       );
-      const prof = catalog.professor?.find((p) => p.code === section?.professor_code);
+      const prof = catalog.professors?.find((p) => p.code === section?.professorCode);
       setHeader({
         name: course?.name ?? courseCode,
         prof: prof?.name ?? '',
-        profCode: section?.professor_code ?? '',
+        profCode: section?.professorCode ?? '',
       });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

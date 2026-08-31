@@ -22,18 +22,18 @@ export function buildClassBlocks({ mine = [], periods = [], customClasses = [], 
   const blocks = [];
   (mine || []).forEach((s) =>
     (s.times || []).forEach((t) => {
-      const startMin = parseHM(periodByNo[t.start_period]?.start_time);
-      const endMin = parseHM(periodByNo[t.end_period]?.end_time);
+      const startMin = parseHM(periodByNo[t.startPeriod]?.startTime);
+      const endMin = parseHM(periodByNo[t.endPeriod]?.endTime);
       if (startMin == null || endMin == null || endMin <= startMin) return;
       blocks.push({
-        day: t.day_of_week,
+        day: t.dayOfWeek,
         startMin,
         endMin,
-        title: s.course_name,
-        meta: [t.room, showProfessor ? s.professor_name : null].filter(Boolean).join(' · '),
-        color: colorFor('c:' + s.course_code),
+        title: s.courseName,
+        meta: [t.room, showProfessor ? s.professorName : null].filter(Boolean).join(' · '),
+        color: colorFor('c:' + s.courseCode),
         fg,
-        memoTo: `/memo/${s.course_code}/${s.year}/${s.term}/${s.section_no}`,
+        memoTo: `/memo/${s.courseCode}/${s.year}/${s.term}/${s.sectionNo}`,
       });
     })
   );
@@ -80,7 +80,7 @@ export function layoutTimetable({ classBlocks = [], periods = [], commonBlocks =
   // 좌축 부 눈금: 교시 번호를 '시작 시(hour)'에 매핑.
   const periodNoByHour = {};
   (periods || []).forEach((p) => {
-    const sm = parseHM(p.start_time);
+    const sm = parseHM(p.startTime);
     if (sm != null) periodNoByHour[Math.floor(sm / 60)] = p.no;
   });
 

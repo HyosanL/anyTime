@@ -29,10 +29,10 @@ const COMBO_LIMIT = 2000;       // 검토할 조합 상한(이 안에서 점수 
 export function timeMask(times) {
   const m = new Int32Array(8);
   for (const t of times ?? []) {
-    const d = t.day_of_week;
+    const d = t.dayOfWeek;
     if (!(d >= 1 && d <= 7)) continue;
-    const s = Math.max(1, t.start_period);
-    const e = Math.min(MAX_PERIOD, t.end_period);
+    const s = Math.max(1, t.startPeriod);
+    const e = Math.min(MAX_PERIOD, t.endPeriod);
     for (let p = s; p <= e; p++) m[d] |= 1 << p;
   }
   return m;
@@ -68,7 +68,7 @@ const isEmptyMask = (m) => {
 //  그 학기에 '어떤 분반도 열리지 않는' 요일×교시가 곧 그 시간이다.
 //  편람에 구멍으로 찍혀 있으므로 카탈로그만 있으면 그대로 읽어낼 수 있다 —
 //  따로 등록하지 않아도 학기가 바뀌면 자동으로 따라온다.
-//  (이름[생도대시간·군사훈련…]만 관리자가 붙인다 — common_block)
+//  (이름[생도대시간·군사훈련…]만 관리자가 붙인다 — commonBlocks)
 // ---------------------------------------------------------------------
 export function deriveNoClass(sections, periodNos) {
   const out = new Set();
@@ -76,7 +76,7 @@ export function deriveNoClass(sections, periodNos) {
   const used = new Set();
   for (const s of sections) {
     for (const t of s.times ?? []) {
-      for (let p = t.start_period; p <= t.end_period; p++) used.add(`${t.day_of_week}-${p}`);
+      for (let p = t.startPeriod; p <= t.endPeriod; p++) used.add(`${t.dayOfWeek}-${p}`);
     }
   }
   for (let d = 1; d <= 5; d++) {          // 평일만 — 주말은 원래 수업이 없다
@@ -108,7 +108,7 @@ export function noClassBlocks(noClass, periodNos) {
 // ---------------------------------------------------------------------
 export function timeKey(times) {
   const ts = [...(times ?? [])]
-    .map((t) => `${t.day_of_week}:${t.start_period}-${t.end_period}`)
+    .map((t) => `${t.dayOfWeek}:${t.startPeriod}-${t.endPeriod}`)
     .sort();
   return ts.length ? ts.join('|') : 'none';   // 'none' = 강의시간 미정
 }
@@ -122,8 +122,8 @@ export function groupByTime(sections) {
     m.get(k).sections.push(s);
   }
   const first = (g) => {
-    const t = [...g.times].sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period)[0];
-    return t ? t.day_of_week * 100 + t.start_period : 9999;
+    const t = [...g.times].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startPeriod - b.startPeriod)[0];
+    return t ? t.dayOfWeek * 100 + t.startPeriod : 9999;
   };
   return [...m.values()].sort((a, b) => first(a) - first(b));
 }
@@ -315,12 +315,12 @@ export function generateCombos({ courses, blocked, periodNos, noClass = new Set(
   // 3) 지표를 매겨 둔다. 어느 순서로 보여줄지는 sortCombos 가 나중에 정한다.
   const combos = found.map((groups) => {
     const sorted = [...groups].sort((a, b) =>
-      a.sections[0].course_name.localeCompare(b.sections[0].course_name, 'ko')
+      a.sections[0].courseName.localeCompare(b.sections[0].courseName, 'ko')
     );
     return {
       groups: sorted,
       stats: comboStats(sorted, periodNos, noClass),
-      sig: sorted.map((g) => `${g.sections[0].course_code}@${g.key}`).join(','),
+      sig: sorted.map((g) => `${g.sections[0].courseCode}@${g.key}`).join(','),
     };
   });
 

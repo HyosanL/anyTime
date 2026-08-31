@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { collection, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import { callFn } from '../lib/functions';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskText, prefetchMask } from '../lib/mask';
@@ -11,11 +13,11 @@ import BackButton from '../components/BackButton';
 import CorrectionModal from '../components/CorrectionModal';
 import '../styles/course.css';
 
-// 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(RPC 강제).
+// 화면6: 수업 메모. 확정시간표 등록 생도만 작성/열람(getMemos CF 강제, 설계 §3 예외 — 읽기도 CF).
 export default function Memo() {
   const { courseCode, year, term, sectionNo } = useParams();
   const { cadet, settings } = useAuthContext();
-  const isAdmin = !!cadet?.is_admin;
+  const isAdmin = !!cadet?.isAdmin;
   const y = Number(year);
   const t = Number(term);
   const sn = Number(sectionNo);
@@ -24,8 +26,9 @@ export default function Memo() {
   // 강의 정보 수정 제안(🚩) 입력 — 강의 검색과 같은 CorrectionModal·항목 빌더를 그대로 쓴다.
   const [corrMeta, setCorrMeta] = useState({ periods: [], professors: [], sections: [] });
   const [corr, setCorr] = useState(null); // { subject, options } | null
-  // 자격 기준일(minDays)은 부팅 RPC 로 이미 와 있다 — 메모 화면마다 get_review_min_days() 를 부르지 않는다.
-  // 보유일수(daysHeld)만 서버가 이 분반에 대해 판정해 준다.
+  // 자격 기준일(minDays)은 부팅 정보로 이미 와 있다 — 메모 화면마다 따로 부르지 않는다.
+  // 보유일수(daysHeld)는 소유 데이터(timetables/entries)를 직접 읽어 이 화면이 판정한다
+  // (CONVENTIONS.md: 소유 데이터는 직접 R/W) — createReview CF도 작성 시점에 같은 규칙을 다시 검증한다.
   const minDays = settings.reviewMinDays;
   const [daysHeld, setDaysHeld] = useState(null);
   const [memos, setMemos] = useState([]);
@@ -43,49 +46,51 @@ export default function Memo() {
   async function loadHeader() {
     const catalog = await getCatalog().catch(() => null);
     if (!catalog) return;
-    const course = catalog.course?.find((c) => c.code === courseCode);
-    const section = catalog.section?.find(
-      (s) => s.course_code === courseCode && s.year === y && s.term === t && s.section_no === sn
+    const course = catalog.courses?.find((c) => c.code === courseCode);
+    const section = catalog.sections?.find(
+      (s) => s.courseCode === courseCode && s.year === y && s.term === t && s.sectionNo === sn
     );
-    const prof = catalog.professor?.find((p) => p.code === section?.professor_code);
-    const times = (catalog.section_time ?? []).filter(
-      (x) => x.course_code === courseCode && x.year === y && x.term === t && x.section_no === sn
-    );
+    const prof = catalog.professors?.find((p) => p.code === section?.professorCode);
+    const times = section?.sectionTimes ?? [];
     setHeader({
       name: course?.name ?? courseCode,
       prof: prof?.name ?? '',
-      profCode: section?.professor_code ?? '',
+      profCode: section?.professorCode ?? '',
       times: formatTimes(times),
       rawTimes: times,
     });
     setCorrMeta(correctionMeta(catalog));
   }
 
-  // 보유일수는 서버가 판정한다 — 확정(is_primary) 시간표에 담긴 것만 인정(초안은 제외).
+  // 보유일수 판정: users/{uid}/timetables 에서 이 학기 확정(isPrimary) 시간표를 찾고,
+  // 그 안의 entries/{sectionKey} 문서의 createdAt 으로 계산한다(functions/src/lib/eligibility.js
+  // 의 timetableHeldDays() 와 동일 로직 — 소유 데이터라 서버를 거치지 않고 여기서 직접 판정).
   async function loadReviewEligibility() {
-    const { data: held } = await supabase.rpc('timetable_held_days', {
-      p_course_code: courseCode, p_year: y, p_term: t, p_section_no: sn,
-    });
-    setDaysHeld(held ?? null);
+    const uid = auth.currentUser?.uid;
+    if (!uid) return setDaysHeld(null);
+    const ttSnap = await getDocs(query(
+      collection(db, 'users', uid, 'timetables'),
+      where('year', '==', y), where('term', '==', t), where('isPrimary', '==', true), limit(1)
+    ));
+    if (ttSnap.empty) return setDaysHeld(null);
+    const sectionKey = `${courseCode}_${y}_${t}_${sn}`;
+    const entrySnap = await getDoc(doc(db, 'users', uid, 'timetables', ttSnap.docs[0].id, 'entries', sectionKey));
+    const createdAt = entrySnap.exists() ? entrySnap.get('createdAt') : null;
+    setDaysHeld(createdAt ? Math.floor((Date.now() - createdAt.toMillis()) / 86400000) : null);
   }
 
   // silent: 당겨서 새로고침 때는 목록을 '불러오는 중…'으로 갈아치우지 않는다
   async function loadMemos(silent = false) {
     if (!silent) setLoading(true);
     setError('');
-    const { data, error } = await supabase.rpc('get_memos', {
-      p_course_code: courseCode,
-      p_year: y,
-      p_term: t,
-      p_section_no: sn,
-    });
-    if (error) {
-      // RPC 가 미등록 생도를 막음
+    const r = await callFn('getMemos', { courseCode, year: y, term: t, sectionNo: sn });
+    if (!r.ok) {
+      // CF 가 미등록 생도를 막는다(invalid-argument)
       setAllowed(false);
       setMemos([]);
     } else {
       setAllowed(true);
-      setMemos(data ?? []);
+      setMemos(r.data ?? []);
     }
     setLoading(false);
   }
@@ -102,17 +107,14 @@ export default function Memo() {
     setError('');
     if (!content.trim()) return setError('내용을 입력하세요.');
     setSubmitting(true);
-    const { error } = await supabase.rpc('create_memo', {
-      p_post_password: password,
-      p_course_code: courseCode,
-      p_year: y,
-      p_term: t,
-      p_section_no: sn,
-      p_content: await maskText(content.trim()),
+    const r = await callFn('createMemo', {
+      courseCode, year: y, term: t, sectionNo: sn,
+      content: await maskText(content.trim()),
+      postPassword: password,
     });
     setSubmitting(false);
-    if (error) {
-      setError(error.message || '작성에 실패했습니다.');
+    if (!r.ok) {
+      setError(r.message || '작성에 실패했습니다.');
       return;
     }
     setContent('');
@@ -122,8 +124,8 @@ export default function Memo() {
 
   // sectionCorrectionOptions()가 기대하는 모양 — 강의 검색의 분반 카드(s)와 같은 필드만 맞추면 된다.
   const sectionForCorrection = {
-    course_code: courseCode, year: y, term: t, section_no: sn,
-    course_name: header.name, professor_name: header.prof, times: header.rawTimes,
+    courseCode, year: y, term: t, sectionNo: sn,
+    courseName: header.name, professorName: header.prof, times: header.rawTimes,
   };
 
   const [, reactTick] = useState(0); // 신고 기록 후 버튼 상태 갱신용
@@ -132,28 +134,26 @@ export default function Memo() {
     if (getReacted('memo', id).report) return;
     if (!confirm('이 메모를 신고할까요?')) return;
     markReacted('memo', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
-    const { data } = await supabase.rpc('report_memo', { p_id: id });
-    if (data === 'DELETED') { setMemos((prev) => prev.filter((m) => m.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
-    else if (data === 'ALREADY') alert('이미 신고한 메모입니다.');
+    const r = await callFn('reportMemo', { id });
+    const status = r.ok ? r.data.status : 'ERROR';
+    if (status === 'DELETED') { setMemos((prev) => prev.filter((m) => m.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
+    else if (status === 'ALREADY') alert('이미 신고한 메모입니다.');
     else alert('신고되었습니다.');
   }
 
   // 비번 없는(누구나 삭제 가능) 메모: 확인 후 바로 삭제
   async function deleteOpen(id) {
     if (!confirm('이 메모를 삭제할까요?')) return;
-    const { data, error } = await supabase.rpc('delete_memo', { p_id: id, p_post_password: '' });
-    if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
+    const r = await callFn('deleteMemo', { id, postPassword: '' });
+    if (!r.ok || !r.data.deleted) { alert('삭제에 실패했습니다.'); return; }
     setMemos((prev) => prev.filter((m) => m.id !== id));
   }
 
   async function confirmDelete() {
     setDelErr('');
-    const { data, error } = await supabase.rpc('delete_memo', {
-      p_id: delTarget,
-      p_post_password: delPw,
-    });
-    if (error) return setDelErr(error.message || '삭제 실패');
-    if (data === false) return setDelErr('이미 삭제되었거나 없는 글입니다.');
+    const r = await callFn('deleteMemo', { id: delTarget, postPassword: delPw });
+    if (!r.ok) return setDelErr(r.message || '삭제 실패');
+    if (!r.data.deleted) return setDelErr('이미 삭제되었거나 없는 글입니다.');
     setMemos((prev) => prev.filter((m) => m.id !== delTarget));
     setDelTarget(null);
     setDelPw('');
@@ -262,12 +262,12 @@ export default function Memo() {
               <li key={m.id} className="memo-card">
                 <p className="memo-content">{m.content}</p>
                 <div className="memo-card-bottom">
-                  <span className="memo-date">{new Date(m.created_at).toLocaleString('ko-KR')}</span>
+                  <span className="memo-date">{memoDate(m.createdAt)?.toLocaleString('ko-KR')}</span>
                   <span className="memo-actions">
                     {getReacted('memo', m.id).report
                       ? <span className="rev-reported">🚨 신고됨</span>
                       : <button className="rev-del-btn rev-report" onClick={() => report(m.id)}>🚨 신고</button>}
-                    {m.has_password && !isAdmin ? (
+                    {m.hasPassword && !isAdmin ? (
                       delTarget === m.id ? (
                         <span className="rev-del">
                           <input
@@ -299,4 +299,12 @@ export default function Memo() {
       )}
     </PullToRefresh>
   );
+}
+
+// getMemos CF 응답(JSON 직렬화)의 Firestore Timestamp 는 {_seconds,_nanoseconds} 로 온다
+// (board.js의 toIso() 와 동일 규약 — 여기선 문자열이 아니라 Date 로 바로 쓴다).
+function memoDate(ts) {
+  if (!ts) return null;
+  const secs = ts._seconds ?? ts.seconds;
+  return typeof secs === 'number' ? new Date(secs * 1000) : new Date(ts);
 }

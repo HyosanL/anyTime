@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase';
 import { flagText, highlightParts } from '../lib/moderation';
 import { clearCatalog, getCatalog, subscribeCatalog, kvGet, kvSet } from '../lib/cache';
 import { syncAdminPush } from '../lib/push';
@@ -23,76 +24,98 @@ const REASON_LABEL = { threshold: '누적 신고', burst: '단시간 급증(15�
 const POLL_MS = 60000;
 // 파급이 큰 항목(과목명/교수명/학과)은 자동반영 대상이 아니며, 3건↑ 쌓이면 수동 검토 강조.
 const HIGH_RISK = new Set(['course:name', 'professor:name', 'professor:department']);
-// 대상 키는 정규화된 단순 속성(professor_code/course_code/year/term/section_no)으로 묶는다.
+// 대상 키는 정규화된 단순 속성(professorCode/courseCode/year/term/sectionNo)으로 묶는다.
 const groupKey = (c) =>
-  `${c.target}|${c.professor_code ?? ''}|${c.course_code ?? ''}|${c.year ?? ''}|${c.term ?? ''}|${c.section_no ?? ''}|${c.field}|${c.suggested ?? ''}`;
+  `${c.target}|${c.professorCode ?? ''}|${c.courseCode ?? ''}|${c.year ?? ''}|${c.term ?? ''}|${c.sectionNo ?? ''}|${c.field}|${c.suggested ?? ''}`;
 
 async function call(action, payload = {}) {
-  const { data, error } = await supabase.functions.invoke('admin-action', { body: { action, payload } });
-  let status = data?.status;
-  if (error) { try { status = (await error.context?.json?.())?.status; } catch { /* ignore */ } }
-  return { ok: status === 'OK', status, data };
+  try {
+    const { data } = await httpsCallable(functions, 'adminAction')({ action, payload });
+    return { ok: data?.status === 'OK', status: data?.status, data };
+  } catch (e) {
+    return { ok: false, status: e.code || 'ERROR', data: null };
+  }
 }
 
-// 목록 여러 개를 Edge Function 호출 '한 번'으로 받는다. 예전엔 대시보드가 열려 있는 동안
-// 15초마다 5번씩 불러 시간당 1,200회를 썼다. 반환은 요청한 순서대로 [{ok, data}, …].
+// 목록 여러 개를 Cloud Function 호출 '한 번'으로 받는다(adminAction 의 'batch' 메타 액션).
+// 예전엔 대시보드가 열려 있는 동안 15초마다 5번씩 불러 시간당 1,200회를 썼다.
+// 반환은 요청한 순서대로 [{ok, data}, …].
 async function callBatch(actions) {
-  const { data } = await supabase.functions.invoke('admin-action', {
-    body: { action: 'batch', payload: { actions } },
-  });
-  const results = data?.results ?? [];
-  return actions.map((_, i) => ({
-    ok: results[i]?.ok === true,
-    data: results[i]?.data ?? {},
-  }));
+  try {
+    const { data } = await httpsCallable(functions, 'adminAction')({ action: 'batch', payload: { actions } });
+    const results = data?.results ?? [];
+    return actions.map((_, i) => ({
+      ok: results[i]?.ok === true,
+      data: results[i]?.data ?? {},
+    }));
+  } catch {
+    return actions.map(() => ({ ok: false, data: {} }));
+  }
+}
+
+// Cloud Function 응답의 Firestore Timestamp 는 {_seconds,_nanoseconds}(또는 {seconds,nanoseconds})로
+// 오고, clear_moderation 의 reviewedAt 처럼 순수 Date/ISO 문자열로 오는 필드도 섞여 있다
+// (board.js 의 toIso 와 같은 이유) — 정렬·표시 직전에 여기서 한 번에 흡수한다.
+function tsMillis(ts) {
+  if (!ts) return 0;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts).getTime() || 0;
+  const secs = ts._seconds ?? ts.seconds;
+  return typeof secs === 'number' ? secs * 1000 : 0;
+}
+function fmtDateTime(ts) {
+  const ms = tsMillis(ts);
+  return ms ? new Date(ms).toLocaleString('ko-KR') : '';
 }
 
 // 항목 → 실제 콘텐츠 화면 경로(삭제 판단 전 원문·맥락 확인용). 못 만드는 유형은 null.
 function contentPath(it) {
   switch (it.type) {
     case 'board_post': return `/board/post/${it.id}`;
-    case 'board_comment': return it.meta?.post_id ? `/board/post/${it.meta.post_id}` : null;
-    case 'review': return `/reviews/${it.course_code}`;
-    case 'exam_archive': return `/exams/${it.course_code}`;
+    case 'board_comment': return it.meta?.postId ? `/board/post/${it.meta.postId}` : null;
+    case 'review': return `/reviews/${it.courseCode}`;
+    case 'exam_archive': return `/exams/${it.courseCode}`;
     case 'class_memo': {
       const m = it.meta || {};
-      return m.year && m.term && m.section_no != null
-        ? `/memo/${it.course_code}/${m.year}/${m.term}/${m.section_no}` : null;
+      return m.year && m.term && m.sectionNo != null
+        ? `/memo/${it.courseCode}/${m.year}/${m.term}/${m.sectionNo}` : null;
     }
     default: return null;
   }
 }
 
 const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' };
-// section_time 행들 → "수3-4 금1"
+// section.sectionTimes 임베드 배열 → "수3-4 금1"
 function fmtSecTimes(times) {
   return (times || [])
     .slice()
-    .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period)
-    .map((t) => (t.start_period === t.end_period
-      ? `${DAY_KO[t.day_of_week]}${t.start_period}`
-      : `${DAY_KO[t.day_of_week]}${t.start_period}-${t.end_period}`))
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startPeriod - b.startPeriod)
+    .map((t) => (t.startPeriod === t.endPeriod
+      ? `${DAY_KO[t.dayOfWeek]}${t.startPeriod}`
+      : `${DAY_KO[t.dayOfWeek]}${t.startPeriod}-${t.endPeriod}`))
     .join(' ');
 }
-// 대기중 제안의 '수정 전' = 지금 카탈로그의 현재값. (자동반영된 건은 이미 바뀌었으므로 correction.prev_value 를 쓴다.)
+// 대기중 제안의 '수정 전' = 지금 카탈로그의 현재값. (자동반영된 건은 이미 바뀌었으므로 correction.prevValue 를 쓴다.)
 function currentValue(catalog, g) {
   if (!catalog) return null;
   if (g.target === 'section_add') return '없음 (새 분반)';
   if (g.target === 'course' && g.field === 'name') {
-    return (catalog.course || []).find((c) => c.code === g.course_code)?.name ?? null;
+    return (catalog.courses || []).find((c) => c.code === g.courseCode)?.name ?? null;
   }
   if (g.target === 'professor') {
-    const p = (catalog.professor || []).find((x) => x.code === g.professor_code);
+    const p = (catalog.professors || []).find((x) => x.code === g.professorCode);
     if (!p) return null;
     return g.field === 'name' ? p.name : g.field === 'department' ? p.department : p.office;
   }
   if (g.target === 'section' && g.field === 'professor') {
-    const s = (catalog.section || []).find((x) => x.course_code === g.course_code && x.year === g.year && x.term === g.term && x.section_no === g.section_no);
+    const s = (catalog.sections || []).find((x) => x.courseCode === g.courseCode && x.year === g.year && x.term === g.term && x.sectionNo === g.sectionNo);
     if (!s) return null;
-    return (catalog.professor || []).find((x) => x.code === s.professor_code)?.name ?? '교수 미정';
+    return (catalog.professors || []).find((x) => x.code === s.professorCode)?.name ?? '교수 미정';
   }
   if (g.target === 'section_time') {
-    const times = (catalog.section_time || []).filter((t) => t.course_code === g.course_code && t.year === g.year && t.term === g.term && t.section_no === g.section_no);
+    // section_time 은 더 이상 별도 컬렉션이 아니다 — 분반 문서의 sectionTimes 배열에 임베드된다(설계 §3).
+    const s = (catalog.sections || []).find((x) => x.courseCode === g.courseCode && x.year === g.year && x.term === g.term && x.sectionNo === g.sectionNo);
+    const times = s?.sectionTimes ?? [];
     if (g.field === 'room') return times[0]?.room ?? null;
     if (g.field === 'time') return fmtSecTimes(times) || null;
   }
@@ -123,12 +146,12 @@ function fmtCorrSuggested(g) {
 // 편집 페이지 딥링크(수정 페이지로 바로 이동). 과목 단위 대상만 만든다(교수 대상은 과목 편집 페이지가 없다).
 //   section_add → NewSectionCard 를 펼치고, 그 외 → 해당 분반(sec)을 펼친다. corr 로 제안 배너를 띄운다.
 function editPath(g) {
-  if (!g.course_code) return null;
+  if (!g.courseCode) return null;
   const params = new URLSearchParams();
   if (g.target === 'section_add') params.set('add', '1');
-  else if (g.year && g.term && g.section_no != null) params.set('sec', `${g.year}-${g.term}-${g.section_no}`);
+  else if (g.year && g.term && g.sectionNo != null) params.set('sec', `${g.year}-${g.term}-${g.sectionNo}`);
   params.set('corr', String(g.id));
-  return `/admin/courses/${encodeURIComponent(g.course_code)}?${params.toString()}`;
+  return `/admin/courses/${encodeURIComponent(g.courseCode)}?${params.toString()}`;
 }
 
 // 동일(target/key/field/suggested) 제안을 한 카드로 묶고 ids·count 보관.
@@ -155,10 +178,10 @@ function Highlighted({ text }) {
 // 화면9-2: 실시간 모더레이션 대시보드 — 3탭(게시글·댓글 / 신고 / 수정 제안).
 export default function Moderation() {
   const navigate = useNavigate();
-  // 관리자 여부는 cadet 프로필에 이미 실려 온다(useAuth) — is_admin RPC 를 따로 부르지 않는다.
-  // 프로필이 아직 없으면(null) '확인 중'. 어차피 모든 관리자 액션은 서버(admin-action)가 다시 검증한다.
+  // 관리자 여부는 cadet 프로필에 이미 실려 온다(useAuth) — isAdmin 을 별도로 조회하지 않는다.
+  // 프로필이 아직 없으면(null) '확인 중'. 어차피 모든 관리자 액션은 서버(adminAction)가 다시 검증한다.
   const { cadet } = useAuthContext();
-  const isAdmin = cadet ? !!cadet.is_admin : null;
+  const isAdmin = cadet ? !!cadet.isAdmin : null;
   const [tab, setTab] = useState('posts'); // 'posts' | 'reports' | 'corr'
   const [items, setItems] = useState([]);       // 게시글·댓글(list_recent)
   const [reported, setReported] = useState([]);  // 신고 누적 글(list_reported)
@@ -191,15 +214,15 @@ export default function Moderation() {
       withFlags.sort((a, b) => {
         const fa = a.flags.length > 0, fb = b.flags.length > 0;
         if (fa !== fb) return fa ? -1 : 1;
-        return a.created_at < b.created_at ? 1 : -1;
+        return tsMillis(b.createdAt) - tsMillis(a.createdAt);
       });
       setItems(withFlags);
-      setReviewedAt(r.data.reviewed_at ?? null);
+      setReviewedAt(r.data.reviewedAt ?? null);
       // 다음 진입 때 즉시 표시할 스냅샷(SWR). 전부 성공했을 때만 저장.
       if (rc.ok && rr.ok && ra.ok && rd.ok) {
         kvSet('mod:snapshot', {
           items: withFlags, corrs: rc.data.items ?? [], reported: rr.data.items ?? [],
-          autos: ra.data.items ?? [], deleted: rd.data.items ?? [], reviewedAt: r.data.reviewed_at ?? null,
+          autos: ra.data.items ?? [], deleted: rd.data.items ?? [], reviewedAt: r.data.reviewedAt ?? null,
         });
       }
     }
@@ -244,14 +267,18 @@ export default function Moderation() {
     const warn = flagged > 0 ? `검토필요 ${flagged}건이 아직 남아있습니다.\n` : '';
     if (!confirm(`${warn}지금까지의 글 ${items.length}건을 모두 확인 처리할까요?\n(이후 새로 올라오는 글만 표시됩니다. 글은 삭제되지 않습니다.)`)) return;
     const r = await call('clear_moderation');
-    if (r.ok) { setItems([]); setReviewedAt(r.data.reviewed_at ?? null); }
+    if (r.ok) { setItems([]); setReviewedAt(r.data.reviewedAt ?? null); }
     else alert('처리 실패: ' + (r.status ?? '오류'));
   }
 
   // ── 게시글·댓글 / 신고 공통: 삭제 ──
+  // board_comment 는 boardPosts/{postId}/comments/{id} 서브컬렉션이라 postId 가 있어야
+  // 위치를 특정할 수 있다(옛 낱개 테이블 삭감이 아니라 Firestore 구조 차이에서 온 계약 확장).
   async function remove(it) {
     if (!confirm(`이 ${TYPE_LABEL[it.type]}을(를) 삭제할까요?`)) return;
-    const r = await call('delete_post', { table: it.type, id: it.id });
+    const payload = { table: it.type, id: it.id };
+    if (it.type === 'board_comment') payload.postId = it.meta?.postId;
+    const r = await call('delete_post', payload);
     if (r.ok) {
       setItems((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
       setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
@@ -263,8 +290,10 @@ export default function Moderation() {
       ? { content: edit.text }
       : edit.type === 'exam_archive'
         ? { description: edit.text }
-        : { course_comment: edit.text };
-    const r = await call('edit_post', { table: edit.type, id: edit.id, fields });
+        : { courseComment: edit.text };
+    const payload = { table: edit.type, id: edit.id, fields };
+    if (edit.type === 'board_comment') payload.postId = edit.postId;
+    const r = await call('edit_post', payload);
     if (r.ok) { setEdit(null); load(); }
   }
 
@@ -362,7 +391,7 @@ export default function Moderation() {
       <p className="mod-status">
         실시간(15초)
         {updatedAt && ` · ${updatedAt.toLocaleTimeString('ko-KR')} 갱신`}
-        {reviewedAt && <span className="muted"> · {new Date(reviewedAt).toLocaleString('ko-KR')} 확인처리됨</span>}
+        {reviewedAt && <span className="muted"> · {fmtDateTime(reviewedAt)} 확인처리됨</span>}
       </p>
 
       {/* 3탭 */}
@@ -400,9 +429,9 @@ export default function Moderation() {
               <li key={`${it.type}-${it.id}`} className={`card mod-card ${it.flags.length ? 'flagged' : ''}`}>
                 <div className="mod-card-top">
                   <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
-                  <span className="mod-course">{it.course_code}{it.meta?.section_no ? `·${it.meta.section_no}분반` : ''}</span>
+                  <span className="mod-course">{it.courseCode}{it.meta?.sectionNo ? `·${it.meta.sectionNo}분반` : ''}</span>
                   {it.flags.length > 0 && <span className="tag tag-warn mod-badge">⚠ {it.flags.join(', ')}</span>}
-                  <span className="mod-time">{new Date(it.created_at).toLocaleString('ko-KR')}</span>
+                  <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
                 </div>
 
                 {edit && edit.type === it.type && edit.id === it.id ? (
@@ -424,7 +453,7 @@ export default function Moderation() {
 
                 <div className="mod-actions">
                   {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
-                  <button className="rev-del-btn" onClick={() => setEdit({ type: it.type, id: it.id, text: editableText(it) })}>수정</button>
+                  <button className="rev-del-btn" onClick={() => setEdit({ type: it.type, id: it.id, text: editableText(it), postId: it.meta?.postId })}>수정</button>
                   <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
                 </div>
               </li>
@@ -448,9 +477,9 @@ export default function Moderation() {
             <li key={`rep-${it.type}-${it.id}`} className="card mod-card flagged">
               <div className="mod-card-top">
                 <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
-                <span className="mod-course">{it.course_code}{it.meta?.section_no ? `·${it.meta.section_no}분반` : ''}</span>
-                <span className="tag tag-warn mod-badge">🚨 신고 {it.report_count}건</span>
-                <span className="mod-time">{new Date(it.created_at).toLocaleString('ko-KR')}</span>
+                <span className="mod-course">{it.courseCode}{it.meta?.sectionNo ? `·${it.meta.sectionNo}분반` : ''}</span>
+                <span className="tag tag-warn mod-badge">🚨 신고 {it.reportCount}건</span>
+                <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
               </div>
               <p
                 className={`mod-text${contentPath(it) ? ' mod-text-link' : ''}`}
@@ -483,11 +512,11 @@ export default function Moderation() {
                       <span className="tag tag-primary mod-type">{g.target === 'section_add' ? '분반추가·자동' : '자동반영'}</span>
                       <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
                       {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
-                      <span className="mod-time">{new Date(g.created_at).toLocaleString('ko-KR')}</span>
+                      <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
                     </div>
                     <p className="mod-corr-diff">
                       <span className="mod-diff-label">수정 전</span>
-                      <span className="mod-diff-before">{g.prev_value ?? '—'}</span>
+                      <span className="mod-diff-before">{g.prevValue ?? '—'}</span>
                       <span className="mod-diff-arrow">→</span>
                       <span className="mod-diff-label">수정 후</span>
                       <b className="mod-diff-after">{fmtCorrAfter(g)}</b>
@@ -515,7 +544,7 @@ export default function Moderation() {
                     <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
                     {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
                     {highRisk && <span className="tag tag-warn mod-badge">⚠ 검토 필요</span>}
-                    <span className="mod-time">{new Date(g.created_at).toLocaleString('ko-KR')}</span>
+                    <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
                   </div>
                   <div className="mod-text">
                     <p className="mod-corr-diff">
@@ -553,10 +582,10 @@ export default function Moderation() {
               <li key={`del-${it.id}`} className={`card mod-card ${it.reviewed ? '' : 'flagged'}`}>
                 <div className="mod-card-top">
                   <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
-                  <span className="mod-course">{it.course_code}</span>
-                  <span className="tag tag-warn mod-badge">🚨 신고 {it.report_count}건 · {REASON_LABEL[it.reason] || it.reason}</span>
+                  <span className="mod-course">{it.courseCode}</span>
+                  <span className="tag tag-warn mod-badge">🚨 신고 {it.reportCount}건 · {REASON_LABEL[it.reason] || it.reason}</span>
                   {it.reviewed && <span className="tag mod-badge">확인됨</span>}
-                  <span className="mod-time">{new Date(it.created_at).toLocaleString('ko-KR')}</span>
+                  <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
                 </div>
                 <p className="mod-text"><Highlighted text={it.text || '(내용 없음)'} /></p>
                 <div className="mod-actions">

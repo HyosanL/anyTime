@@ -33,6 +33,20 @@ service cloud.firestore {
       allow read, write: if false; // Cloud Functions only, never client-readable
     }
 
+    // ---- notices / banned words: old read_notice/read_banned_word RLS ----
+    match /notices/{id} {
+      allow read: if isSignedIn()
+        && resource.data.isActive == true
+        && resource.data.expiresAt > request.time;
+      allow write: if false; // admin gateway only
+    }
+    match /bannedWords/{id} {
+      // Client needs the full list for pre-submit masking (korcen), same as
+      // the old read_banned_word policy — not itself sensitive.
+      allow read: if isSignedIn();
+      allow write: if false; // admin gateway only
+    }
+
     // ---- catalog: read-only to clients, admin gateway writes via Admin SDK ----
     match /professors/{id} { allow read: if isSignedIn(); allow write: if false; }
     match /semesters/{id} { allow read: if isSignedIn(); allow write: if false; }

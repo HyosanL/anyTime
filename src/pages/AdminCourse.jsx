@@ -14,7 +14,7 @@ const DAY_KO = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: 
 const DAYS = [1, 2, 3, 4, 5, 6, 7];
 const CORR_FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '과목명', section: '분반 추가' };
 
-const keyOf = (s) => `${s.year}-${s.term}-${s.section_no}`;
+const keyOf = (s) => `${s.year}-${s.term}-${s.sectionNo}`;
 
 // 분반추가 제안값(JSON) → 화면·프리필용. prof 표기 "이름 (코드)"에서 기존 교수코드도 뽑는다("신규"는 제외).
 function parseSectionAdd(suggested) {
@@ -27,7 +27,7 @@ function parseSectionAdd(suggested) {
 }
 
 // 교수 선택 — 드롭다운은 수백 명을 굴려야 한다. 이름·학과·코드로 검색해 고른다.
-// 비워 두면 '교수 미정'(professor_code = null).
+// 비워 두면 '교수 미정'(professorCode = null).
 function ProfessorPicker({ professors, value, onChange }) {
   const [q, setQ] = useState('');
   const picked = useMemo(
@@ -82,23 +82,23 @@ function ProfessorPicker({ professors, value, onChange }) {
 // 요일·시작교시는 PK 라, 자리를 옮기면 옛 행을 지우고 새 자리에 넣어야 한다(old 로 알려준다).
 function SectionTimeRow({ t, base, run, periods }) {
   const [f, setF] = useState({
-    day: t.day_of_week, start: t.start_period, end: t.end_period, room: t.room || '',
+    day: t.dayOfWeek, start: t.startPeriod, end: t.endPeriod, room: t.room || '',
   });
-  const dirty = f.day !== t.day_of_week || f.start !== t.start_period
-    || f.end !== t.end_period || (f.room || '') !== (t.room || '');
+  const dirty = f.day !== t.dayOfWeek || f.start !== t.startPeriod
+    || f.end !== t.endPeriod || (f.room || '') !== (t.room || '');
   const valid = f.end >= f.start;
 
   const save = () => run('set_section_time', {
     ...base,
-    day_of_week: f.day, start_period: f.start, end_period: f.end, room: f.room.trim() || null,
-    old: { day_of_week: t.day_of_week, start_period: t.start_period },
+    dayOfWeek: f.day, startPeriod: f.start, endPeriod: f.end, room: f.room.trim() || null,
+    old: { dayOfWeek: t.dayOfWeek, startPeriod: t.startPeriod },
   }, '강의시간 저장');
 
   const remove = () => {
-    if (!confirm(`${DAY_KO[t.day_of_week]} ${t.start_period}교시 강의시간을 삭제할까요?`)) return;
+    if (!confirm(`${DAY_KO[t.dayOfWeek]} ${t.startPeriod}교시 강의시간을 삭제할까요?`)) return;
     run('delete_catalog', {
-      table: 'section_time',
-      key: { ...base, day_of_week: t.day_of_week, start_period: t.start_period },
+      table: 'sectionTime',
+      key: { ...base, dayOfWeek: t.dayOfWeek, startPeriod: t.startPeriod },
     }, '강의시간 삭제');
   };
 
@@ -134,27 +134,27 @@ function SectionTimeRow({ t, base, run, periods }) {
 
 // 분반 한 개 — 접힌 상태에서는 요약 한 줄, 펼치면 교수·강의시간을 그 자리에서 고친다.
 function SectionCard({ s, times, professors, periods, run, open, onToggle }) {
-  const [profCode, setProfCode] = useState(s.professor_code || '');
+  const [profCode, setProfCode] = useState(s.professorCode || '');
   const [nt, setNt] = useState({ day: 1, start: 1, end: 1, room: '' });
-  const base = { course_code: s.course_code, year: s.year, term: s.term, section_no: s.section_no };
-  const prof = professors.find((p) => p.code === s.professor_code);
-  const dirty = profCode !== (s.professor_code || '');
+  const base = { courseCode: s.courseCode, year: s.year, term: s.term, sectionNo: s.sectionNo };
+  const prof = professors.find((p) => p.code === s.professorCode);
+  const dirty = profCode !== (s.professorCode || '');
   const when = times
-    .map((t) => (t.start_period === t.end_period
-      ? `${DAY_KO[t.day_of_week]}${t.start_period}`
-      : `${DAY_KO[t.day_of_week]}${t.start_period}-${t.end_period}`))
+    .map((t) => (t.startPeriod === t.endPeriod
+      ? `${DAY_KO[t.dayOfWeek]}${t.startPeriod}`
+      : `${DAY_KO[t.dayOfWeek]}${t.startPeriod}-${t.endPeriod}`))
     .join(', ');
 
   const remove = () => {
-    if (!confirm(`${s.year}-${s.term} ${s.section_no}분반과 그 강의시간을 삭제합니다.`)) return;
-    run('delete_catalog', { table: 'section', key: base }, `${s.section_no}분반 삭제`);
+    if (!confirm(`${s.year}-${s.term} ${s.sectionNo}분반과 그 강의시간을 삭제합니다.`)) return;
+    run('delete_catalog', { table: 'section', key: base }, `${s.sectionNo}분반 삭제`);
   };
 
   return (
     <div className={`adm-sec-card${open ? ' open' : ''}`}>
       <div className="adm-sec-head">
         <button type="button" className="adm-sec-lead" onClick={onToggle} aria-expanded={open}>
-          <span className="adm-sec-no">{s.section_no}분반</span>
+          <span className="adm-sec-no">{s.sectionNo}분반</span>
           <span className="adm-sec-meta">
             {s.year}-{s.term} · {prof?.name || '교수미정'} · {when || '시간미정'}
           </span>
@@ -170,7 +170,7 @@ function SectionCard({ s, times, professors, periods, run, open, onToggle }) {
             <ProfessorPicker professors={professors} value={profCode} onChange={setProfCode} />
           </div>
           <button className="btn-add btn-block btn-sm" disabled={!dirty}
-            onClick={() => run('set_section', { ...base, professor_code: profCode || null }, `${s.section_no}분반 저장`)}>
+            onClick={() => run('set_section', { ...base, professorCode: profCode || null }, `${s.sectionNo}분반 저장`)}>
             {dirty ? '담당 교수 저장' : '저장됨'}
           </button>
 
@@ -178,7 +178,7 @@ function SectionCard({ s, times, professors, periods, run, open, onToggle }) {
           <div className="adm-blk-list">
             {times.length === 0 && <p className="note">등록된 강의시간이 없습니다. 아래에서 추가하세요.</p>}
             {times.map((t) => (
-              <SectionTimeRow key={`${t.day_of_week}-${t.start_period}`} t={t} base={base} run={run} periods={periods} />
+              <SectionTimeRow key={`${t.dayOfWeek}-${t.startPeriod}`} t={t} base={base} run={run} periods={periods} />
             ))}
             <div className="adm-blk adm-blk-new">
               <div className="adm-blk-time">
@@ -203,7 +203,7 @@ function SectionCard({ s, times, professors, periods, run, open, onToggle }) {
                 <button className="btn-add btn-sm btn-block"
                   onClick={async () => {
                     const r = await run('set_section_time', {
-                      ...base, day_of_week: nt.day, start_period: nt.start, end_period: nt.end,
+                      ...base, dayOfWeek: nt.day, startPeriod: nt.start, endPeriod: nt.end,
                       room: nt.room.trim() || null,
                     }, '강의시간 추가');
                     if (r.ok) setNt({ day: 1, start: 1, end: 1, room: '' });
@@ -222,7 +222,7 @@ function SectionCard({ s, times, professors, periods, run, open, onToggle }) {
 function NewSectionCard({ courseCode, sections, semesters, professors, run, defYear, defTerm, onAdded, prefill }) {
   const [f, setF] = useState({
     year: prefill?.year ?? defYear, term: prefill?.term ?? defTerm,
-    section_no: prefill?.section_no ?? 1, professor_code: prefill?.professor_code ?? '',
+    sectionNo: prefill?.sectionNo ?? 1, professorCode: prefill?.professorCode ?? '',
   });
   // 프리필이 있으면 첫 자동번호 계산을 한 번 건너뛴다(제안한 번호가 살아남게).
   const skipAuto = useRef(!!prefill);
@@ -231,9 +231,9 @@ function NewSectionCard({ courseCode, sections, semesters, professors, run, defY
   useEffect(() => {
     if (skipAuto.current) { skipAuto.current = false; return; }
     const used = sections
-      .filter((s) => s.course_code === courseCode && s.year === f.year && s.term === f.term)
-      .map((s) => s.section_no);
-    setF((cur) => ({ ...cur, section_no: used.length ? Math.max(...used) + 1 : 1 }));
+      .filter((s) => s.courseCode === courseCode && s.year === f.year && s.term === f.term)
+      .map((s) => s.sectionNo);
+    setF((cur) => ({ ...cur, sectionNo: used.length ? Math.max(...used) + 1 : 1 }));
   }, [sections, courseCode, f.year, f.term]);
 
   const sems = semesters.length
@@ -249,29 +249,29 @@ function NewSectionCard({ courseCode, sections, semesters, professors, run, defY
             onChange={(e) => { const [y, t] = e.target.value.split('-').map(Number); setF({ ...f, year: y, term: t }); }}>
             {sems.map((s) => (
               <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>
-                {s.year}-{s.term}{s.is_current ? ' (현재)' : ''}
+                {s.year}-{s.term}{s.isCurrent ? ' (현재)' : ''}
               </option>
             ))}
           </select>
         </label>
         <label className="field"><span className="field-label">분반</span>
-          <input type="number" min="1" value={f.section_no}
-            onChange={(e) => setF({ ...f, section_no: +e.target.value })} />
+          <input type="number" min="1" value={f.sectionNo}
+            onChange={(e) => setF({ ...f, sectionNo: +e.target.value })} />
         </label>
       </div>
       <div className="field">
         <span className="field-label">담당 교수</span>
-        <ProfessorPicker professors={professors} value={f.professor_code}
-          onChange={(code) => setF({ ...f, professor_code: code })} />
+        <ProfessorPicker professors={professors} value={f.professorCode}
+          onChange={(code) => setF({ ...f, professorCode: code })} />
       </div>
       <button className="btn-add btn-block"
         onClick={async () => {
           const payload = {
-            course_code: courseCode, year: f.year, term: f.term, section_no: f.section_no,
-            professor_code: f.professor_code || null,
+            courseCode, year: f.year, term: f.term, sectionNo: f.sectionNo,
+            professorCode: f.professorCode || null,
           };
-          const r = await run('set_section', payload, `${f.section_no}분반 추가`);
-          if (r.ok) { setF({ ...f, professor_code: '' }); onAdded(keyOf(payload)); }
+          const r = await run('set_section', payload, `${f.sectionNo}분반 추가`);
+          if (r.ok) { setF({ ...f, professorCode: '' }); onAdded(keyOf(payload)); }
         }}>＋ 분반 추가</button>
     </div>
   );
@@ -282,7 +282,7 @@ export default function AdminCourse() {
   const [sp] = useSearchParams();
   const location = useLocation();
   const { cadet } = useAuthContext();
-  const isAdmin = cadet ? !!cadet.is_admin : null;
+  const isAdmin = cadet ? !!cadet.isAdmin : null;
   const [cat, setCat] = useState(null);
   const [msg, setMsg] = useState('');
   const [name, setName] = useState('');
@@ -314,28 +314,28 @@ export default function AdminCourse() {
   }, [addParam, cat]);
 
   const course = useMemo(
-    () => (cat?.course ?? []).find((c) => c.code === code) || null,
+    () => (cat?.courses ?? []).find((c) => c.code === code) || null,
     [cat, code]
   );
   // 과목명 입력칸은 과목이 처음 잡힐 때만 채운다(저장 후 카탈로그가 갱신돼도 입력 중인 값을 덮지 않게).
   useEffect(() => { if (course) setName((v) => v || course.name || ''); }, [course]);
 
-  const professors = cat?.professor ?? [];
-  const semesters = cat?.semester ?? [];
+  const professors = cat?.professors ?? [];
+  const semesters = cat?.semesters ?? [];
   const periods = useMemo(() => {
-    const ps = [...(cat?.period ?? [])].map((p) => p.no).sort((a, b) => a - b);
+    const ps = [...(cat?.periods ?? [])].map((p) => p.no).sort((a, b) => a - b);
     return ps.length ? ps : [1, 2, 3, 4, 5, 6, 7, 8];
   }, [cat]);
-  const curSem = semesters.find((s) => s.is_current) || semesters[0] || { year: 2026, term: 1 };
+  const curSem = semesters.find((s) => s.isCurrent) || semesters[0] || { year: 2026, term: 1 };
 
-  const sections = useMemo(() => (cat?.section ?? [])
-    .filter((s) => s.course_code === code)
-    .sort((a, b) => b.year - a.year || b.term - a.term || a.section_no - b.section_no),
+  const sections = useMemo(() => (cat?.sections ?? [])
+    .filter((s) => s.courseCode === code)
+    .sort((a, b) => b.year - a.year || b.term - a.term || a.sectionNo - b.sectionNo),
   [cat, code]);
-  const timesOf = (s) => (cat?.section_time ?? [])
-    .filter((t) => t.course_code === s.course_code && t.year === s.year
-      && t.term === s.term && t.section_no === s.section_no)
-    .sort((a, b) => a.day_of_week - b.day_of_week || a.start_period - b.start_period);
+  // sectionTimes 는 section 문서에 배열로 임베드돼 있다(설계 §3) — 옛 section_time 별도 테이블
+  // 조인이 필요 없다.
+  const timesOf = (s) => [...(s.sectionTimes ?? [])]
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startPeriod - b.startPeriod);
 
   async function run(action, payload, okMsg) {
     setMsg('');
@@ -356,7 +356,7 @@ export default function AdminCourse() {
     if (!addParam || corr?.target !== 'section_add' || !corr?.suggested) return null;
     const sa = parseSectionAdd(corr.suggested);
     if (!sa) return null;
-    return { section_no: sa.no ?? 1, year: corr.year, term: corr.term, professor_code: sa.profCode || '' };
+    return { sectionNo: sa.no ?? 1, year: corr.year, term: corr.term, professorCode: sa.profCode || '' };
   }, [addParam, corr]);
 
   // 제안대로 적용: 대표 1건 반영 + 동일 묶음 나머지 정리 + 카탈로그 새로고침.
@@ -456,7 +456,7 @@ export default function AdminCourse() {
             </div>
 
             <div className="divider adm-divider" ref={newSecRef} />
-            <NewSectionCard courseCode={code} sections={cat.section ?? []} semesters={semesters}
+            <NewSectionCard courseCode={code} sections={cat.sections ?? []} semesters={semesters}
               professors={professors} run={run} defYear={curSem.year} defTerm={curSem.term}
               onAdded={(k) => setOpen(k)} prefill={addPrefill} />
           </div>

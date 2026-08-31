@@ -2,22 +2,18 @@
 // - purge_board(90일)·관리자 일괄삭제 등 서버측 삭제는 R2 를 못 지우므로, 이 스윕이 대조 정리한다.
 // - 미들웨어가 X-Sweep-Secret 로 게이트(유저 JWT 대신, 크론 전용).
 // - 방금 업로드됐지만 글이 아직 안 만들어진 이미지를 지우지 않도록 GRACE(48h) 이후 것만 삭제.
-// 트리거: pg_cron + pg_net(net.http_post) 로 매일 호출(schema.sql 하단 템플릿 참고).
+// 트리거: 이관 전에도 비활성 상태였다(schema.sql 의 board-image-sweep cron 은 주석 처리).
+// 필요해지면 Cloud Scheduler → 이 엔드포인트를 X-Sweep-Secret 헤더로 호출하도록 구성.
 const GRACE_MS = 48 * 60 * 60 * 1000;
 
 export async function onRequest(context) {
   const { env } = context;
 
-  // 1) 현재 참조 중인 key 집합 (SECURITY DEFINER RPC, anon 키 + 서버-서버 시크릿).
-  //    시크릿이 없으면 anon 키를 가진 누구나 R2 이미지 key 전체를 열람할 수 있으므로 RPC 가 거부한다.
-  const refRes = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/board_referenced_keys`, {
+  // 1) 현재 참조 중인 key 집합 (boardReferencedKeys Cloud Function, X-Push-Secret 게이트).
+  //    시크릿이 없으면 R2 이미지 key 전체가 열람될 수 있으므로 함수가 헤더를 검증해 거부한다.
+  const refRes = await fetch('https://us-central1-anytime-rokafa.cloudfunctions.net/boardReferencedKeys', {
     method: 'POST',
-    headers: {
-      apikey: env.SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ p_secret: env.PUSH_SECRET }),
+    headers: { 'X-Push-Secret': env.PUSH_SECRET, 'Content-Type': 'application/json' },
   });
   if (!refRes.ok) return Response.json({ status: 'ERROR', step: 'refs' }, { status: 500 });
   const referenced = new Set((await refRes.json()) || []);

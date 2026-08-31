@@ -7,7 +7,8 @@
 //    관리자 화면(관리자 > 금지어)에서 banned_word 테이블로 관리한다(loadBannedWords 로 병합).
 // =====================================================================
 import { check as korcenCheck } from 'korcen';
-import { supabase } from '../supabase';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import { kvGet, kvSet } from './cache';
 function kcheck(t) { try { return !!t && korcenCheck(t); } catch { return false; } }
 
@@ -69,12 +70,10 @@ export async function loadBannedWords() {
     if (Array.isArray(cached)) setBannedWords(cached);
   } catch { /* 캐시 실패 무시 */ }
   try {
-    const { data, error } = await supabase.from('banned_word').select('word');
-    if (!error && Array.isArray(data)) {
-      const words = data.map((r) => r.word);
-      setBannedWords(words);
-      kvSet(CACHE_KEY, words);
-    }
+    const snap = await getDocs(collection(db, 'bannedWords'));
+    const words = snap.docs.map((d) => d.id); // 문서ID(자연키) = 금지어 문자열 그 자체
+    setBannedWords(words);
+    kvSet(CACHE_KEY, words);
   } catch { /* 오프라인 등: 캐시/내장 목록으로 동작 */ }
 }
 

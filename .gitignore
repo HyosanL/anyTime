@@ -119,6 +119,9 @@ dist
 # Firebase cache directory
 .firebase/
 
+# Firebase service account keys (never commit — used locally for the migration script)
+*firebase-adminsdk*.json
+
 # TernJS port file
 .tern-port
 

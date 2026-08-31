@@ -4,7 +4,8 @@
 // 무거운 pdfjs 는 이 모듈을 동적 import 하는 관리자 화면에서만 로드된다.
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { supabase } from '../supabase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, functions } from '../firebase';
 import { parseGridsOnPage, toItems, universalBlocks, crossCheck, fixColumnBleed } from './grid';
 import { profKey, isSubName, isPlaceholderProf } from './profname';
 import { extractHwp } from './hwp';
@@ -69,9 +70,8 @@ function chunkText(text, maxLen = 6000) {
 
 // ---------- Gemini 파싱 호출 ----------
 async function authHeader() {
-  const { data } = await supabase.auth.getSession();
-  const t = data?.session?.access_token;
-  return t ? `Bearer ${t}` : '';
+  const user = auth.currentUser;
+  return user ? `Bearer ${await user.getIdToken()}` : '';
 }
 
 // 실패해도 나머지 페이지는 계속 파싱하되, 사유는 버리지 않고 { rows, error } 로 돌려준다.
@@ -477,27 +477,21 @@ export const CSV_TEMPLATE = [
 // 그래서 번호를 믿지 않고 내용(강의시간 + 담당교수)으로 기존 분반을 먼저 찾아 그 번호를 물려받는다.
 const timesKey = (blocks) => [...(blocks ?? [])].map((b) => `${b.day}:${b.start}-${b.end}`).sort().join(',');
 
-// 이 학기 기존 분반: course_code → [{ sectionNo, professorCode, key(시간), times, room }]
-// room 은 '빈 칸만 채우기' 필터·표시에만 쓴다(section_time 행 중 하나라도 강의실이 있으면 있음으로 본다).
+// 이 학기 기존 분반: courseCode → [{ sectionNo, professorCode, key(시간), times, room }]
+// room 은 '빈 칸만 채우기' 필터·표시에만 쓴다(sectionTimes 항목 중 하나라도 강의실이 있으면 있음으로 본다).
+// sectionTimes 는 section 문서에 배열로 임베드돼 있다(설계 §3) — 옛 section_time 별도
+// 컬렉션 조인이 필요 없다.
 function existingSections(catalog, year, term) {
-  const blocksBySec = new Map();
-  const roomBySec = new Map();
-  for (const t of catalog?.section_time ?? []) {
-    if (Number(t.year) !== year || Number(t.term) !== term) continue;
-    const k = `${t.course_code}|${t.section_no}`;
-    (blocksBySec.get(k) ?? blocksBySec.set(k, []).get(k))
-      .push({ day: t.day_of_week, start: t.start_period, end: t.end_period });
-    if (t.room && !roomBySec.has(k)) roomBySec.set(k, t.room);
-  }
   const byCourse = new Map();
-  for (const s of catalog?.section ?? []) {
+  for (const s of catalog?.sections ?? []) {
     if (Number(s.year) !== year || Number(s.term) !== term) continue;
-    const k = `${s.course_code}|${s.section_no}`;
-    const times = blocksBySec.get(k) ?? [];
-    const list = byCourse.get(s.course_code) ?? byCourse.set(s.course_code, []).get(s.course_code);
+    const rawTimes = s.sectionTimes ?? [];
+    const times = rawTimes.map((t) => ({ day: t.dayOfWeek, start: t.startPeriod, end: t.endPeriod }));
+    const room = rawTimes.find((t) => t.room)?.room ?? null;
+    const list = byCourse.get(s.courseCode) ?? byCourse.set(s.courseCode, []).get(s.courseCode);
     list.push({
-      sectionNo: s.section_no, professorCode: s.professor_code ?? null,
-      key: timesKey(times), times, room: roomBySec.get(k) ?? null,
+      sectionNo: s.sectionNo, professorCode: s.professorCode ?? null,
+      key: timesKey(times), times, room,
     });
   }
   return byCourse;
@@ -573,9 +567,9 @@ function courseNamesRelated(a, b) {
 }
 
 export function reconcile(rows, periods, catalog, year, term, grids = []) {
-  const courses = catalog?.course ?? [];
-  const profs = catalog?.professor ?? [];
-  const sections = catalog?.section ?? [];
+  const courses = catalog?.courses ?? [];
+  const profs = catalog?.professors ?? [];
+  const sections = catalog?.sections ?? [];
 
   const courseByName = new Map();
   for (const c of courses) if (!courseByName.has(c.name)) courseByName.set(c.name, c);
@@ -657,7 +651,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
     }
     // 동명이인(또는 비슷한 이름 여럿): 과목 이력으로 보정
     const myCodes = profCourseCodes.get(name) ?? new Set();
-    const byHistory = matches.find((m) => sections.some((s) => s.professor_code === m.code && myCodes.has(s.course_code)));
+    const byHistory = matches.find((m) => sections.some((s) => s.professorCode === m.code && myCodes.has(s.courseCode)));
     const pick = byHistory ?? matches[0];
     return {
       name, aliases, code: pick.code, action: byHistory && exact.length ? 'match' : 'ambiguous',
@@ -728,7 +722,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
 
   // 전 생도 공통 비수업 시간 — 이 편람에서 '어떤 분반도 열리지 않는' 요일×교시.
   // 이름(생도대·군사훈련·공통연구…)은 주간 격자에서 그대로 읽어 온다(AI 호출 0회).
-  const periodNos = (periods.length ? periods.map((p) => p.no) : (catalog.period ?? []).map((p) => p.no))
+  const periodNos = (periods.length ? periods.map((p) => p.no) : (catalog.periods ?? []).map((p) => p.no))
     .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
   const gridBlocks = universalBlocks(grids);
@@ -787,7 +781,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
 // (2026-2 편람 기준: 화3·4, 화7·8, 목7·8, 금5~8 이 통째로 비어 있다)
 // 시간표 마법사가 이 시간을 '빈 시간(공강교시)'으로 세지 않는 근거가 된다 — 원래 수업이
 // 없는 시간이므로. 시각은 이렇게 자동으로 나오고, 이름만 관리자가 붙인다.
-// 이미 붙여 둔 이름(catalog.common_block)이 있으면 그대로 이어받는다(재적용해도 안 지워짐).
+// 이미 붙여 둔 이름(catalog.commonBlocks)이 있으면 그대로 이어받는다(재적용해도 안 지워짐).
 export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, gridBlocks = []) {
   if (!periodNos.length) return [];
   const used = new Set();
@@ -808,9 +802,9 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, g
   for (const b of gridBlocks) {
     for (let p = b.start; p <= b.end; p++) prev[`${b.day}-${p}`] = b.label;
   }
-  for (const b of catalog.common_block ?? []) {
+  for (const b of catalog.commonBlocks ?? []) {
     if (b.year !== year || b.term !== term) continue;
-    for (let p = b.start_period; p <= b.end_period; p++) prev[`${b.day_of_week}-${p}`] = b.label;
+    for (let p = b.startPeriod; p <= b.endPeriod; p++) prev[`${b.dayOfWeek}-${p}`] = b.label;
   }
 
   const out = [];
@@ -831,10 +825,10 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, g
   // 관리자가 손으로 등록해 둔 블록은 그대로 이어받는다.
   // 자동 유도는 '개설 분반 0개'만 잡으므로, 월7·8·수7·8 처럼 자율선택형교과(체육)가 열려 있는
   // 시간은 절대 못 찾는다 — 관리자가 직접 넣은 것을 편람을 다시 올렸다고 날려서는 안 된다.
-  for (const b of catalog.common_block ?? []) {
+  for (const b of catalog.commonBlocks ?? []) {
     if (b.year !== year || b.term !== term) continue;
-    if (covered.has(`${b.day_of_week}-${b.start_period}`)) continue;   // 자동 유도가 이미 덮음
-    out.push({ day: b.day_of_week, start: b.start_period, end: b.end_period, label: b.label, manual: true });
+    if (covered.has(`${b.dayOfWeek}-${b.startPeriod}`)) continue;   // 자동 유도가 이미 덮음
+    out.push({ day: b.dayOfWeek, start: b.startPeriod, end: b.endPeriod, label: b.label, manual: true });
   }
 
   return out
@@ -872,11 +866,11 @@ export function findProfConflicts(plan) {
 
 // ---------- 적용 ----------
 async function callAdmin(action, payload) {
-  const { data, error } = await supabase.functions.invoke('admin-action', { body: { action, payload } });
-  if (error) {
-    let status;
-    try { status = (await error.context?.json?.())?.status; } catch { /* ignore */ }
-    throw new Error(status || error.message || 'admin-action 실패');
+  let data;
+  try {
+    ({ data } = await httpsCallable(functions, 'adminAction')({ action, payload }));
+  } catch (e) {
+    throw new Error(e.code || e.message || 'adminAction 실패');
   }
   if (data?.status && data.status !== 'OK') throw new Error(data.status);
   return data;
@@ -929,7 +923,7 @@ export async function applyPlan(plan, { onProgress, partial = false } = {}) {
     const excluded = new Set(plan.courses.filter((c) => c.include === false && c.code).map((c) => c.code));
     const list = plan.stale
       .filter((s) => !excluded.has(s.courseCode))
-      .map((s) => ({ course_code: s.courseCode, section_no: s.sectionNo }));
+      .map((s) => ({ courseCode: s.courseCode, sectionNo: s.sectionNo }));
     if (list.length) {
       const r = await callAdmin('delete_sections', { year: plan.year, term: plan.term, sections: list });
       removed = { sections: r.removed || 0, entries: r.entries || 0 };

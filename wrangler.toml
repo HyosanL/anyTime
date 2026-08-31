@@ -6,31 +6,21 @@ name = "anytime"
 compatibility_date = "2024-09-01"
 pages_build_output_dir = "dist"
 
-# Functions 런타임 변수 (anon 키·VAPID 공개키는 공개 안전)
-# ※ 비밀값(SUPABASE_JWT_SECRET·SWEEP_SECRET·PUSH_SECRET·VAPID_PRIVATE_KEY)은
+# Functions 런타임 변수 (VAPID 공개키는 공개 안전)
+# ※ 비밀값(SWEEP_SECRET·PUSH_SECRET·VAPID_PRIVATE_KEY·GEMINI_API_KEY)은
 #   Pages 대시보드 Secret(또는 wrangler pages secret put)으로만 관리.
-# ※ SUPABASE_JWT_SECRET 은 더 이상 어떤 코드에서도 읽지 않는다(_middleware.js 가
-#   Firebase ID 토큰/JWKS 검증으로 교체됨, 2026-08-31) — 남아 있다면 정리 후보.
-#   SUPABASE_URL·SUPABASE_ANON_KEY 는 board-delete.js·exam-delete.js·board-sweep.js·
-#   push-fanout.js·share-image.js 가 아직 Supabase REST/RPC 를 직접 호출하므로
-#   (이 함수들의 Firebase 이관은 별도 작업 범위) 지금은 그대로 둔다.
 [vars]
-SUPABASE_URL = "https://yxolswmfbwisesnoyucr.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4b2xzd21mYndpc2Vzbm95dWNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTgyNTYsImV4cCI6MjA5ODI3NDI1Nn0.lJVQLSWiq0aqhZym52szF0I6lVJJHF0yRP11FxMKmbw"
 VAPID_PUBLIC_KEY = "BGtso3kqB7AAA-AOUSuuA7GevBHMj2z4I3y-hY6XC9hftbYb1qyTUEAi4kyKOTnY0N1wP7LkNuhhMpMdsVYtNFQ"
 VAPID_SUBJECT = "mailto:hyosanl0211@gmail.com"
 
-# ※ Firebase 이관(2026-08-31, functions/api/_middleware.js): 로그인 검증을 Supabase
-#   HS256 정적 시크릿에서 Firebase ID 토큰(RS256, JWKS) 검증으로 교체했다.
-#   - 새 시크릿은 필요 없다 — JWKS(https://www.googleapis.com/service_accounts/v1/jwk/
-#     securetoken@system.gserviceaccount.com)는 Google 이 공개 호스팅하므로 인증 없이
-#     조회 가능하고, jose 의 createRemoteJWKSet 이 응답을 캐싱한다.
-#   - 프로젝트 ID(`anytime-rokafa`)는 issuer/audience 검사에 쓰이며, 현재는
-#     _middleware.js 안에 상수로 하드코딩되어 있다(설계 문서 §8 그대로). 여러 환경을
-#     운용하게 되면 이 값을 아래처럼 plain var 로 빼서 env.FIREBASE_PROJECT_ID 로
-#     읽도록 바꿀 수 있다 — 시크릿이 아니라 공개 식별자이므로 Pages Secret 이 아닌
-#     [vars] 로 충분하다:
-#     FIREBASE_PROJECT_ID = "anytime-rokafa"
+# ※ Firebase 이관(2026-08-31, functions/api/_middleware.js): 로그인 검증은 Firebase ID
+#   토큰(RS256, JWKS)으로 한다. 새 시크릿 불필요 — JWKS(https://www.googleapis.com/
+#   service_accounts/v1/jwk/securetoken@system.gserviceaccount.com)는 Google 이 공개
+#   호스팅하므로 인증 없이 조회 가능하고, jose 의 createRemoteJWKSet 이 응답을 캐싱한다.
+#   프로젝트 ID(`anytime-rokafa`)는 issuer/audience 검사에 _middleware.js 안 상수로 쓰인다.
+# ※ share-image.js·board-sweep.js 는 이제 Supabase 대신 Firebase Cloud Functions
+#   (shareImageOk·boardReferencedKeys, https://us-central1-anytime-rokafa.cloudfunctions.net/…)
+#   를 직접 호출한다 — Supabase 관련 변수는 모두 제거됨(2026-09-01, Firebase 이관 완료).
 
 # R2 버킷 바인딩 (대시보드에서 'anytime-exams' 비공개 버킷 생성 필요)
 [[r2_buckets]]
@@ -43,6 +33,6 @@ bucket_name = "anytime-exams"
 #     wrangler pages secret put GEMINI_API_KEY
 #   (유료 등급 키로 쓸 것 — 무료 등급은 제출 내용이 Google 학습·사람 검토에 사용된다.)
 
-# ※ 프론트 빌드용 VITE_ 변수(VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY)는
-#   Git 연동 배포 시 Pages 대시보드 > Settings > Environment variables 에 등록.
+# ※ 프론트 빌드용 VITE_ 변수(VITE_FIREBASE_*)는 .env.production 에 커밋되어 있다
+#   (Firebase 클라이언트 config 는 공개값 — apiKey 자체는 비밀 아님).
 #   wrangler CLI 로 로컬 빌드 후 배포하면 로컬 .env 가 사용됨.

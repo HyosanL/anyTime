@@ -20,7 +20,7 @@ export default defineConfig({
         // (재방문 사용자의 다운로드량 감소). 초기 총량은 비슷하되 캐시 효율이 오른다.
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
-          supabase: ['@supabase/supabase-js'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/functions'],
         },
       },
     },
@@ -68,7 +68,7 @@ export default defineConfig({
         globIgnores: ['**/syllabus-*.js', '**/pdf.worker*', '**/Admin-*.js', '**/og.png'],
         // 오프라인: 어떤 경로로 새로고침해도 앱 셸(index.html)을 캐시에서 반환
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/, /supabase/],
+        navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true
       }
     })

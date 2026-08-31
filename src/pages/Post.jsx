@@ -27,14 +27,14 @@ function timeAgo(iso) {
   return `${d.getMonth() + 1}.${d.getDate()}`;
 }
 
-function CommentDelete({ id, hasPw, isAdmin, onDone }) {
+function CommentDelete({ postId, id, hasPw, isAdmin, onDone }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
   // 비번 없는 댓글 또는 관리자: 확인 후 바로 삭제
   if (!hasPw || isAdmin) {
     return <button className="rev-del-btn" onClick={async () => {
       if (!confirm('이 댓글을 삭제할까요?')) return;
-      const { data, error } = await deleteComment(id, '');
+      const { data, error } = await deleteComment(postId, id, '');
       if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
       onDone();
     }}>삭제</button>;
@@ -43,7 +43,7 @@ function CommentDelete({ id, hasPw, isAdmin, onDone }) {
   return (
     <span className="comment-del">
       <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="비번" />
-      <button className="link-btn" onClick={async () => { const { data, error } = await deleteComment(id, pw); if (error || data === false) { alert('비번 불일치'); return; } onDone(); }}>확인</button>
+      <button className="link-btn" onClick={async () => { const { data, error } = await deleteComment(postId, id, pw); if (error || data === false) { alert('비번 불일치'); return; } onDone(); }}>확인</button>
     </span>
   );
 }
@@ -52,7 +52,7 @@ export default function Post() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { cadet } = useAuthContext();
-  const isAdmin = !!cadet?.is_admin;
+  const isAdmin = !!cadet?.isAdmin;
   const [post, setPost] = useState(null);
   const [comments, setComments] = useState([]);
   const [gone, setGone] = useState(false); // 서버 기준으로 삭제/없는 글
@@ -70,9 +70,9 @@ export default function Post() {
     const byParent = new Map();
     const rootList = [];
     for (const c of comments) {
-      if (c.parent_id) {
-        const arr = byParent.get(c.parent_id);
-        if (arr) arr.push(c); else byParent.set(c.parent_id, [c]);
+      if (c.parentId) {
+        const arr = byParent.get(c.parentId);
+        if (arr) arr.push(c); else byParent.set(c.parentId, [c]);
       } else rootList.push(c);
     }
     return { roots: rootList, repliesByParent: byParent };
@@ -162,7 +162,7 @@ export default function Post() {
   }
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
   async function onDeleteClick() {
-    if (post.has_password && !isAdmin) { setShowDel((v) => !v); return; }
+    if (post.hasPassword && !isAdmin) { setShowDel((v) => !v); return; }
     if (!confirm('이 게시글을 삭제할까요?')) return;
     const { data, error } = await deletePost(Number(id), '');
     if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
@@ -188,7 +188,7 @@ export default function Post() {
     );
   }
   if (!post) return <div className="page-center">불러오는 중…</div>;
-  const ago = timeAgo(post.created_at);
+  const ago = timeAgo(post.createdAt);
 
   return (
     <PullToRefresh className="page noscreenshot" onRefresh={load}>
@@ -204,21 +204,21 @@ export default function Post() {
             <button
               type="button"
               className="post-board-chip"
-              onClick={() => navigate(`/board/${post.board_id}`)}
+              onClick={() => navigate(`/board/${post.boardId}`)}
               title={`${post.board.name} 게시판으로 이동`}
             >{post.board.name}</button>
           )}
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
-          <span className="metric">👀 {post.view_count ?? 0}</span>
+          <span className="metric">👀 {post.viewCount ?? 0}</span>
           <span className="metric">💬 {comments.length}</span>
         </div>
         <p className="post-content">{post.content}</p>
         {postImageKeys(post).map((k) => <BoardImage key={k} imageKey={k} className="post-image" />)}
         <div className="post-react">
-          <button className={`react-pill${reacted.like ? ' is-on' : ''}`} onClick={() => doReact('like')}>👍 <b>{post.like_count}</b></button>
-          <button className={`react-pill${reacted.dislike ? ' is-on' : ''}`} onClick={() => doReact('dislike')}>👎 <b>{post.dislike_count}</b></button>
-          <button className={`react-pill react-report${reacted.report ? ' is-on' : ''}`} disabled={!!reacted.report} onClick={() => doReact('report')}>🚨 <b>{post.report_count}</b></button>
+          <button className={`react-pill${reacted.like ? ' is-on' : ''}`} onClick={() => doReact('like')}>👍 <b>{post.likeCount}</b></button>
+          <button className={`react-pill${reacted.dislike ? ' is-on' : ''}`} onClick={() => doReact('dislike')}>👎 <b>{post.dislikeCount}</b></button>
+          <button className={`react-pill react-report${reacted.report ? ' is-on' : ''}`} disabled={!!reacted.report} onClick={() => doReact('report')}>🚨 <b>{post.reportCount}</b></button>
           <button className={`react-pill${watching ? ' is-on' : ''}`} onClick={toggleWatch} title="이 글에 댓글이 달리면 푸시 알림">
             {watching ? '🔔' : '🔕'} 알림
           </button>
@@ -258,12 +258,12 @@ export default function Post() {
             <p className="comment-body">{c.content}</p>
             <div className="comment-actions">
               <button className="link-btn" onClick={() => setReplyTo(c.id)}>답글</button>
-              <CommentDelete id={c.id} hasPw={!!c.has_password} isAdmin={isAdmin} onDone={load} />
+              <CommentDelete postId={Number(id)} id={c.id} hasPw={!!c.hasPassword} isAdmin={isAdmin} onDone={load} />
             </div>
             {(repliesByParent.get(c.id) || []).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
-                <div className="comment-actions"><CommentDelete id={rc.id} hasPw={!!rc.has_password} isAdmin={isAdmin} onDone={load} /></div>
+                <div className="comment-actions"><CommentDelete postId={Number(id)} id={rc.id} hasPw={!!rc.hasPassword} isAdmin={isAdmin} onDone={load} /></div>
               </div>
             ))}
           </li>

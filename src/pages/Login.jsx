@@ -17,7 +17,7 @@ export default function Login() {
       await login(username, password);
       navigate('/', { replace: true });
     } catch (err) {
-      // Supabase 는 잘못된 자격증명에 invalid_login_credentials 류 메시지를 준다.
+      // Firebase 는 잘못된 자격증명에 auth/invalid-credential 류 메시지를 준다.
       setError(/credential|invalid/i.test(err.message)
         ? '아이디 또는 비밀번호가 올바르지 않습니다.'
         : err.message || '로그인에 실패했습니다.');
