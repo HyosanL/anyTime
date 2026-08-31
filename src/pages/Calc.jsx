@@ -7,6 +7,7 @@ import {
   GRADE_ORDER, listGrades, addGrade, addGrades, updateGrade, deleteGrade,
   gpaOf, groupBySemester, cumulativeGpa, trendPoints,
 } from '../lib/grades';
+import { listRanks, upsertRank, percentile, rankTrendPoints } from '../lib/ranks';
 import {
   computeCourse, isWarn, sortCourses, round1,
   loadState, saveState, makeCourse, mergeCourses,
@@ -30,6 +31,7 @@ async function timetableCourseNames(catalog, year, term) {
 // =====================================================================
 function GpaTab({ catalog, uid }) {
   const [rows, setRows] = useState(null);       // null = 로딩 전
+  const [ranks, setRanks] = useState(null);     // null = 로딩 전, 학기당 최대 1행
   const [sem, setSem] = useState(null);          // { year, term }
   const [err, setErr] = useState('');
   const [seeding, setSeeding] = useState(false);
@@ -43,6 +45,14 @@ function GpaTab({ catalog, uid }) {
         setRows(data);
       } catch {
         if (active) { setRows([]); setErr('성적을 불러오지 못했어요. 잠시 후 다시 시도하세요.'); }
+      }
+    })();
+    (async () => {
+      try {
+        const data = await listRanks();
+        if (active) setRanks(data);
+      } catch {
+        if (active) setRanks([]); // 등수는 부가 기능이라 실패해도 화면은 그대로 쓴다
       }
     })();
     return () => { active = false; };
@@ -71,6 +81,27 @@ function GpaTab({ catalog, uid }) {
   const semStat = useMemo(() => gpaOf(semRows), [semRows]);
   const cumStat = useMemo(() => cumulativeGpa(rows ?? []), [rows]);
   const points = useMemo(() => trendPoints(groupBySemester(rows ?? [])), [rows]);
+  const rankPoints = useMemo(() => rankTrendPoints(ranks ?? []), [ranks]);
+  const rankRow = useMemo(
+    () => (ranks ?? []).find((r) => sem && r.year === sem.year && r.term === sem.term) ?? null,
+    [ranks, sem]
+  );
+
+  // 등수 한 필드 저장 — 4칸(학위교육/생활훈련 × 등수/총원) 중 하나가 바뀔 때마다 그 학기 행
+  // 전체를 upsert 한다(행이 없으면 새로 만들어짐). 값이 하나도 없어지면 null 로 저장한다.
+  const patchRank = useCallback((field, value) => {
+    if (!sem || !uid) return;
+    const base = rankRow ?? { academic_rank: null, academic_total: null, training_rank: null, training_total: null };
+    const patch = { ...base, [field]: value };
+    delete patch.id; delete patch.year; delete patch.term;
+    setRanks((prev) => {
+      const list = prev ?? [];
+      const exists = list.some((r) => r.year === sem.year && r.term === sem.term);
+      const next = { year: sem.year, term: sem.term, ...patch };
+      return exists ? list.map((r) => (r.year === sem.year && r.term === sem.term ? next : r)) : [...list, next];
+    });
+    upsertRank(uid, sem.year, sem.term, patch).catch(() => setErr('등수 저장에 실패했어요. 네트워크를 확인하세요.'));
+  }, [sem, uid, rankRow]);
 
   // 로컬 낙관 갱신 + 서버 반영. 실패하면 한 번 알린다(값은 유지 — 재시도는 사용자 몫).
   const patchRow = useCallback((id, patch) => {
@@ -202,6 +233,26 @@ function GpaTab({ catalog, uid }) {
               <span className="gpa-stat-sub">{cumStat.credits}학점</span>
             </div>
           </div>
+
+          {/* 등수는 성적표와 별도로 학교가 통지하는 값이라 생도가 직접 적어 넣는다.
+              학기당 한 행(rank_entry)에 두 갈래(학위교육/생활훈련)를 같이 저장한다. */}
+          <div className="rank-box" key={`${sem.year}-${sem.term}`}>
+            <div className="calc-sec-title">이 학기 등수</div>
+            <RankRow
+              label="학위교육과목"
+              rank={rankRow?.academic_rank}
+              total={rankRow?.academic_total}
+              onRank={(v) => patchRank('academic_rank', v)}
+              onTotal={(v) => patchRank('academic_total', v)}
+            />
+            <RankRow
+              label="생활/훈련과목"
+              rank={rankRow?.training_rank}
+              total={rankRow?.training_total}
+              onRank={(v) => patchRank('training_rank', v)}
+              onTotal={(v) => patchRank('training_total', v)}
+            />
+          </div>
         </>
       ) : (
         <p className="center muted">학기 정보가 없어요.</p>
@@ -213,7 +264,87 @@ function GpaTab({ catalog, uid }) {
           <TrendChart points={points} />
         </section>
       )}
+
+      {rankPoints.length > 0 && (
+        <section className="gpa-trend">
+          <h3 className="calc-sec-title">등수 추이 (백분위 · 높을수록 상위권)</h3>
+          <RankTrendChart points={rankPoints} />
+        </section>
+      )}
     </div>
+  );
+}
+
+// 등수 입력 한 줄 — "15 / 195" 형태로 내 등수·총원을 각각 받는다. 숫자 입력이라 onBlur 에 정리·저장.
+function RankRow({ label, rank, total, onRank, onTotal }) {
+  const pct = percentile(rank, total);
+  return (
+    <div className="rank-row">
+      <span className="rank-row-label">{label}</span>
+      <span className="rank-row-fields">
+        <input
+          className="rank-input" type="number" inputMode="numeric" min="1" step="1"
+          placeholder="등수" defaultValue={rank ?? ''}
+          onBlur={(e) => {
+            const v = e.target.value === '' ? null : Math.max(1, Math.round(Number(e.target.value)) || 1);
+            e.target.value = v ?? '';
+            if (v !== (rank ?? null)) onRank(v);
+          }}
+        />
+        <span className="rank-row-slash">/</span>
+        <input
+          className="rank-input" type="number" inputMode="numeric" min="1" step="1"
+          placeholder="총원" defaultValue={total ?? ''}
+          onBlur={(e) => {
+            const v = e.target.value === '' ? null : Math.max(1, Math.round(Number(e.target.value)) || 1);
+            e.target.value = v ?? '';
+            if (v !== (total ?? null)) onTotal(v);
+          }}
+        />
+      </span>
+      <span className="rank-row-pct">{pct != null ? `상위 ${(100 - pct).toFixed(1)}%` : ''}</span>
+    </div>
+  );
+}
+
+// 등수 추이 차트 — GPA 와 같은 인라인 SVG. 백분위(0~100, 높을수록 좋음)로 두 갈래를 겹쳐 그린다.
+function RankTrendChart({ points }) {
+  const W = 320, H = 150, padL = 30, padR = 12, padT = 12, padB = 26;
+  const maxY = 100, minY = 0;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const n = points.length;
+  const x = (i) => padL + (n === 1 ? innerW / 2 : (innerW * i) / (n - 1));
+  const y = (v) => padT + innerH * (1 - (v - minY) / (maxY - minY));
+  const gridY = [0, 25, 50, 75, 100];
+  const lineOf = (key) => {
+    const pts = points.map((p, i) => ({ i, v: p[key] })).filter((p) => p.v != null);
+    return pts.map((p, k) => `${k ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+  };
+
+  return (
+    <svg className="gpa-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="등수 백분위 추이 차트">
+      {gridY.map((g) => (
+        <g key={g}>
+          <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} className="gpa-chart-grid" />
+          <text x={padL - 5} y={y(g) + 3} className="gpa-chart-axis" textAnchor="end">{g}</text>
+        </g>
+      ))}
+      <path d={lineOf('academic')} className="rank-chart-line rank-chart-academic" fill="none" />
+      <path d={lineOf('training')} className="rank-chart-line rank-chart-training" fill="none" />
+      {points.map((p, i) => (
+        <g key={p.label + i}>
+          {p.academic != null && <circle cx={x(i)} cy={y(p.academic)} r="3" className="gpa-chart-dot rank-chart-academic" />}
+          {p.training != null && <circle cx={x(i)} cy={y(p.training)} r="3" className="gpa-chart-dot rank-chart-training" />}
+          <text x={x(i)} y={H - 8} className="gpa-chart-axis" textAnchor="middle">{p.label}</text>
+        </g>
+      ))}
+      <g className="rank-chart-legend">
+        <circle cx={padL + 4} cy={padT - 4} r="3" className="rank-chart-academic" />
+        <text x={padL + 10} y={padT - 1} className="gpa-chart-axis">학위교육</text>
+        <circle cx={padL + 62} cy={padT - 4} r="3" className="rank-chart-training" />
+        <text x={padL + 68} y={padT - 1} className="gpa-chart-axis">생활/훈련</text>
+      </g>
+    </svg>
   );
 }
 

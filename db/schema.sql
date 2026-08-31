@@ -327,6 +327,25 @@ CREATE TABLE grade_entry (
 CREATE INDEX idx_grade_entry_cadet ON grade_entry (cadet_id, year DESC, term DESC, sort_order);
 
 
+-- 학점계산기: 생도별 학기 등수(학위교육과목/생활·훈련과목 각각 내 등수·총원). 학기당 한 행.
+-- grade_entry 와 같은 이유로 semester FK 는 걸지 않는다 — 과거 학기 개인 기록은 카탈로그와 무관.
+CREATE TABLE rank_entry (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    cadet_id        UUID     NOT NULL REFERENCES cadet(id) ON DELETE CASCADE,
+    year            SMALLINT NOT NULL,
+    term            SMALLINT NOT NULL,
+    academic_rank   INT CHECK (academic_rank  IS NULL OR academic_rank  >= 1),   -- 학위교육과목 내 등수
+    academic_total  INT CHECK (academic_total IS NULL OR academic_total >= 1),   -- 학위교육과목 총원
+    training_rank   INT CHECK (training_rank  IS NULL OR training_rank  >= 1),   -- 생활/훈련과목 내 등수
+    training_total  INT CHECK (training_total IS NULL OR training_total >= 1),   -- 생활/훈련과목 총원
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (cadet_id, year, term),
+    CHECK (academic_rank IS NULL OR academic_total IS NULL OR academic_rank <= academic_total),
+    CHECK (training_rank IS NULL OR training_total IS NULL OR training_rank <= training_total)
+);
+CREATE INDEX idx_rank_entry_cadet ON rank_entry (cadet_id, year DESC, term DESC);
+
+
 -- =====================================================================
 --  5장. 강의평 (과목·교수 조합 참조, 익명)
 -- =====================================================================
@@ -859,6 +878,7 @@ ALTER TABLE timetable       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE timetable_entry ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_class    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE grade_entry     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rank_entry      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_report ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exam_archive  ENABLE ROW LEVEL SECURITY;
@@ -899,6 +919,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON custom_class TO authenticated;
 CREATE POLICY own_grade_entry ON grade_entry FOR ALL TO authenticated
     USING (cadet_id = auth.uid()) WITH CHECK (cadet_id = auth.uid());
 GRANT SELECT, INSERT, UPDATE, DELETE ON grade_entry TO authenticated;
+-- 학점계산기 등수: 본인 행만(grade_entry 와 동일 패턴)
+CREATE POLICY own_rank_entry ON rank_entry FOR ALL TO authenticated
+    USING (cadet_id = auth.uid()) WITH CHECK (cadet_id = auth.uid());
+GRANT SELECT, INSERT, UPDATE, DELETE ON rank_entry TO authenticated;
 -- class_memo / app_setting / correction : 정책 없음 → 서버 함수(RPC/service_role)만.
 -- review_report / memo_report : 정책 없음(deny-all) → report_review()/report_memo() RPC 와
 --   admin-action(service_role) 만 접근. RLS 를 빠뜨리면 Supabase 기본 GRANT 때문에
