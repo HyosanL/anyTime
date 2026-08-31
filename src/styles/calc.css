@@ -79,6 +79,33 @@ button.gpa-c-del { width: 34px; height: 34px; font-size: 0.95rem; }
 .gpa-chart-line { stroke: var(--primary); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
 .gpa-chart-dot { fill: var(--primary); }
 
+.rank-box {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 0.8rem 0.9rem;
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.rank-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.rank-row-label { flex: 1 1 auto; min-width: 5.5rem; font-size: 0.85rem; font-weight: 600; color: var(--text-2); }
+.rank-row-fields { display: flex; align-items: center; gap: 0.3rem; flex: none; }
+/* base.css 의 input[type="number"]{width:100%} 보다 우선하려면 클래스 하나로는 안 된다
+   (속성 선택자까지 붙어 특정성이 더 높다) — 부모로 범위를 좁혀 이긴다. */
+.rank-row-fields .rank-input {
+  width: 3.6rem; text-align: center; padding: 0.35rem 0.2rem;
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--input-bg); color: var(--text);
+}
+.rank-row-slash { color: var(--text-3); }
+.rank-row-pct { flex: none; font-size: 0.75rem; color: var(--text-3); min-width: 4.2rem; text-align: right; }
+
+/* path(선)와 circle(점·범례)이 같은 색 클래스를 함께 쓰므로, fill/stroke 를 원소별로
+   따로 지정한다 — 안 나누면 SVG 에서 클래스의 fill 이 path 의 fill="none" 을 덮어써
+   선이 통째로 칠해져 버린다. */
+.rank-chart-line { stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+path.rank-chart-academic { stroke: var(--primary); fill: none; }
+path.rank-chart-training { stroke: var(--accent); fill: none; }
+circle.rank-chart-academic { fill: var(--primary); }
+circle.rank-chart-training { fill: var(--accent); }
+.rank-chart-legend text { dominant-baseline: middle; }
+
 /* ===================================================== */
 /*  과락점수계산기                                        */
 /* ===================================================== */
