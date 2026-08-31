@@ -94,6 +94,25 @@ export const setPrimaryTimetable = onCall(async (request) => {
   return { ok: true };
 });
 
+// No SQL/RPC equivalent existed (the old schema let the client UPDATE
+// timetable.name directly under RLS) — added because the client's rename
+// flow (Home.jsx/TimetableSwitcher.jsx/Wizard.jsx) expects it and
+// `timetables/{id}` is blanket `allow write: if false` in firestore.rules,
+// same reasoning as every other write in this file.
+export const renameTimetable = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { timetableId, name } = request.data || {};
+  const trimmed = String(name || '').trim();
+  if (!timetableId) invalid('시간표를 지정하세요.');
+  if (!trimmed) invalid('이름을 입력하세요.');
+
+  const ref = timetablesCol(uid).doc(timetableId);
+  const snap = await ref.get();
+  if (!snap.exists) invalid('시간표를 찾을 수 없습니다.');
+  await ref.update({ name: trimmed });
+  return { ok: true };
+});
+
 // =====================================================================
 //  3. deleteTimetable — port of timetable_repromote() + cascade delete
 // =====================================================================

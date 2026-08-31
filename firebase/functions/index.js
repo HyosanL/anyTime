@@ -20,6 +20,7 @@ export { adminAction } from './src/admin.js';
 export {
   createTimetable,
   setPrimaryTimetable,
+  renameTimetable,
   deleteTimetable,
   addTimetableEntry,
   removeTimetableEntry,
