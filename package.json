@@ -7,17 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler pages deploy dist --project-name=anytime --branch=main --commit-dirty=true",
-    "migrate:firebase": "node scripts/migrate-to-firebase.mjs"
+    "deploy": "vite build && wrangler pages deploy dist --project-name=anytime --branch=main --commit-dirty=true"
   },
   "dependencies": {
-    "cfb": "^1.2.2",
     "firebase": "^11.0.0",
     "idb": "^8.0.0",
     "jose": "^6.2.10",
     "korcen": "^1.0.1",
-    "pako": "^3.0.1",
-    "pdfjs-dist": "^4.10.38",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0"

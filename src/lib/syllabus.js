@@ -1,216 +1,18 @@
-// 강의 PDF/HWP → 구조화 → 기존 DB 대조 플랜 → 적용.
-// 흐름: pdf.js·hwp.js(브라우저)로 페이지(또는 그에 준하는) 텍스트 추출 → /api/parse-syllabus(Gemini)로 구조화
-//      → reconcile(기존 catalog와 대조: 과목 병합/교수 매칭·동명이인) → admin-action 으로 적용.
-// 무거운 pdfjs 는 이 모듈을 동적 import 하는 관리자 화면에서만 로드된다.
-import * as pdfjsLib from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// 강의 CSV → 구조화 → 기존 DB 대조 플랜 → 적용.
+// 흐름: parseCsvRows(결정적 파싱) → reconcile(기존 catalog와 대조: 과목 병합/교수 매칭·동명이인)
+//      → admin-action 으로 적용.
+// 2026-09 PDF/HWP → Gemini(AI) 경로 폐지 — 같은 파일을 다시 돌려도 매번 살짝 다른 결과가
+// 나오는 문제(LLM 샘플링)가 프롬프트를 아무리 좁혀도 완전히 없어지지 않아, 결정적인 CSV
+// 경로만 남겼다(functions/api/parse-syllabus.js 삭제 — GEMINI_API_KEY 시크릿 폐기는
+// wrangler.toml 상단 주석 참고).
 import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../firebase';
-import { parseGridsOnPage, toItems, universalBlocks, crossCheck, fixColumnBleed } from './grid';
+import { functions } from '../firebase';
 import { profKey, isSubName, isPlaceholderProf } from './profname';
-import { extractHwp } from './hwp';
 import { isFillableSection } from './syllabusPlan';
 
 export { isFillableSection };
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-
 const DAY_KO = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 };
-
-// ---------- PDF → 페이지별 텍스트 + 주간 격자 ----------
-// 같은 y좌표 아이템들을 x순으로 이어붙여 한 줄로 만든다(위→아래, 왼→오 순).
-function itemsToLines(items) {
-  const lines = {};
-  for (const it of items) {
-    const y = Math.round(it.y);
-    (lines[y] ??= []).push(it);
-  }
-  return Object.keys(lines)
-    .map(Number)
-    .sort((a, b) => b - a)
-    .map((y) => lines[y].sort((a, b) => a.x - b.x).map((i) => i.s).join(' ').replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-    .join('\n');
-}
-
-// 편람의 '학년별 시간표'(세부 과목-분반 표) 페이지는 종종 서로 다른 반 묶음의 표 두 개를
-// 나란히(좌/우) 인쇄한다("1학년 이·공학(5~8반)" 표와 "(9~12반)" 표가 한 페이지에 함께
-// 실리는 식). pageToText 는 페이지 전체를 y좌표 하나로만 줄을 나누는데, 나란히 놓인 두
-// 표의 행이 같은 y대에 있으면 서로 다른 표의 글자가 한 줄로 섞여 붙는다(실측: 26-2 학위
-// 교육운영계획서 세부표 페이지에서 "담당교수" 머리글이 x≈288 과 x≈708 두 자리에 각각
-// 찍혀 있었고 그 사이 여러 과목·교수·교시가 뒤섞여 있었다 — findProfConflicts 오탐과
-// "이 파일에 없는 기존 분반" 오탐의 실제 원인이었다). 표 머리글 "담당교수"가 페이지에
-// 몇 번, 어느 x에 찍혔는지로 표가 몇 개 나란히 있는지 찾아 그 사이 중점을 경계로 x구간을
-// 나누고, 구간별로 따로 줄을 만든 뒤 왼쪽→오른쪽 순서로 이어붙인다. 표가 하나뿐인
-// 페이지(대다수, 이 문서 기준 수강신청 안내자료 전 페이지 포함)는 경계가 하나도 안 생겨
-// 기존 동작 그대로다.
-// 표가 세로로 여러 개(국관 표 다음에 인공지능 표, 그다음 시스템 표…) 이어질 때도 "담당교수"가
-// 페이지에 여러 번 찍힌다 — 이때는 다들 거의 같은 x(실측 10pt 안쪽 오차)라 나란한 게 아니라
-// 같은 세로줄이 반복된 것뿐이다. 진짜 좌/우 분할(실측 ~420pt 간격)과 구분하려고 이 폭보다
-// 가까운 x들은 한 다발로 묶는다 — 묶고 나서 다발이 하나뿐이면 분할하지 않는다(기존 동작 유지).
-const MIN_COLUMN_GAP = 150;
-function clusterXs(xs) {
-  const clusters = [];
-  for (const x of xs) {
-    const last = clusters[clusters.length - 1];
-    if (last && x - last.last < MIN_COLUMN_GAP) last.last = x;
-    else clusters.push({ first: x, last: x });
-  }
-  return clusters.map((c) => (c.first + c.last) / 2);
-}
-
-function pageToText(tc) {
-  const items = tc.items.filter((it) => it.str).map((it) => ({ x: it.transform[4], y: it.transform[5], s: it.str }));
-  const rawXs = items.filter((it) => it.s.includes('담당교수')).map((it) => it.x).sort((a, b) => a - b);
-  const headerXs = clusterXs(rawXs);
-  if (headerXs.length < 2) return itemsToLines(items);
-
-  const bounds = [-Infinity];
-  for (let i = 1; i < headerXs.length; i++) bounds.push((headerXs[i - 1] + headerXs[i]) / 2);
-  bounds.push(Infinity);
-
-  const bands = headerXs.map(() => []);
-  for (const it of items) {
-    let idx = bands.length - 1;
-    for (let i = 0; i < bounds.length - 1; i++) {
-      if (it.x >= bounds[i] && it.x < bounds[i + 1]) { idx = i; break; }
-    }
-    bands[idx].push(it);
-  }
-  return bands.map(itemsToLines).filter(Boolean).join('\n');
-}
-
-// 페이지 텍스트(AI 로 보낼 것)와 주간 격자(좌표로 직접 읽는 것)를 한 번의 순회로 모은다.
-// 격자는 AI 를 부르지 않는다 — 전 생도 공통 비수업 시간과 교차검증의 근거가 공짜로 나온다.
-export async function extractPdf(file) {
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const pages = [];
-  const grids = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);            // eslint-disable-line no-await-in-loop
-    const tc = await page.getTextContent();       // eslint-disable-line no-await-in-loop
-    pages.push(pageToText(tc));
-    grids.push(...parseGridsOnPage(toItems(tc))); // 격자가 아니면 아무것도 안 나온다
-  }
-  return { pages, grids };
-}
-
-export function isHwpFile(file) {
-  return /\.hwp$/i.test(file?.name || '');
-}
-
-// HWP 는 PDF와 달리 페이지 경계가 없다(섹션 하나가 문서 전체만큼 길 수 있음). Gemini 호출을
-// PDF 페이지만한 크기로 유지하려고(캐시 단위·문맥 길이 둘 다) 문단 줄바꿈 기준으로 다시 자른다.
-// 서버가 12000자에서 텍스트를 자르므로(functions/api/parse-syllabus.js) 그보다 넉넉히 작게 잡는다.
-function chunkText(text, maxLen = 6000) {
-  const chunks = [];
-  let cur = '';
-  for (const line of text.split('\n')) {
-    if (cur && cur.length + line.length + 1 > maxLen) { chunks.push(cur); cur = ''; }
-    cur += (cur ? '\n' : '') + line;
-    if (cur.length > maxLen) { chunks.push(cur); cur = ''; } // 한 줄 자체가 길면 그대로 끊는다
-  }
-  if (cur.trim()) chunks.push(cur);
-  return chunks;
-}
-
-// ---------- Gemini 파싱 호출 ----------
-async function authHeader() {
-  const user = auth.currentUser;
-  return user ? `Bearer ${await user.getIdToken()}` : '';
-}
-
-// 실패해도 나머지 페이지는 계속 파싱하되, 사유는 버리지 않고 { rows, error } 로 돌려준다.
-// (에러를 삼키면 "추출된 과목이 없습니다"처럼 PDF 탓으로 오인되는 메시지만 남는다.)
-const PARSE_ERRORS = {
-  NO_GEMINI_KEY: 'GEMINI_API_KEY 가 배포에 없습니다. Pages 프로젝트 Secret 에 추가하고 재배포하세요.',
-  FORBIDDEN: '관리자 권한이 필요합니다.',
-  UNAUTH: '로그인이 만료되었습니다. 다시 로그인해 주세요.',
-};
-
-// ---------- 파싱 결과 캐시 ----------
-// 같은 PDF 를 다시 올리면(실패 후 재시도·설정만 바꿔 재실행) 페이지 텍스트가 그대로라
-// Gemini 를 다시 부를 이유가 없다. 캐시가 없던 탓에 재시도 몇 번으로 무료 한도를 태웠다.
-// 키에 모델을 넣는다 — GEMINI_MODEL 을 바꿨는데 옛 모델의 결과를 물려받으면 안 된다.
-// 프롬프트·스키마를 고치면 CACHE_V 를 올려 통째로 무효화한다.
-//   3: 프롬프트 수정(영역/학과 열을 과목명에 붙이지 말 것) + 모델 교체(2026-07-13)
-//   4: 프롬프트 수정(압축 교반 "1,2,3(수4) 4,5,6(목1)…" 펼치기 + 교수 이름 순환 대응) (2026-07-13)
-//   5: 프롬프트 수정("제2외국어" 뒤 숫자는 분반이 아니라 과목명의 일부) (2026-09-01)
-//   6: 프롬프트 수정(학년별 시간표 세부표 열형식 예시 + 세로글자 라벨 조각 무시 규칙 추가) (2026-09-01)
-//   7: 프롬프트 수정(다글자 영역/구분 라벨 조각 "군사학"/"필수" 무시 + "과목명+숫자(괄호)"
-//      규칙을 제2외국어 전용에서 일반 규칙으로 확장, 창의공학설계실습류 예시 추가) (2026-09-01)
-//   8: 프롬프트 수정(숫자+괄호 규칙을 "괄호 없는 학점 숫자"와 구분 + 라벨 조각을 다른
-//      과목명과 이어붙여 가짜 과목을 지어내지 말라는 규칙 추가) (2026-09-01)
-const CACHE_V = 8;
-const CACHE_PREFIX = 'syllabus-parse:';
-
-async function cacheKey(model, kind, text) {
-  const buf = new TextEncoder().encode(`${CACHE_V}|${model}|${kind}|${text}`);
-  const hash = await crypto.subtle.digest('SHA-256', buf);
-  return CACHE_PREFIX + [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-const cacheGet = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } };
-
-// 용량 초과 시엔 낡은 항목(옛 모델·옛 CACHE_V)이 쌓인 것이므로 싹 비우고 한 번만 재시도한다.
-// 그래도 안 되면 캐시를 포기할 뿐, 파싱 자체는 막지 않는다.
-const cacheSet = (k, rows) => {
-  const v = JSON.stringify(rows);
-  try { localStorage.setItem(k, v); } catch {
-    try { clearParseCache(); localStorage.setItem(k, v); } catch { /* 있으면 좋고 없어도 그만 */ }
-  }
-};
-
-export function clearParseCache() {
-  for (const k of Object.keys(localStorage)) if (k.startsWith(CACHE_PREFIX)) localStorage.removeItem(k);
-}
-
-// 서버에 설정된 모델명을 묻는다. 캐시 키에 넣기 위한 것이고, Gemini 는 부르지 않아 공짜다.
-async function currentModel(token) {
-  try {
-    const res = await fetch('/api/parse-syllabus', { headers: { Authorization: token } });
-    return (await res.json())?.model || 'unknown';
-  } catch { return 'unknown'; }
-}
-
-async function callParse(model, kind, text, token, useCache) {
-  const key = await cacheKey(model, kind, text);
-  if (useCache) {
-    const hit = cacheGet(key);
-    if (hit) return { rows: hit, cached: true };
-  }
-  try {
-    const res = await fetch('/api/parse-syllabus', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: token },
-      body: JSON.stringify({ kind, text }),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const known = PARSE_ERRORS[j.status];
-      return { rows: [], error: known || j.detail || `AI 파싱 실패 (HTTP ${res.status})` };
-    }
-    const rows = Array.isArray(j.rows) ? j.rows : [];
-    cacheSet(key, rows); // 성공만 캐시한다 — 에러를 캐시하면 영영 실패한 채로 굳는다.
-    return { rows };
-  } catch (e) {
-    return { rows: [], error: `AI 파싱 요청 실패: ${e?.message || e}` };
-  }
-}
-
-async function mapLimit(items, limit, fn) {
-  const out = [];
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      out[idx] = await fn(items[idx], idx);
-    }
-  });
-  await Promise.all(workers);
-  return out;
-}
 
 // ---------- 정규화 ----------
 const cleanName = (s) => String(s || '').replace(/\s+/g, '').trim();
@@ -260,71 +62,6 @@ function groupTimes(slots) {
   return blocks;
 }
 
-// ---------- 메인: PDF/HWP → rows + periods ----------
-export async function parseSyllabus(file, { onProgress, noCache = false } = {}) {
-  const hwp = isHwpFile(file);
-  const { pages: rawPages, grids } = hwp ? await extractHwp(file) : await extractPdf(file);
-  // HWP 는 페이지가 아니라 섹션(문서 전체 분량일 수 있음) 단위라, PDF 페이지만한 크기로 재분할한다.
-  // grids 는 HWP 에서 항상 비어 있다(좌표 정보 없음) — 격자 대조·컬럼 보정은 조용히 건너뛴다.
-  const pages = hwp ? rawPages.flatMap((p) => chunkText(p)) : rawPages;
-  // PDF는 인쇄 페이지마다 표 머리글("담당교수")이 다시 찍히니 그 글자로 '과목 페이지'를 골라낸다.
-  // HWP는 그렇지 않다 — 표가 이어지는 문서 흐름이라 머리글이 표 전체에서 단 한 번만 나온다
-  // (실측: 한 편람에서 표 본문 41000자 중 "담당교수" 14회뿐, 상당수 조각엔 아예 없었다).
-  // 그 글자로 조각을 걸러내면 진짜 과목 행이 담긴 조각이 통째로 빠져 '기존에는 있는데 이번
-  // 파일엔 없는 분반'이 대량으로 잘못 뜬다 — 그래서 HWP는 표지 정도로 보이는 아주 짧은
-  // 조각만 빼고 나머지는 전부 과목 페이지로 본다(AI 프롬프트가 강의가 아닌 행은 알아서 뺀다).
-  const HWP_MIN_CHUNK = 150;
-  // 편람 뒤에는 같은 내용을 "학년별/강의실별 수업시간표"로 다시 늘어놓은 요일×반 격자 부록이
-  // 붙기도 한다(1학년 반편성 과목은 학생이 고르는 게 아니라 반 전체가 같이 듣다 보니 편람 표
-  // 자체를 이 격자로 대신하는 경우도 있다). 이 격자는 글자 좌표가 없어 어느 요일·교시 칸인지
-  // 알 길이 없다 — AI가 교수만 읽고 시간 없는 반쪽짜리 행을 만들면, 그 행이 기존 분반과
-  // 번호만 맞아 떨어져 '적용'했을 때 멀쩡한 기존 시간표를 지워 버릴 수 있다(강의시간 전체
-  // 교체 모드에서). 세부표는 시간을 "목34금3"처럼 붙여 쓰지 "3교시"로 풀어 쓰지 않으므로
-  // (실측 확인: 진짜 세부표 조각엔 "N교시"가 0회), "N교시"가 2번 이상 나오면 격자로 보고 뺀다.
-  const looksLikeWeeklyGrid = (text) => (text.match(/[1-9]교시/g) || []).length >= 2;
-  const coursePages = hwp
-    ? pages.filter((p) => p.trim().length >= HWP_MIN_CHUNK && !looksLikeWeeklyGrid(p))
-    : pages.filter((p) => p.includes('담당교수'));
-  // 격자로 판정돼 건너뛴 조각 수 — 화면에서 "그 과목들이 왜 안 보이는지" 알려주는 데 쓴다.
-  const gridPagesSkipped = hwp ? pages.filter((p) => p.trim().length >= HWP_MIN_CHUNK && looksLikeWeeklyGrid(p)).length : 0;
-  const periodPages = pages.filter((p) => p.includes('일과시간표') || (p.includes('교시') && p.includes('점심식사')));
-  const token = await authHeader();
-  const model = await currentModel(token);
-  const useCache = !noCache;
-  const errors = [];
-  let cachedPages = 0;
-
-  let periods = [];
-  if (periodPages.length) {
-    const { rows: raw, error } = await callParse(model, 'periods', periodPages[0], token, useCache);
-    if (error) errors.push(error);
-    periods = raw
-      .map((p) => ({ no: Number(p.no) || 0, start: String(p.start || '').slice(0, 5), end: String(p.end || '').slice(0, 5) }))
-      .filter((p) => p.no >= 1 && /^\d\d:\d\d$/.test(p.start) && /^\d\d:\d\d$/.test(p.end))
-      .sort((a, b) => a.no - b.no);
-  }
-
-  let done = 0;
-  const perPage = await mapLimit(coursePages, 3, async (txt) => {
-    const { rows, error, cached } = await callParse(model, 'courses', txt, token, useCache);
-    if (error) errors.push(error);
-    if (cached) cachedPages += 1;
-    done += 1;
-    onProgress?.(done, coursePages.length);
-    return rows.map(normRow).filter(Boolean);
-  });
-
-  // 표의 '영역/학과' 열이 과목명에 달라붙은 것을 격자를 근거로 떼어낸다
-  // ("컴퓨터 시스템보안" → 과목 '시스템보안', 학과 '컴퓨터'). 격자를 못 읽었으면 그대로 둔다.
-  const { rows, fixed } = fixColumnBleed(dedupeSections(perPage.flat()), grids);
-
-  return {
-    rows, periods, errors, grids, renamed: fixed,
-    pageCount: pages.length, coursePages: coursePages.length, gridPagesSkipped,
-    model, cachedPages, // 관리자 화면에서 "몇 장이 공짜(캐시)였는지" 보여주기 위함
-  };
-}
-
 // ---------- 같은 과목 안에서 분반 정리 ----------
 // 지금까지는 `과목|분반번호`로 묶었다. 그런데 편람은 교반 번호를 중복 인쇄한다 —
 // 알고리즘·데이터마이닝·분사추진기관은 서로 다른 두 분반이 둘 다 '교반 1'로 찍혀 있었고,
@@ -339,17 +76,16 @@ const slotsKey = (r) => (r.times ?? []).map((t) => `${t.day}:${t.period}`).sort(
 // 과목명·교수·시간이 완전히 같은 행은 번호가 달라도 같은 분반이다. 학년별로 표를
 // 나눠 적는 편람은 여러 학년이 함께 듣는 교양선택 같은 과목을 그 표마다 그대로 되풀이해
 // 싣는데(실측: 2026-2 학위교육운영계획서에서 "수학과미래산업" 한 과목이 8개 표에 토씨 하나
-// 안 틀리고 반복 인쇄돼 있었다), AI가 그 반복을 서로 다른 분반으로 세어 번호를 새로 매기는
-// 일이 있다. 번호만 보고 묶는 아래 1)단계는 이 경우를 못 잡는다(번호 자체가 다르므로) —
-// 그래서 번호 이전에 내용으로 먼저 합친다. 시간이 비어 있는 행은 병합 근거가 없어 그대로 둔다.
+// 안 틀리고 반복 인쇄돼 있었다), 편람을 옮겨 적을 때 그 반복을 서로 다른 분반으로 세어
+// 번호를 새로 매기기 쉽다. 번호만 보고 묶는 아래 1)단계는 이 경우를 못 잡는다(번호 자체가
+// 다르므로) — 그래서 번호 이전에 내용으로 먼저 합친다. 시간이 비어 있는 행은 병합 근거가
+// 없어 그대로 둔다.
 //
-// 신원 키에 강의실은 넣지 않는다(2026-9 확인: "미디어영어"가 5개 표에 원문 그대로
-// "3 1 목3 목4 금2 허선민 401" 반복 인쇄돼 있는데도 유령 2분반이 생겼다 — 같은 반복을
-// 페이지마다 별도 Gemini 호출로 읽다 보니 자유서식 필드인 강의실 한 곳만 호출 간에
-// 흔들려도 그 한 번이 키를 깨 병합을 놓친다). 같은 교수가 같은 요일·교시 조합으로 같은
-// 과목을 두 번 열 수는 없으니 과목+교수+시간만으로 이미 신원이 정해진다 — 버려지는 중복
-// 행도 room/department 처럼 대표 행엔 없는 정보를 들고 있을 수 있어 버리기 전에 옮겨 담는다
-// (dedupeSections() 의 fill() 과 같은 모양이라 여기로 뽑아 함께 쓴다).
+// 신원 키에 강의실은 넣지 않는다 — 옮겨 적는 사람이 같은 반복 중 한 곳에서만 강의실을
+// 놓쳐도(또는 다르게 적어도) 그 한 줄이 키를 깨 병합을 놓친다. 같은 교수가 같은 요일·교시
+// 조합으로 같은 과목을 두 번 열 수는 없으니 과목+교수+시간만으로 이미 신원이 정해진다 —
+// 버려지는 중복 행도 room/department 처럼 대표 행엔 없는 정보를 들고 있을 수 있어 버리기
+// 전에 옮겨 담는다(dedupeSections() 의 fill() 과 같은 모양이라 여기로 뽑아 함께 쓴다).
 function fillMissing(dst, src) {
   if (!dst.professor && src.professor) dst.professor = src.professor;
   if (!dst.department && src.department) dst.department = src.department;
@@ -421,7 +157,7 @@ export function dedupeSections(rows) {
   return out;
 }
 
-// ---------- CSV 소스: 표 CSV → rows (parseSyllabus 와 같은 rows 형태) ----------
+// ---------- CSV 소스: 표 CSV → rows ----------
 // 헤더 인식(유연): 과목명/분반/담당교수/학과/강의시간/강의실. 그 외 열(학점·대상·비고 등)은 무시.
 // 분반을 비우면 과목별 파일 등장 순서대로 1,2,3… 자동 부여(명시된 번호와 겹치지 않게).
 // 강의시간은 "수1 수2 금1"(요일+교시), 연속은 "수1-2"/"수1~2" 허용. 팀티칭 교수는 첫 1명만 사용.
@@ -631,7 +367,7 @@ function courseNamesRelated(a, b) {
   return false;
 }
 
-export function reconcile(rows, periods, catalog, year, term, grids = []) {
+export function reconcile(rows, periods, catalog, year, term) {
   const courses = catalog?.courses ?? [];
   const profs = catalog?.professors ?? [];
   const sections = catalog?.sections ?? [];
@@ -785,18 +521,14 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
 
   const conflicts = findProfConflicts({ courses: courseList });
 
-  // 전 생도 공통 비수업 시간 — 이 편람에서 '어떤 분반도 열리지 않는' 요일×교시.
-  // 이름(생도대·군사훈련·공통연구…)은 주간 격자에서 그대로 읽어 온다(AI 호출 0회).
+  // 전 생도 공통 비수업 시간 — 이 파일에서 '어떤 분반도 열리지 않는' 요일×교시.
+  // 이름(생도대·군사훈련·공통연구…)은 이미 저장된 값(catalog.commonBlocks)에서 이어받는다
+  // (예전엔 편람 PDF 의 주간 격자에서 자동으로 읽어 왔지만, 그 경로가 CSV 전용으로 바뀌며
+  // 격자 좌표 자체가 없다 — 관리자가 화면에서 이름을 채운다).
   const periodNos = (periods.length ? periods.map((p) => p.no) : (catalog.periods ?? []).map((p) => p.no))
     .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
-  const gridBlocks = universalBlocks(grids);
-  const commonBlocks = deriveCommonBlocks(courseList, periodNos, catalog, year, term, gridBlocks);
-
-  // 세부내용 표 ↔ 주간 격자 대조. 표가 격자에 없는 '요일'을 주장하면 표가 틀린 것이다
-  // (2026-2 신호및시스템 1분반: 표 '월1 월2 목1' / 격자 '화1 화2 목1').
-  // 격자를 못 읽었거나(양식 변경) 격자가 그 과목을 다 적지 않았으면 조용히 건너뛴다.
-  const grid = crossCheck(rows, grids);
+  const commonBlocks = deriveCommonBlocks(courseList, periodNos, catalog, year, term);
 
   const reusedSections = courseList.reduce((n, c) => n + c.sections.filter((s) => s.reused).length, 0);
   // 이번 파일 이전에 그 학기에 이미 있던 분반 수의 근사치(재사용됨 + 이 파일에 없음).
@@ -814,10 +546,8 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
     conflicts,                   // 같은 교수·같은 교시 — 파싱 오류 신호. 적용은 막지 않고 보여만 준다.
     stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
     semesterLooksOff,             // 연도·학기 오입력 의심 — UI 가 눈에 띄는 경고를 띄운다.
-    commonBlocks,                // [{ day, start, end, label }] — 이름은 격자에서 자동, 관리자가 고칠 수 있다
+    commonBlocks,                // [{ day, start, end, label }] — 이미 저장된 이름을 이어받고, 없으면 빈 채로
     periodNos,
-    grid,                        // { checked, mismatches, coverage } — 격자 대조 결과
-    gridCount: grids.length,
     stats: {
       courses: courseList.length,
       newCourses: courseList.filter((c) => c.action === 'create').length,
@@ -836,7 +566,6 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
       staleSections: stale.length,
       conflicts: conflicts.length,
       commonBlocks: commonBlocks.length,
-      gridWarnings: grid.mismatches.length,
     },
   };
 }
@@ -847,7 +576,7 @@ export function reconcile(rows, periods, catalog, year, term, grids = []) {
 // 시간표 마법사가 이 시간을 '빈 시간(공강교시)'으로 세지 않는 근거가 된다 — 원래 수업이
 // 없는 시간이므로. 시각은 이렇게 자동으로 나오고, 이름만 관리자가 붙인다.
 // 이미 붙여 둔 이름(catalog.commonBlocks)이 있으면 그대로 이어받는다(재적용해도 안 지워짐).
-export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, gridBlocks = []) {
+export function deriveCommonBlocks(courseList, periodNos, catalog, year, term) {
   if (!periodNos.length) return [];
   const used = new Set();
   for (const c of courseList) {
@@ -860,13 +589,9 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, g
   }
   if (!used.size) return [];   // 파싱 결과가 비면 유도하지 않는다(전 시간이 '비수업'이 되어 버린다)
 
-  // 이름은 두 곳에서 온다. 교시 단위로 펼쳐 두고 새 블록에 이어 붙인다.
-  //   ① 주간 격자(생도대·군사훈련·공통연구…) — 편람이 직접 말해 주는 이름. AI 호출 0회.
-  //   ② 이미 저장된 common_block — 관리자가 손으로 고친 것이니 격자보다 우선한다.
+  // 이름은 이미 저장된 common_block(관리자가 손으로 붙인 이름)에서 이어받는다 — 교시 단위로
+  // 펼쳐 두고 새 블록에 이어 붙인다.
   const prev = {};
-  for (const b of gridBlocks) {
-    for (let p = b.start; p <= b.end; p++) prev[`${b.day}-${p}`] = b.label;
-  }
   for (const b of catalog.commonBlocks ?? []) {
     if (b.year !== year || b.term !== term) continue;
     for (let p = b.startPeriod; p <= b.endPeriod; p++) prev[`${b.dayOfWeek}-${p}`] = b.label;
@@ -903,9 +628,8 @@ export function deriveCommonBlocks(courseList, periodNos, catalog, year, term, g
 
 // ---------- 검토: 같은 교수, 같은 시간 ----------
 // 한 교수가 같은 요일·교시에 두 분반을 동시에 가르칠 수는 없다. 편람 표에서 같은 시간대에
-// 나란히 열린 분반(영어회화 4·5·6분반이 모두 목1교시, 교수만 다름)의 교수 이름을 AI 가
-// 한 사람에게 몰아 붙이는 실수를 저질렀다. 모델을 올려도 확률이 줄 뿐이라 여기서 결정적으로
-// 잡아 관리자에게 보여준다. CSV 오타도 같은 그물에 걸린다.
+// 나란히 열린 분반(영어회화 4·5·6분반이 모두 목1교시, 교수만 다름)을 CSV로 옮겨 적을 때
+// 교수 이름을 한 사람에게 몰아 적기 쉽다 — 여기서 결정적으로 잡아 관리자에게 보여준다.
 // 적용을 막지는 않는다 — 두 분반이 실제로 합반 수업일 여지가 있어 판단은 사람이 한다.
 export function findProfConflicts(plan) {
   const slots = new Map(); // "교수|요일|교시" → { professorName, day, period, sections[] }

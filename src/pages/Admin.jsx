@@ -311,7 +311,6 @@ const SECTIONS = [
   { key: 'banned-words', icon: '🚫', title: '금지어', sub: '작성 시 자동으로 가려질 금지어 추가·삭제' },
   { key: 'notices', icon: '📢', title: '공지사항', sub: '홈 화면 팝업 공지 작성·관리' },
   { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 새 탭에서 분반·교수·시간 관리' },
-  { key: 'ai', icon: '🤖', title: 'AI 강의 일괄등록', sub: 'PDF 업로드 → 자동 매칭 → 검토 후 적용' },
   { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
   { key: 'professors-sync', icon: '🔄', title: '교수 명단 동기화', sub: '공식 홈페이지에서 교수 명단 자동 갱신' },
@@ -731,21 +730,9 @@ export default function Admin() {
           </Card>
         )}
 
-        {section === 'ai' && (
-          <Card icon="🤖" title="AI 강의 일괄등록" desc="학기 강의 PDF(수강편람)를 올리면 AI가 과목·분반·교수·시간을 추출해 기존 DB와 대조하고, 검토 후 적용합니다. 교수코드를 몰라도 이름으로 자동 매칭됩니다.">
-            <SyllabusUpload
-              mode="ai"
-              defaultYear={cat?.semesters?.find((s) => s.isCurrent)?.year || 2026}
-              defaultTerm={cat?.semesters?.find((s) => s.isCurrent)?.term || 1}
-              onApplied={reloadWithCatalog}
-            />
-          </Card>
-        )}
-
         {section === 'csv' && (
-          <Card icon="📄" title="CSV 강의 일괄등록" desc="과목·분반 표를 CSV로 올리거나 붙여넣으면 기존 DB와 대조 후 적용합니다. 결정적(고정)이라 AI보다 정확합니다. 양식을 내려받아 채우거나, 수강편람에서 추출한 CSV를 그대로 올리세요.">
+          <Card icon="📄" title="CSV 강의 일괄등록" desc="과목·분반 표를 CSV로 올리거나 붙여넣으면 기존 DB와 대조 후 적용합니다. 결정적(고정)이라 매번 같은 결과가 나옵니다. 양식을 내려받아 채우거나, 수강편람에서 옮겨 적은 CSV를 그대로 올리세요.">
             <SyllabusUpload
-              mode="csv"
               defaultYear={cat?.semesters?.find((s) => s.isCurrent)?.year || 2026}
               defaultTerm={cat?.semesters?.find((s) => s.isCurrent)?.term || 1}
               onApplied={reloadWithCatalog}
