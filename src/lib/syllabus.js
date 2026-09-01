@@ -136,7 +136,8 @@ const PARSE_ERRORS = {
 // 프롬프트·스키마를 고치면 CACHE_V 를 올려 통째로 무효화한다.
 //   3: 프롬프트 수정(영역/학과 열을 과목명에 붙이지 말 것) + 모델 교체(2026-07-13)
 //   4: 프롬프트 수정(압축 교반 "1,2,3(수4) 4,5,6(목1)…" 펼치기 + 교수 이름 순환 대응) (2026-07-13)
-const CACHE_V = 4;
+//   5: 프롬프트 수정("제2외국어" 뒤 숫자는 분반이 아니라 과목명의 일부) (2026-09-01)
+const CACHE_V = 5;
 const CACHE_PREFIX = 'syllabus-parse:';
 
 async function cacheKey(model, kind, text) {
@@ -330,33 +331,45 @@ export async function parseSyllabus(file, { onProgress, noCache = false } = {}) 
 //   · 시간이 비어 있는 행은, 그 번호에 시간 있는 행이 딱 하나면 거기에 흡수시킨다(정보 보강).
 const slotsKey = (r) => (r.times ?? []).map((t) => `${t.day}:${t.period}`).sort().join(',');
 
-// 과목명·교수·강의실·시간이 완전히 같은 행은 번호가 달라도 같은 분반이다. 학년별로 표를
+// 과목명·교수·시간이 완전히 같은 행은 번호가 달라도 같은 분반이다. 학년별로 표를
 // 나눠 적는 편람은 여러 학년이 함께 듣는 교양선택 같은 과목을 그 표마다 그대로 되풀이해
 // 싣는데(실측: 2026-2 학위교육운영계획서에서 "수학과미래산업" 한 과목이 8개 표에 토씨 하나
 // 안 틀리고 반복 인쇄돼 있었다), AI가 그 반복을 서로 다른 분반으로 세어 번호를 새로 매기는
 // 일이 있다. 번호만 보고 묶는 아래 1)단계는 이 경우를 못 잡는다(번호 자체가 다르므로) —
 // 그래서 번호 이전에 내용으로 먼저 합친다. 시간이 비어 있는 행은 병합 근거가 없어 그대로 둔다.
+//
+// 신원 키에 강의실은 넣지 않는다(2026-9 확인: "미디어영어"가 5개 표에 원문 그대로
+// "3 1 목3 목4 금2 허선민 401" 반복 인쇄돼 있는데도 유령 2분반이 생겼다 — 같은 반복을
+// 페이지마다 별도 Gemini 호출로 읽다 보니 자유서식 필드인 강의실 한 곳만 호출 간에
+// 흔들려도 그 한 번이 키를 깨 병합을 놓친다). 같은 교수가 같은 요일·교시 조합으로 같은
+// 과목을 두 번 열 수는 없으니 과목+교수+시간만으로 이미 신원이 정해진다 — 버려지는 중복
+// 행도 room/department 처럼 대표 행엔 없는 정보를 들고 있을 수 있어 버리기 전에 옮겨 담는다
+// (dedupeSections() 의 fill() 과 같은 모양이라 여기로 뽑아 함께 쓴다).
+function fillMissing(dst, src) {
+  if (!dst.professor && src.professor) dst.professor = src.professor;
+  if (!dst.department && src.department) dst.department = src.department;
+  if (!dst.room && src.room) dst.room = src.room;
+}
+
 function mergeContentDuplicates(rows) {
-  const seen = new Set();
+  const byKey = new Map();
   const out = [];
   for (const r of rows) {
     const tk = slotsKey(r);
     if (!tk) { out.push(r); continue; }
-    const key = `${r.course}|${r.professor ?? ''}|${r.room ?? ''}|${tk}`;
-    if (seen.has(key)) continue; // 완전히 같은 내용 — 먼저 나온 분반 번호로 대표 행 하나만 남긴다
-    seen.add(key);
-    out.push(r);
+    const key = `${r.course}|${r.professor ?? ''}|${tk}`;
+    const prev = byKey.get(key);
+    if (prev) { fillMissing(prev, r); continue; } // 완전히 같은 내용 — 먼저 나온 분반 번호로 대표 행 하나만 남긴다
+    const copy = { ...r };
+    byKey.set(key, copy);
+    out.push(copy);
   }
   return out;
 }
 
 export function dedupeSections(rows) {
   rows = mergeContentDuplicates(rows);
-  const fill = (dst, src) => {
-    if (!dst.professor && src.professor) dst.professor = src.professor;
-    if (!dst.department && src.department) dst.department = src.department;
-    if (!dst.room && src.room) dst.room = src.room;
-  };
+  const fill = fillMissing;
 
   // 1) 과목|번호 로 모으고, 그 안에서 시간별로 나눈다.
   const groups = new Map();
