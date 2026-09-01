@@ -14,7 +14,7 @@ export async function onRequestGet(context) {
     return Response.json({ status: 'BAD_REQUEST' }, { status: 400 });
   }
   const chk = await fetch(
-    `https://us-central1-anytime-rokafa.cloudfunctions.net/shareImageOk?token=${encodeURIComponent(share)}&key=${encodeURIComponent(key)}`
+    `https://asia-northeast3-anytime-rokafa.cloudfunctions.net/shareImageOk?token=${encodeURIComponent(share)}&key=${encodeURIComponent(key)}`
   );
   if (!chk.ok || (await chk.json()) !== true) {
     return Response.json({ status: 'FORBIDDEN' }, { status: 403 });

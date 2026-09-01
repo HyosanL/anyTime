@@ -49,6 +49,17 @@
       ]
     },
     {
+      "collectionGroup": "classMemos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "courseCode", "order": "ASCENDING" },
+        { "fieldPath": "year", "order": "ASCENDING" },
+        { "fieldPath": "term", "order": "ASCENDING" },
+        { "fieldPath": "sectionNo", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "gradeEntries",
       "queryScope": "COLLECTION",
       "fields": [

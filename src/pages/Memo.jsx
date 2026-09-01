@@ -33,6 +33,7 @@ export default function Memo() {
   const [daysHeld, setDaysHeld] = useState(null);
   const [memos, setMemos] = useState([]);
   const [allowed, setAllowed] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState('');
   const [password, setPassword] = useState('');
@@ -85,11 +86,15 @@ export default function Memo() {
     setError('');
     const r = await callFn('getMemos', { courseCode, year: y, term: t, sectionNo: sn });
     if (!r.ok) {
-      // CF 가 미등록 생도를 막는다(invalid-argument)
-      setAllowed(false);
+      // CF 는 미등록 생도만 invalid-argument 로 막는다 — 그 외(internal 등: 색인 누락 같은
+      // 서버 쪽 문제)를 "미등록"으로 오인 표시하지 않도록 코드로 분기한다(2026-09-01,
+      // getMemos 색인 누락 버그에서 실제 원인이 이 화면에 안 보여 디버깅이 오래 걸렸다).
+      setAllowed(r.status !== 'invalid-argument');
+      setLoadError(r.status === 'invalid-argument' ? '' : (r.message || '메모를 불러오지 못했습니다.'));
       setMemos([]);
     } else {
       setAllowed(true);
+      setLoadError('');
       setMemos(r.data ?? []);
     }
     setLoading(false);
@@ -221,9 +226,13 @@ export default function Memo() {
         <p className="muted center">불러오는 중…</p>
       ) : !allowed ? (
         <div className="empty">
-          <span className="empty-emoji">🔒</span>
-          이 분반을 확정시간표에 등록한 생도만 메모를 볼 수 있습니다.
-          <Link to="/search" className="section-review-link">강의 검색에서 추가하기 →</Link>
+          <span className="empty-emoji">{loadError ? '⚠️' : '🔒'}</span>
+          {loadError || '이 분반을 확정시간표에 등록한 생도만 메모를 볼 수 있습니다.'}
+          {loadError ? (
+            <button type="button" className="section-review-link" onClick={() => loadMemos()}>다시 시도</button>
+          ) : (
+            <Link to="/search" className="section-review-link">강의 검색에서 추가하기 →</Link>
+          )}
         </div>
       ) : (
         <>

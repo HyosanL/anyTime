@@ -11,7 +11,7 @@ export async function onRequest(context) {
 
   // 1) 현재 참조 중인 key 집합 (boardReferencedKeys Cloud Function, X-Push-Secret 게이트).
   //    시크릿이 없으면 R2 이미지 key 전체가 열람될 수 있으므로 함수가 헤더를 검증해 거부한다.
-  const refRes = await fetch('https://us-central1-anytime-rokafa.cloudfunctions.net/boardReferencedKeys', {
+  const refRes = await fetch('https://asia-northeast3-anytime-rokafa.cloudfunctions.net/boardReferencedKeys', {
     method: 'POST',
     headers: { 'X-Push-Secret': env.PUSH_SECRET, 'Content-Type': 'application/json' },
   });
