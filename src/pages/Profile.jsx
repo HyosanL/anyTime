@@ -34,7 +34,7 @@ function PushSettings() {
   function changeLead(v) {
     setLeadState(v);
     setLeadPref(v);
-    syncNextClassAlerts().catch(() => {});
+    syncNextClassAlerts({ force: true }).catch(() => {});
   }
 
   // 방해금지 설정 변경 — 로컬 저장 + SW(Cache) 미러(설정 반영은 다음 알림부터).

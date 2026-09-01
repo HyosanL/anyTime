@@ -22,6 +22,8 @@ import { META_CACHE, pushEnabled } from './push';
 export const NEXT_CLASS_LEADS = [0, 5, 10, 15];
 const LEAD_KEY = 'nextclass:lead';
 const SIG_KEY = 'nextclass:sig';
+const RAN_KEY = 'nextclass:ranAt';             // 마지막 성공 동기화 시각 — 포그라운드 복귀마다 재조회 방지
+const THROTTLE_MS = 3 * 60 * 1000;
 const SCHEDULE_URL = '/next-class-schedule';   // push-sw.js 와 맞출 것
 const MINUTES_PER_WEEK = 7 * 24 * 60;
 // 같은 과목이 붙어 이어지면(교시 사이 쉬는시간 포함) 한 블록으로 본다 — "다음 교시가
@@ -99,12 +101,16 @@ function readSig() { try { return localStorage.getItem(SIG_KEY); } catch { retur
 function writeSig(s) { try { localStorage.setItem(SIG_KEY, s); } catch { /* 무시 */ } }
 export function clearSig() { try { localStorage.removeItem(SIG_KEY); } catch { /* 무시 */ } }
 
-// 앱 시작(App.jsx PushSync)·설정 변경 때 호출. lead 0 이면 서버 필드·기기 캐시를 비운다.
-// 낡음(다른 기기에서 시간표를 고쳐도 이 기기는 다음 실행에나 반영)은 감수한다 — 학기 중
-// 시간표는 거의 안 바뀌고, 서버가 내용을 모르는 대가로 받아들이는 트레이드오프다.
-export async function syncNextClassAlerts() {
+// 앱 시작(App.jsx PushSync)·포그라운드 복귀·설정 변경 때 호출. lead 0 이면 서버 필드·기기
+// 캐시를 비운다. 낡음(다른 기기에서 시간표를 고쳐도 이 기기는 다음 실행에나 반영)은
+// 감수 — 학기 중 시간표는 거의 안 바뀐다. force=true 는 설정 변경처럼 즉시 반영이 필요할 때.
+export async function syncNextClassAlerts({ force = false } = {}) {
   if (!pushEnabled()) return;
   if (!('serviceWorker' in navigator)) return;
+  if (!force) {
+    const ranAt = Number(localStorage.getItem(RAN_KEY) || 0);
+    if (Date.now() - ranAt < THROTTLE_MS) return;   // 포그라운드 복귀마다 카탈로그·시간표 재조회 방지
+  }
 
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
@@ -131,13 +137,14 @@ export async function syncNextClassAlerts() {
     }
   }
 
-  let active = lead > 0 && fireMinutes.length > 0;
+  const active = lead > 0 && fireMinutes.length > 0;
   if (active) {
     // 내용을 기기 캐시에 못 넣었으면 서버에 발동 시각도 올리지 않는다(내용 없는 빈 핑 방지).
     if (!(await mirrorSchedule({ lead, tz: 'Asia/Seoul', slots, updatedAt: Date.now() }))) return;
   } else {
     await clearSchedule();
   }
+  try { localStorage.setItem(RAN_KEY, String(Date.now())); } catch { /* 무시 */ }
 
   const sig = `${endpoint}|${active ? lead : 0}|${fireMinutes.join(',')}`;
   if (sig === readSig()) return;

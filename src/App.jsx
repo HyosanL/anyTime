@@ -114,13 +114,19 @@ function BoardRoute({ children }) {
 }
 
 // 푸시 구독 자가치유: 로그인 세션이 잡히면 구독을 서버에 재업서트(유실·회전 복구).
-// "다음 수업" 알림 스케줄도 이때 재계산해 올린다(다른 기기에서 시간표를 고쳤을 수 있다).
+// "다음 수업" 알림 스케줄도 이때 + 앱이 포그라운드로 돌아올 때마다 재계산해 올린다
+// (시간표를 고치고 앱으로 돌아오면 다음 수업 알림도 곧 최신이 되도록). 바뀐 게 없으면
+// syncNextClassAlerts 내부 서명 대조로 네트워크 호출은 건너뛴다.
 function PushSync() {
   const { session } = useAuthContext();
   useEffect(() => {
-    if (!session) return;
+    if (!session) return undefined;
     syncPush();
-    syncNextClassAlerts().catch(() => { /* 다음 실행 때 재시도 */ });
+    const sync = () => syncNextClassAlerts().catch(() => { /* 다음 기회에 재시도 */ });
+    sync();
+    const onVisible = () => { if (document.visibilityState === 'visible') sync(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [session]);
   return null;
 }
