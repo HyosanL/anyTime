@@ -298,8 +298,21 @@ function existingSections(catalog, year, term) {
   return byCourse;
 }
 
+// 매칭된 기존 분반(hit)과 이번 계획(s)을 비교해, 교수·강의실·시간이 달라졌으면 s.prev 에
+// 적어 둔다 — 화면이 "기존: 김건희 · 화1 → 새로: 김정운 · 화1"처럼 실제 변경을 보여주는 근거.
+// (reused=true 인데 prev 가 없으면 완전히 같은 내용이 그대로 다시 올라온 것.)
+function noteChange(s, hit, profNameByCode) {
+  const prevProf = hit.professorCode ? (profNameByCode.get(hit.professorCode) ?? hit.professorCode) : null;
+  const profChanged = (prevProf ?? null) !== (s.professorName ?? null);
+  const roomChanged = !!hit.room && hit.room !== s.room;
+  const timesChanged = timesKey(hit.times) !== timesKey(s.times);
+  if (profChanged || roomChanged || timesChanged) {
+    s.prev = { professor: prevProf, room: hit.room ?? null, times: hit.times };
+  }
+}
+
 // 계획 분반에 최종 분반번호를 부여한다. 반환: { sections, claimed(이번 적용이 차지하는 기존 번호) }
-function assignSectionNos(planned, pool, codeOfProf) {
+function assignSectionNos(planned, pool, codeOfProf, profNameByCode) {
   const taken = new Set();    // 이번 계획이 확정한 번호
   const claimed = new Set();  // 이번 적용이 차지(재사용/덮어쓰기)하는 기존 분반 번호
   const fixed = new Set();    // 1)에서 번호가 확정된 계획 분반(참조)
@@ -319,6 +332,7 @@ function assignSectionNos(planned, pool, codeOfProf) {
     // '빈 칸만 채우기' 필터·표시용 — 지금 DB 에 이미 값이 있는지(이 편람 내용과 무관하게).
     s.dbHasProfessor = !!hit.professorCode;
     s.dbHasRoom = !!hit.room;
+    noteChange(s, hit, profNameByCode);
     fixed.add(s);
     taken.add(hit.sectionNo);
     claimed.add(hit.sectionNo);
@@ -326,12 +340,17 @@ function assignSectionNos(planned, pool, codeOfProf) {
 
   // 2) 나머지는 계획 번호 그대로 — 같은 번호의 기존 분반은 편람 기준으로 덮어쓴다.
   //    단 1)이 이미 가져간 번호와 부딪힐 때만, 살아남을 기존 분반까지 피해 빈 번호로 민다.
+  //    이 번호를 그대로 물려받는 기존 분반이 있으면(시간까지 바뀐 "이동") 마찬가지로 비교해 둔다 —
+  //    1)은 시간이 같아야 찾아내므로, 시간 자체가 바뀐 분반은 번호가 같을 때만 여기서 잡힌다.
   const survivors = new Set(pool.filter((e) => !claimed.has(e.sectionNo)).map((e) => e.sectionNo));
+  const poolByNo = new Map(pool.map((e) => [e.sectionNo, e]));
   for (const s of out) {
     if (fixed.has(s)) continue;
     let n = s.planNo;
     if (taken.has(n)) { n = 1; while (taken.has(n) || survivors.has(n)) n += 1; }
     s.sectionNo = n;
+    const hit = poolByNo.get(n);
+    if (hit) { s.reused = true; s.dbHasProfessor = !!hit.professorCode; s.dbHasRoom = !!hit.room; noteChange(s, hit, profNameByCode); }
     taken.add(n);
     claimed.add(n);
     survivors.delete(n);
@@ -462,6 +481,7 @@ export function reconcile(rows, periods, catalog, year, term) {
 
   // 과목 플랜 — 기존 분반과 내용 대조해 분반번호를 물려받는다(소스별 번호 차이로 인한 중복 방지).
   const codeOfProf = new Map(professors.map((p) => [p.name, p.code]));
+  const profNameByCode = new Map(profs.map((p) => [p.code, p.name]));
   const existing = existingSections(catalog, year, term);
   const claimedByCourse = new Map(); // course_code → Set(이번 적용이 차지하는 기존 분반번호)
 
@@ -488,7 +508,7 @@ export function reconcile(rows, periods, catalog, year, term) {
       .sort((a, b) => a.sectionNo - b.sectionNo)
       .map((s) => ({ sectionNo: s.sectionNo, professorName: s.professor, times: groupTimes(s.slots), room: s.room }));
     const pool = m.code ? (existing.get(m.code) ?? []) : [];
-    const { sections: assigned, claimed } = assignSectionNos(planned, pool, (n) => codeOfProf.get(n) ?? null);
+    const { sections: assigned, claimed } = assignSectionNos(planned, pool, (n) => codeOfProf.get(n) ?? null, profNameByCode);
     if (m.code) claimedByCourse.set(m.code, claimed);
     return {
       name: g.name,
@@ -502,7 +522,6 @@ export function reconcile(rows, periods, catalog, year, term) {
 
   // 편람에 없는 기존 분반(= 이번 적용이 건드리지 않는 이 학기 분반). 지난 적재의 찌꺼기·중복이 여기 잡힌다.
   const courseNameByCode = new Map(courses.map((c) => [c.code, c.name]));
-  const profNameByCode = new Map(profs.map((p) => [p.code, p.name]));
   const stale = [];
   for (const [code, list] of existing) {
     const claimed = claimedByCourse.get(code) ?? new Set();
@@ -544,7 +563,7 @@ export function reconcile(rows, periods, catalog, year, term) {
     professors: professors.sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     courses: courseList,
     conflicts,                   // 같은 교수·같은 교시 — 파싱 오류 신호. 적용은 막지 않고 보여만 준다.
-    stale, removeStale: false,   // 삭제는 관리자가 켤 때만 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
+    stale,   // 삭제는 화면에서 항목별로 골라야만(체크박스) 일어난다 (생도 시간표에 담긴 분반이 CASCADE 로 함께 사라짐)
     semesterLooksOff,             // 연도·학기 오입력 의심 — UI 가 눈에 띄는 경고를 띄운다.
     commonBlocks,                // [{ day, start, end, label }] — 이미 저장된 이름을 이어받고, 없으면 빈 채로
     periodNos,
@@ -667,7 +686,10 @@ async function callAdmin(action, payload) {
 
 // partial=true(빈 칸만 채우기 모드): 이미 값이 있는 교수·분반·강의실·강의시간은 이 편람으로
 // 덮어쓰지 않고, 비어 있는 칸만 채운다. 일부 분반만 미입력인 편람을 안심하고 통째로 올릴 수 있다.
-export async function applyPlan(plan, { onProgress, partial = false } = {}) {
+// deleteStale: plan.stale 중 관리자가 직접 골라 삭제하기로 한 것만(전부/일부/없음 — 화면 체크박스가
+// 항목별로 고른다. "이 학기를 통째로 대체" 같은 전체삭제 스위치는 없다 — 개설 시간이 바뀌어 번호만
+// 새로 잡힌 분반과 진짜 폐강된 분반을 구분하는 건 사람만 할 수 있다).
+export async function applyPlan(plan, { onProgress, partial = false, deleteStale = [] } = {}) {
   // 1) 교수 + 교시
   const meta = await callAdmin('apply_syllabus_meta', {
     year: plan.year,
@@ -705,12 +727,12 @@ export async function applyPlan(plan, { onProgress, partial = false } = {}) {
     onProgress?.(done, courses.length);
   }
 
-  // 3) (선택) 편람에 없는 기존 분반 삭제 — 지난 적재의 중복·찌꺼기 청소.
+  // 3) (선택) 관리자가 항목별로 고른 기존 분반만 삭제 — 지난 적재의 중복·찌꺼기 청소.
   //    제외(체크 해제)한 과목의 분반은 이번에 다시 쓰이지도 않았으므로 건드리지 않는다.
   let removed = null;
-  if (plan.removeStale && plan.stale?.length) {
+  if (deleteStale.length) {
     const excluded = new Set(plan.courses.filter((c) => c.include === false && c.code).map((c) => c.code));
-    const list = plan.stale
+    const list = deleteStale
       .filter((s) => !excluded.has(s.courseCode))
       .map((s) => ({ courseCode: s.courseCode, sectionNo: s.sectionNo }));
     if (list.length) {

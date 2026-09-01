@@ -50,6 +50,17 @@ export default function SyllabusUpload({ defaultYear = 2026, defaultTerm = 1, on
   const [partial, setPartial] = useState(false);
   // 위 모드에서 검토 목록을 줄이려는 화면 필터 — 실제 적용 범위는 partial 이 결정한다.
   const [onlyMissing, setOnlyMissing] = useState(false);
+  // "이 파일에 없는 기존 분반" 중 삭제하기로 고른 것들(courseCode|sectionNo). 전체삭제 스위치가
+  // 아니라 항목별 체크박스 — 시간이 바뀌어 번호만 새로 잡힌 분반과 진짜 폐강된 분반은 사람만
+  // 구분할 수 있다.
+  const [staleSelected, setStaleSelected] = useState(new Set());
+  function toggleStale(key) {
+    setStaleSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   function patchPlan(updater) {
     setPlan((p) => {
@@ -59,7 +70,7 @@ export default function SyllabusUpload({ defaultYear = 2026, defaultTerm = 1, on
     });
   }
 
-  function resetOut() { setPlan(null); setResult(''); }
+  function resetOut() { setPlan(null); setResult(''); setStaleSelected(new Set()); }
 
   async function analyze() {
     if (!paste.trim() && !file) return setErr('CSV 파일을 선택하거나 아래에 붙여넣으세요.');
@@ -89,7 +100,9 @@ export default function SyllabusUpload({ defaultYear = 2026, defaultTerm = 1, on
     setProgress({ label: '적용 중…', done: 0, total });
     try {
       const lib = await import('../lib/syllabus');
-      const r = await lib.applyPlan(plan, { partial, onProgress: (d, t) => setProgress({ label: '적용 중…', done: d, total: t }) });
+      const deleteStale = plan.stale.filter((s) => staleSelected.has(`${s.courseCode}|${s.sectionNo}`))
+        .map((s) => ({ courseCode: s.courseCode, sectionNo: s.sectionNo }));
+      const r = await lib.applyPlan(plan, { partial, deleteStale, onProgress: (d, t) => setProgress({ label: '적용 중…', done: d, total: t }) });
       const cleaned = r.removed
         ? ` 파일에 없던 기존 분반 ${r.removed.sections}개 삭제${r.removed.entries ? ` (생도 시간표 ${r.removed.entries}건에서 함께 제거됨)` : ''}.`
         : '';
@@ -419,6 +432,13 @@ export default function SyllabusUpload({ defaultYear = 2026, defaultTerm = 1, on
                     <div className="syl-sec" key={s.sectionNo}>
                       <b>{s.sectionNo}분반</b>{s.reused ? <span className="tag tag-success">기존 분반</span> : null} · {s.professorName || '교수미정'} · {fmtTimes(s.times)}{s.room ? ` · ${s.room}` : ''}
                       {isFillableSection(s) && <span className="tag tag-primary">빈 칸 채움</span>}
+                      {/* 교수·강의실·시간이 바뀌는 경우 — 무엇에서 무엇으로 바뀌는지 그대로 보여준다
+                          (partial 모드에선 이미 값 있는 칸은 안 덮어쓰므로 실제로는 안 바뀐다). */}
+                      {s.prev && !partial && (
+                        <div className="muted syl-sec-prev">
+                          변경: {s.prev.professor || '교수미정'} · {fmtTimes(s.prev.times)}{s.prev.room ? ` · ${s.prev.room}` : ''} → {s.professorName || '교수미정'} · {fmtTimes(s.times)}{s.room ? ` · ${s.room}` : ''}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -431,23 +451,32 @@ export default function SyllabusUpload({ defaultYear = 2026, defaultTerm = 1, on
           {/* 참고용 목록이라 기본은 접어 둔다 — 삭제 체크박스도 안에 있으니, 정리하려면 펼쳐서 본다. */}
           {plan.stale.length > 0 && (
             <details className="syl-collapse">
-              <summary className="section-label adm-sub-label">이 파일에 없는 기존 분반 ({plan.stale.length})</summary>
+              <summary className="section-label adm-sub-label">이 파일에 없는 기존 분반 ({plan.stale.length}{staleSelected.size ? ` · 삭제 선택 ${staleSelected.size}` : ''})</summary>
               <p className="note">
                 {plan.year}-{plan.term} 학기에 <b>이미 등록돼 있는데</b> 이번 파일에는 없는 분반입니다.
-                다른 CSV로 두 번 적재해 생긴 <b>중복</b>이거나 폐강된 분반일 수 있어요.
+                다른 CSV로 두 번 적재해 생긴 <b>중복</b>이거나 폐강된 분반일 수 있고, 시간이 바뀌어
+                <b>새 번호로 다시 등록</b>됐을 수도 있습니다(그런 경우 위 "과목·분반"에 새 분반으로
+                나타나 있을 거예요) — <b>진짜 없어진 것만 체크</b>해서 골라 지우세요.
               </p>
-              <label className="adm-check">
-                <input type="checkbox" checked={!!plan.removeStale}
-                  onChange={(e) => patchPlan((p) => { p.removeStale = e.target.checked; })} />
-                {' '}적용할 때 <b>삭제</b> (이 학기를 이번 파일로 대체) — 생도 시간표에 담긴 분반이면 그 항목도 함께 사라집니다
-              </label>
+              <div className="adm-btn-row">
+                <button type="button" className="btn-ghost btn-sm"
+                  onClick={() => setStaleSelected(new Set(plan.stale.map((s) => `${s.courseCode}|${s.sectionNo}`)))}>
+                  전체 선택
+                </button>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => setStaleSelected(new Set())}>
+                  전체 해제
+                </button>
+              </div>
               <div className="syl-list">
-                {plan.stale.slice(0, 30).map((s) => (
-                  <div className="syl-sec" key={`${s.courseCode}-${s.sectionNo}`}>
+                {plan.stale.map((s) => {
+                  const key = `${s.courseCode}|${s.sectionNo}`;
+                  return (
+                  <label className="syl-sec syl-sec-pick" key={key}>
+                    <input type="checkbox" checked={staleSelected.has(key)} onChange={() => toggleStale(key)} />
                     <b>{s.courseName}</b> {s.sectionNo}분반 · {s.professorName || '교수미정'} · {fmtTimes(s.times)}
-                  </div>
-                ))}
-                {plan.stale.length > 30 && <div className="syl-sec muted">… 외 {plan.stale.length - 30}개</div>}
+                  </label>
+                  );
+                })}
               </div>
             </details>
           )}

@@ -684,6 +684,9 @@ code {
   border-left: 2px solid var(--border);
 }
 .syl-sec { font-size: 0.8rem; color: var(--text-2); padding-left: 0.6rem; }
+.syl-sec-prev { padding-left: 0.6rem; font-size: 0.75rem; }
+.syl-sec-pick { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+.syl-sec-pick input { flex: none; }
 .syl-conflicts { display: flex; flex-direction: column; gap: 0.35rem; }
 .syl-conflict {
   font-size: 0.82rem;
