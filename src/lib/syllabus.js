@@ -18,19 +18,66 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 const DAY_KO = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 };
 
 // ---------- PDF → 페이지별 텍스트 + 주간 격자 ----------
-function pageToText(tc) {
+// 같은 y좌표 아이템들을 x순으로 이어붙여 한 줄로 만든다(위→아래, 왼→오 순).
+function itemsToLines(items) {
   const lines = {};
-  for (const it of tc.items) {
-    if (!it.str) continue;
-    const y = Math.round(it.transform[5]);
-    (lines[y] ??= []).push({ x: it.transform[4], s: it.str });
+  for (const it of items) {
+    const y = Math.round(it.y);
+    (lines[y] ??= []).push(it);
   }
   return Object.keys(lines)
     .map(Number)
-    .sort((a, b) => b - a) // 위에서 아래로
+    .sort((a, b) => b - a)
     .map((y) => lines[y].sort((a, b) => a.x - b.x).map((i) => i.s).join(' ').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .join('\n');
+}
+
+// 편람의 '학년별 시간표'(세부 과목-분반 표) 페이지는 종종 서로 다른 반 묶음의 표 두 개를
+// 나란히(좌/우) 인쇄한다("1학년 이·공학(5~8반)" 표와 "(9~12반)" 표가 한 페이지에 함께
+// 실리는 식). pageToText 는 페이지 전체를 y좌표 하나로만 줄을 나누는데, 나란히 놓인 두
+// 표의 행이 같은 y대에 있으면 서로 다른 표의 글자가 한 줄로 섞여 붙는다(실측: 26-2 학위
+// 교육운영계획서 세부표 페이지에서 "담당교수" 머리글이 x≈288 과 x≈708 두 자리에 각각
+// 찍혀 있었고 그 사이 여러 과목·교수·교시가 뒤섞여 있었다 — findProfConflicts 오탐과
+// "이 파일에 없는 기존 분반" 오탐의 실제 원인이었다). 표 머리글 "담당교수"가 페이지에
+// 몇 번, 어느 x에 찍혔는지로 표가 몇 개 나란히 있는지 찾아 그 사이 중점을 경계로 x구간을
+// 나누고, 구간별로 따로 줄을 만든 뒤 왼쪽→오른쪽 순서로 이어붙인다. 표가 하나뿐인
+// 페이지(대다수, 이 문서 기준 수강신청 안내자료 전 페이지 포함)는 경계가 하나도 안 생겨
+// 기존 동작 그대로다.
+// 표가 세로로 여러 개(국관 표 다음에 인공지능 표, 그다음 시스템 표…) 이어질 때도 "담당교수"가
+// 페이지에 여러 번 찍힌다 — 이때는 다들 거의 같은 x(실측 10pt 안쪽 오차)라 나란한 게 아니라
+// 같은 세로줄이 반복된 것뿐이다. 진짜 좌/우 분할(실측 ~420pt 간격)과 구분하려고 이 폭보다
+// 가까운 x들은 한 다발로 묶는다 — 묶고 나서 다발이 하나뿐이면 분할하지 않는다(기존 동작 유지).
+const MIN_COLUMN_GAP = 150;
+function clusterXs(xs) {
+  const clusters = [];
+  for (const x of xs) {
+    const last = clusters[clusters.length - 1];
+    if (last && x - last.last < MIN_COLUMN_GAP) last.last = x;
+    else clusters.push({ first: x, last: x });
+  }
+  return clusters.map((c) => (c.first + c.last) / 2);
+}
+
+function pageToText(tc) {
+  const items = tc.items.filter((it) => it.str).map((it) => ({ x: it.transform[4], y: it.transform[5], s: it.str }));
+  const rawXs = items.filter((it) => it.s.includes('담당교수')).map((it) => it.x).sort((a, b) => a - b);
+  const headerXs = clusterXs(rawXs);
+  if (headerXs.length < 2) return itemsToLines(items);
+
+  const bounds = [-Infinity];
+  for (let i = 1; i < headerXs.length; i++) bounds.push((headerXs[i - 1] + headerXs[i]) / 2);
+  bounds.push(Infinity);
+
+  const bands = headerXs.map(() => []);
+  for (const it of items) {
+    let idx = bands.length - 1;
+    for (let i = 0; i < bounds.length - 1; i++) {
+      if (it.x >= bounds[i] && it.x < bounds[i + 1]) { idx = i; break; }
+    }
+    bands[idx].push(it);
+  }
+  return bands.map(itemsToLines).filter(Boolean).join('\n');
 }
 
 // 페이지 텍스트(AI 로 보낼 것)와 주간 격자(좌표로 직접 읽는 것)를 한 번의 순회로 모은다.
