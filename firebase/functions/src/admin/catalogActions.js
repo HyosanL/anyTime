@@ -32,7 +32,7 @@ function commonBlockKey(year, term, dayOfWeek, startPeriod) {
 // retry on collision. Postgres used md5(random()); Admin SDK has no equivalent
 // RNG built in, so this uses node:crypto directly — same collision-avoidance
 // shape, different randomness source.
-async function genCatalogCode(collectionName, prefix, len) {
+export async function genCatalogCode(collectionName, prefix, len) {
   for (let attempt = 0; attempt < 20; attempt++) {
     const code = prefix + randomBytes(len).toString('hex').slice(0, len).toUpperCase();
     const snap = await db.collection(collectionName).doc(code).get();

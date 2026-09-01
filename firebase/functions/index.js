@@ -13,6 +13,7 @@ export {
 } from './src/auth.js';
 
 export { adminAction } from './src/admin.js';
+export { syncProfessors } from './src/syncProfessors.js';
 
 export {
   createTimetable,
