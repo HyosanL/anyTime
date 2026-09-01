@@ -1,10 +1,7 @@
-import { setGlobalOptions } from 'firebase-functions/v2';
-
-// Default region for every function below that doesn't set its own — most
-// don't (auth.js is the one exception, setting `region: REGION` locally per
-// function; harmless overlap with this default, both resolve to the same
-// value). Matches firestore.rules/firestore.indexes.json's asia-northeast3.
-setGlobalOptions({ region: 'asia-northeast3' });
+// Must be the very first import — see the file for why (ESM import-hoisting
+// bug: re-exporting other modules below evaluates them, and the functions
+// they define, before any plain statement in this file would otherwise run).
+import './src/lib/globalOptions.js';
 
 export {
   signup,

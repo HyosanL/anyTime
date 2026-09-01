@@ -16,11 +16,9 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-// firebase/functions/index.js 의 setGlobalOptions({region:'asia-northeast3'})는 auth.js 가
-// 함수마다 region:REGION 을 직접 지정하는 것과 달리 다른 모든 모듈에는 적용되지 않아,
-// 실제로는 signup/deleteAccount/geoVerify/setSignupCode/syncAdminClaim(auth.js) 5개만
-// asia-northeast3 이고 나머지 49개는 기본값인 us-central1 로 배포됐다(2026-09-01 확인).
-// 클라이언트는 그래서 리전별로 두 인스턴스를 쓴다 — 대부분은 아래 기본(us-central1),
-// auth.js 의 3개 호출(signup/deleteAccount/geoVerify)만 authFunctions(asia-northeast3).
-export const functions = getFunctions(app, 'us-central1');
-export const authFunctions = getFunctions(app, 'asia-northeast3');
+// 2026-09-01: setGlobalOptions 의 ESM import-순서 버그(firebase/functions/src/lib/
+// globalOptions.js 참고)를 고쳐 전 함수를 asia-northeast3 로 재배포 — Firestore(같은
+// 리전)·사용자 전부 한국이라 이제 리전 하나로 충분하다. authFunctions 는 과거 호환용
+// alias(둘 다 같은 값)로 남겨 아직 이걸 import 하는 곳이 있어도 깨지지 않게 한다.
+export const functions = getFunctions(app, 'asia-northeast3');
+export const authFunctions = functions;
