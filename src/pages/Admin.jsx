@@ -8,6 +8,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { dupProfessorGroups, isPlaceholderProf } from '../lib/profname';
 import { callAdmin as call, CATALOG_ACTIONS } from '../lib/admin';
 import SyllabusUpload from '../components/SyllabusUpload';
+import { SectionCard } from '../components/SectionCard';
 import BackButton from '../components/BackButton';
 import '../styles/admin.css';
 import '../styles/course.css';
@@ -303,7 +304,83 @@ function NewPeriodRow({ run, nextNo }) {
   );
 }
 
-// 분반 편집·추가는 과목 전용 화면(AdminCourse, /admin/courses/:code)에서 — 여기서는 새 탭으로 연다.
+// 분반 편집·추가는 기본적으로 과목 전용 화면(AdminCourse, /admin/courses/:code)에서 새 탭으로
+// 연다 — 예외가 "빈 정보 분반"(아래): 과목을 하나씩 찾아 들어가는 대신, 이 학기 전체에서
+// 교수·강의실·강의시간이 빈 분반만 모아 그 자리에서 고친다. 편집 로직(SectionCard)은
+// components/SectionCard.jsx 공용 파일에서 가져온다 — AdminCourse.jsx 를 여기서 바로 import
+// 하면 서로 다른 라우트의 번들이 섞인다.
+function IncompleteSections({ cat, run }) {
+  const semesters = cat?.semesters ?? [];
+  const curSem = semesters.find((s) => s.isCurrent) || semesters[0] || null;
+  const [year, setYear] = useState(curSem?.year ?? 2026);
+  const [term, setTerm] = useState(curSem?.term ?? 1);
+  const [open, setOpen] = useState('');
+  const [filter, setFilter] = useState('all'); // all | prof | room | time
+
+  useEffect(() => {
+    if (curSem) { setYear(curSem.year); setTerm(curSem.term); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curSem?.year, curSem?.term]);
+
+  const courseNameByCode = useMemo(
+    () => new Map((cat?.courses ?? []).map((c) => [c.code, c.name])),
+    [cat]
+  );
+  const professors = cat?.professors ?? [];
+  const periods = useMemo(() => {
+    const ps = [...(cat?.periods ?? [])].map((p) => p.no).sort((a, b) => a - b);
+    return ps.length ? ps : [1, 2, 3, 4, 5, 6, 7, 8];
+  }, [cat]);
+
+  const incomplete = useMemo(() => (cat?.sections ?? [])
+    .filter((s) => s.year === Number(year) && s.term === Number(term))
+    .filter((s) => {
+      const noProf = !s.professorCode;
+      const noTime = !(s.sectionTimes?.length);
+      const noRoom = (s.sectionTimes ?? []).some((t) => !t.room);
+      if (filter === 'prof') return noProf;
+      if (filter === 'room') return noRoom;
+      if (filter === 'time') return noTime;
+      return noProf || noTime || noRoom;
+    })
+    .sort((a, b) =>
+      (courseNameByCode.get(a.courseCode) || a.courseCode).localeCompare(courseNameByCode.get(b.courseCode) || b.courseCode, 'ko')
+      || a.sectionNo - b.sectionNo),
+  [cat, year, term, filter, courseNameByCode]);
+
+  const timesOf = (s) => [...(s.sectionTimes ?? [])].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startPeriod - b.startPeriod);
+  const keyOf = (s) => `${s.year}-${s.term}-${s.courseCode}-${s.sectionNo}`;
+
+  const FILTERS = [['all', '전체'], ['prof', '교수 미정'], ['room', '강의실 미정'], ['time', '강의시간 없음']];
+
+  return (
+    <>
+      <div className="adm-form-grid">
+        <label className="field"><span className="field-label">연도</span>
+          <input type="number" value={year} onChange={(e) => setYear(e.target.value)} /></label>
+        <label className="field"><span className="field-label">학기</span>
+          <select value={term} onChange={(e) => setTerm(e.target.value)}><option value={1}>1</option><option value={2}>2</option></select></label>
+      </div>
+      <div className="mod-tabs">
+        {FILTERS.map(([k, label]) => (
+          <button key={k} type="button" className={`mod-tab${filter === k ? ' is-active' : ''}`} onClick={() => setFilter(k)}>{label}</button>
+        ))}
+      </div>
+      <p className="note">{year}-{term} 학기 · {incomplete.length}개 분반.</p>
+      <div className="adm-sec-list">
+        {incomplete.map((s) => {
+          const k = keyOf(s);
+          return (
+            <SectionCard key={k} s={s} times={timesOf(s)} professors={professors} periods={periods}
+              run={run} open={open === k} onToggle={() => setOpen(open === k ? '' : k)}
+              courseName={courseNameByCode.get(s.courseCode) || s.courseCode} />
+          );
+        })}
+        {incomplete.length === 0 && <p className="note">🎉 빈 정보가 있는 분반이 없습니다.</p>}
+      </div>
+    </>
+  );
+}
 
 // 허브 항목 정의 (key는 라우팅 section 과 일치). 검열(moderation)은 별도 페이지로 링크하며 최상단.
 const SECTIONS = [
@@ -311,6 +388,7 @@ const SECTIONS = [
   { key: 'banned-words', icon: '🚫', title: '금지어', sub: '작성 시 자동으로 가려질 금지어 추가·삭제' },
   { key: 'notices', icon: '📢', title: '공지사항', sub: '홈 화면 팝업 공지 작성·관리' },
   { key: 'courses', icon: '📚', title: '과목 · 분반', sub: '과목 검색 → 새 탭에서 분반·교수·시간 관리' },
+  { key: 'incomplete', icon: '📋', title: '빈 정보 분반', sub: '교수·강의실·강의시간이 빈 분반을 한 화면에 모아 바로 채우기' },
   { key: 'csv', icon: '📄', title: 'CSV 강의 일괄등록', sub: 'CSV 업로드/붙여넣기 → 자동 매칭 → 검토 후 적용' },
   { key: 'professors', icon: '👤', title: '교수', sub: '교수 검색·추가·수정·삭제' },
   { key: 'professors-sync', icon: '🔄', title: '교수 명단 동기화', sub: '공식 홈페이지에서 교수 명단 자동 갱신' },
@@ -727,6 +805,12 @@ export default function Admin() {
                 const r = await run('add_course', { name: newCourse.trim() }, '과목 추가(코드 자동)');
                 if (r.ok) setNewCourse('');
               }}>과목 추가 (코드 자동)</button>
+          </Card>
+        )}
+
+        {section === 'incomplete' && (
+          <Card icon="📋" title="빈 정보 분반" desc="교수·강의실·강의시간이 비어 있는 분반을 학기 전체에서 모아 보여줍니다. 과목을 하나씩 찾아 들어가지 않고 여기서 바로 채우세요.">
+            <IncompleteSections cat={cat} run={run} />
           </Card>
         )}
 
