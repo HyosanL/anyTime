@@ -51,7 +51,7 @@ export default function PushPrompt() {
     <div className="install-banner">
       <span>
         {msg || (
-          <>🔔 내 글에 댓글이 달리면 <b>푸시 알림</b>으로 알려드려요. 알림을 켜볼까요?</>
+          <>🔔 <b>다음 수업 시작 전 알림</b>과 내 글 댓글 알림을 푸시로 받을 수 있어요. 알림을 켜볼까요?</>
         )}
       </span>
       <span className="install-actions">

@@ -76,3 +76,5 @@ export {
   adminPushSubscribe,
   adminPushUnsubscribe,
 } from './src/push.js';
+
+export { setNextClassAlerts, nextClassNotify } from './src/nextClass.js';

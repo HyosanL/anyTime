@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
 import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendTestPush } from '../lib/push';
+import { NEXT_CLASS_LEADS, getLead, setLeadPref, syncNextClassAlerts } from '../lib/nextClass';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
 import PalettePicker from '../components/PalettePicker';
@@ -23,9 +24,18 @@ function PushSettings() {
   const [on, setOn] = useState(() => pushEnabled());
   const [hot, setHot] = useState(() => hotAlertsOn());
   const [dnd, setDndState] = useState(() => getDnd());
+  const [lead, setLeadState] = useState(() => getLead());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
+
+  // 다음 수업 알림 리드타임 변경 — 로컬 저장 후 스케줄을 재계산해 서버(발동 시각만)·
+  // 기기 Cache(내용)에 반영한다. 실패는 다음 앱 실행 때 App.jsx PushSync 가 재시도.
+  function changeLead(v) {
+    setLeadState(v);
+    setLeadPref(v);
+    syncNextClassAlerts().catch(() => {});
+  }
 
   // 방해금지 설정 변경 — 로컬 저장 + SW(Cache) 미러(설정 반영은 다음 알림부터).
   function updateDnd(patch) {
@@ -72,6 +82,18 @@ function PushSettings() {
         icon: '/icons/icon.svg',
       });
       setTestMsg('테스트 알림을 보냈어요.');
+    } catch {
+      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
+    }
+  }
+
+  // "다음 수업" 알림 미리보기 — mow:-1 은 어떤 실제 슬롯과도 안 겹치므로 SW 가 msg 의
+  // subject/room/start 폴백(테스트 전용)으로 그린다. 실제 서버 핑엔 이 필드들이 없다.
+  async function testNextClass() {
+    setTestMsg('');
+    try {
+      await sendTestPush({ kind: 'next_class', mow: -1, subject: '선형대수학', room: '202', start: '08:00' });
+      setTestMsg('테스트 “다음 수업” 알림을 보냈어요. “⏰ 다음 수업 / 선형대수학 · 202 · 08:00” 으로 오면 정상입니다.');
     } catch {
       setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
     }
@@ -142,12 +164,35 @@ function PushSettings() {
                 </p>
               )}
 
+              <div className="account-note" style={{ marginTop: 12 }}>
+                <div style={{ marginBottom: 5 }}>⏰ 다음 수업 알림 <span className="muted">(확정 시간표 기준 · 방해금지 무시)</span></div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {NEXT_CLASS_LEADS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={n === lead ? 'btn-add btn-sm' : 'btn-ghost btn-sm'}
+                      onClick={() => changeLead(n)}
+                    >
+                      {n === 0 ? '끄기' : `${n}분 전`}
+                    </button>
+                  ))}
+                </div>
+                <p className="account-note" style={{ marginTop: 6 }}>
+                  수업 시작 전 “⏰ 다음 수업 / 과목 · 강의실 · 시각”을 알려드려요. 알림 시각(요일·시각)만
+                  이 기기 구독에 저장되고, 과목·강의실은 서버에 저장되지 않아요.
+                </p>
+              </div>
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                 <button className="btn-ghost btn-sm" onClick={sendTest}>
                   🔔 테스트 알림 보내기
                 </button>
                 <button className="btn-ghost btn-sm" onClick={testQuietNow}>
                   🌙 지금 방해금지로 무음 테스트
+                </button>
+                <button className="btn-ghost btn-sm" onClick={testNextClass}>
+                  ⏰ 다음 수업 알림 테스트
                 </button>
               </div>
               {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}

@@ -60,7 +60,7 @@ export default defineConfig({
       workbox: {
         // 웹푸시 수신 핸들러(public/push-sw.js)를 생성된 sw.js 에 포함.
         // ※ push-sw.js 내용만 바꾸면 SW 갱신이 안 잡힌다 — 수정 시 ?v=N 을 올릴 것.
-        importScripts: ['push-sw.js?v=7'],
+        importScripts: ['push-sw.js?v=8'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // 관리자 전용 무거운 청크(편람 PDF 파서 pdfjs 등)는 프리캐시에서 제외.
         // 대다수(시간표 확인용)의 설치를 가볍게 유지 — 해당 페이지는 접속 시 그때 로드된다.

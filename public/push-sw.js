@@ -8,6 +8,8 @@
 //   (src/lib/push.js 가 watch 변경 때마다 미러링). 알림 문구의 "내가 쓴 글" 구분에 사용.
 // · /dnd-config: { on, start, end } — 방해금지 시간(디바이스 시간 기준). src/lib/push.js
 //   가 미러링. 창 안이면 알림을 소리·진동 없이 조용히(silent) 띄운다.
+// · /next-class-schedule: { lead, slots:{ [주간분값]: {subject,room,start} } } — "다음 수업"
+//   알림 내용. src/lib/nextClass.js 가 미러링. 서버는 발동 시각만 알고 내용은 여기만 있다.
 // · /pending-nav: 알림 클릭 목적지. openWindow 가 경로를 무시하는 플랫폼(iOS PWA 등)
 //   대비 보험 — 앱이 부팅하면서 회수해 이동한다(App.jsx PushNavigator).
 const META_CACHE = 'push-meta';
@@ -70,9 +72,41 @@ function commentTitle(kind, reason, title) {
     : `💬 ${who}${t}에 댓글이 달렸어요`;
 }
 
+// "다음 수업" 알림 스케줄(내용)을 Cache 에서 읽는다. 서버 핑엔 과목·강의실이 없다 —
+// src/lib/nextClass.js 가 미러해 둔 이 슬롯 맵에서 msg.mow 로 찾는다.
+async function nextClassSchedule() {
+  try {
+    const c = await caches.open(META_CACHE);
+    const r = await c.match('/next-class-schedule');
+    return r ? await r.json() : null;
+  } catch { return null; }
+}
+
+// "⏰ 다음 수업 / 선형대수학 · 202 · 08:00". 사용자가 직접 정한 시각 알람이므로
+// 방해금지 창이어도 소리·진동을 유지한다(설계: 다음 수업 알림은 방해금지 무시).
+async function showNextClass(msg) {
+  const sched = await nextClassSchedule();
+  const slot = sched && sched.slots ? sched.slots[String(msg.mow)] : null;
+  // 내용은 기기 Cache 에만 있다 — 비었으면(캐시 증발 등) 조용히 스킵.
+  // msg.subject 는 프로필 화면 '테스트' 버튼 전용 폴백(실제 서버 핑엔 없음).
+  const s = slot || (msg.subject ? { subject: msg.subject, room: msg.room, start: msg.start } : null);
+  if (!s) return;
+  const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  if (wins.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === '/')) return;
+  await self.registration.showNotification('⏰ 다음 수업', {
+    body: [s.subject, s.room, s.start].filter(Boolean).join(' · '),
+    tag: `next-class-${msg.mow}`,
+    renotify: true,
+    vibrate: [180, 80, 180],
+    icon: '/icons/icon.svg',
+    data: { path: '/' },
+  });
+}
+
 // 알림 표시 본체 — 실제 push 와 테스트 메시지(TEST_PUSH)가 같은 경로를 타게 분리했다.
 // 방해금지 silent 판정과 클릭 딥링크(data.path)가 어느 쪽이든 동일하게 적용된다.
 async function showPush(msg) {
+  if (msg.kind === 'next_class') return showNextClass(msg);
   // 목적지: msg.path(테스트에서 명시) 우선, 없으면 post_id 로 유도.
   const path = (typeof msg.path === 'string' && msg.path.startsWith('/'))
     ? msg.path

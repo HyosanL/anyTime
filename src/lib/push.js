@@ -11,8 +11,8 @@ const HOT_KEY = 'push:hot';           // '0' = HOT 방송 끔(기본 켬)
 const DND_KEY = 'push:dnd';           // 방해금지 시간(디바이스 시간 기준). { on, start, end }
 
 // SW 와 공유하는 저장소(SW 는 localStorage 접근 불가 → Cache API 로 미러).
-// push-sw.js 의 META_CACHE 와 키가 맞아야 한다.
-const META_CACHE = 'push-meta';
+// push-sw.js 의 META_CACHE 와 키가 맞아야 한다. (nextClass.js 도 /next-class-schedule 미러에 재사용)
+export const META_CACHE = 'push-meta';
 
 // 방해금지 기본값 — 요청대로 기본 켬(22:30~08:00). push-sw.js 의 DND_DEFAULT 와 일치시킬 것.
 export const DND_DEFAULT = { on: true, start: '22:30', end: '08:00' };
@@ -75,6 +75,9 @@ export async function enablePush() {
 
 export async function disablePush() {
   try { localStorage.removeItem(ENABLED_KEY); } catch { /* 무시 */ }
+  // 구독이 지워지면 서버 nextClassAlerts 필드도 문서와 함께 사라진다 — 재업로드 서명을
+  // 비워, 다시 켰을 때(같은 endpoint·같은 설정이어도) nextClass.js 가 재업로드하게 한다.
+  try { localStorage.removeItem('nextclass:sig'); } catch { /* 무시 */ }
   try {
     const sub = await getSubscription();
     if (sub) {

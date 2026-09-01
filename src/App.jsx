@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-r
 import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
 import { syncPush, consumePendingNav } from './lib/push';
+import { syncNextClassAlerts } from './lib/nextClass';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -113,9 +114,14 @@ function BoardRoute({ children }) {
 }
 
 // 푸시 구독 자가치유: 로그인 세션이 잡히면 구독을 서버에 재업서트(유실·회전 복구).
+// "다음 수업" 알림 스케줄도 이때 재계산해 올린다(다른 기기에서 시간표를 고쳤을 수 있다).
 function PushSync() {
   const { session } = useAuthContext();
-  useEffect(() => { if (session) syncPush(); }, [session]);
+  useEffect(() => {
+    if (!session) return;
+    syncPush();
+    syncNextClassAlerts().catch(() => { /* 다음 실행 때 재시도 */ });
+  }, [session]);
   return null;
 }
 
