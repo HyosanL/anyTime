@@ -274,6 +274,8 @@ export default function Profile() {
       </header>
 
       <div className="home-body">
+        <PushSettings />
+
         <section className="card profile-card">
           <Badge tier={tier} level={count} size={64} />
           <p className="profile-name">{cadet?.username}</p>
@@ -342,8 +344,6 @@ export default function Profile() {
           <p className="account-note">시간표 과목 칸의 색 테마를 고를 수 있어요. (이 기기에만 저장됩니다.)</p>
           <PalettePicker />
         </section>
-
-        <PushSettings />
 
         <section className="card account-sec">
           <h3 className="account-sec-title">비밀번호 변경</h3>
