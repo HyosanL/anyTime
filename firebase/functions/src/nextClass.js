@@ -63,10 +63,18 @@ export const setNextClassAlerts = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-// 매분 실행. 지금(±1분) 발동할 구독에 '내용 없는' 핑을 보낸다. Cloud Scheduler 지연에
+// 매분 실행. 지금(±1분) 발동할 구독에 '내용 없는' 핑을 보낸다. Cloud Scheduler 지연·누락에
 // 대비해 직전 1분(mow-1)도 함께 조회하고, 각 구독이 실제로 매칭된 분값을 핑(mow)에 실어
 // SW 가 기기 Cache 에서 올바른 슬롯을 찾게 한다. array-contains-any 는 자동 단일필드
 // 색인으로 처리된다(색인 파일 변경 불필요).
+//
+// 중복 억제: 정상 스케줄에서도 발동 분값 F 는 매분 조회에 두 번 걸린다 — F 분엔 mow 로,
+// F+1 분엔 직전 1분(back)으로. 방금(≤3분) 같은 분값으로 보낸 구독은 건너뛰어, 스케줄러가
+// F 분을 통째로 건너뛴 경우(스탬프 없음)에만 back 조회가 실제 발송으로 이어지게 한다.
+// 스케줄러 중복 실행(at-least-once)도 같은 스탬프로 막힌다. 7일 뒤 같은 분값 재사용은
+// 타임스탬프 창(3분)이 지나 정상 발송된다.
+const DEDUPE_MS = 3 * 60 * 1000;
+
 export const nextClassNotify = onSchedule(
   { schedule: '* * * * *', timeZone: 'Asia/Seoul', secrets: [pushFanoutUrl, pushFanoutSecret] },
   async () => {
@@ -78,16 +86,24 @@ export const nextClassNotify = onSchedule(
       .get();
     if (snap.empty) return;
 
-    const byMow = new Map(); // 매칭된 분값 → 대상 구독 목록
+    const now = Date.now();
+    const byMow = new Map();  // 매칭된 분값 → 대상 구독 목록
+    const toStamp = [];       // 발송 후 lastFired 를 찍을 { ref, mow } 목록
     for (const doc of snap.docs) {
       const d = doc.data();
       if (!d.endpoint || !d.p256dh || !d.auth) continue;
-      const fm = d.nextClassAlerts?.fireMinutes || [];
+      const na = d.nextClassAlerts || {};
+      const fm = na.fireMinutes || [];
       const hit = fm.includes(mow) ? mow : fm.includes(back) ? back : null;
       if (hit == null) continue;
+      const lf = na.lastFired;
+      if (lf && lf.mow === hit && typeof lf.at?.toMillis === 'function'
+          && now - lf.at.toMillis() < DEDUPE_MS) continue;
       if (!byMow.has(hit)) byMow.set(hit, []);
       byMow.get(hit).push({ endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth });
+      toStamp.push({ ref: doc.ref, mow: hit });
     }
+    if (!byMow.size) return;
 
     for (const [hit, targets] of byMow) {
       await pushFanout(
@@ -97,5 +113,13 @@ export const nextClassNotify = onSchedule(
         targets
       );
     }
+
+    // 발송한 구독에 lastFired 를 찍는다(다음 분 back 조회의 중복 억제). fire-and-forget
+    // 설계라 발송 성패와 무관하게 찍는다 — 스케줄러가 F 분을 통째로 건너뛰면 이 스탬프가
+    // 아예 없어 back 조회가 정상적으로 놓친 알림을 잡는다. 개별 실패(그 사이 구독 해지 등)는
+    // 서로 영향 없게 allSettled 로 흘린다.
+    await Promise.allSettled(toStamp.map(({ ref, mow: hit }) =>
+      ref.update({ 'nextClassAlerts.lastFired': { mow: hit, at: FieldValue.serverTimestamp() } })
+    ));
   }
 );

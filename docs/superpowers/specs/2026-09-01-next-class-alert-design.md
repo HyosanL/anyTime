@@ -26,12 +26,20 @@ Triggers·Periodic Background Sync 모두 크로스플랫폼으로 못 쓴다. �
           └─→ setNextClassAlerts CF → pushSubscriptions/{sha256(endpoint)}.nextClassAlerts = { lead, fireMinutes:[주간분값…] }   ← 숫자만
 [서버]  nextClassNotify (onSchedule '* * * * *', Asia/Seoul)
           └─ where nextClassAlerts.fireMinutes array-contains-any [지금, 지금-1]
+             → 방금(≤3분) 같은 분값으로 보낸 구독(lastFired)은 제외
              → /api/push-fanout  { kind:'next_class', mow:<주간분값>, path:'/' }   ← 내용 없음
+             → 발송한 구독에 nextClassAlerts.lastFired = { mow, at } 스탬프
 [기기 SW]  push 수신 → Cache 에서 slots[mow] → showNotification('⏰ 다음 수업', body) (방해금지 무시)
 ```
 
 - **주간 분값(minute-of-week)**: 월 00:00 = 0 … 일 23:59 = 10079. 한국은 DST 없어
   서버(`new Date()+9h` UTC 파트)와 기기가 일치.
+- **직전 1분(지금-1) 재조회**: Cloud Scheduler 가 한 틱을 지연·누락해도 놓친 알림을
+  다음 분에 잡기 위함. 단 정상 스케줄에선 분값 F 가 F 분(mow)·F+1 분(back)에 두 번
+  걸리므로, `lastFired` 스탬프로 방금 보낸 건 건너뛴다(그래서 스케줄러가 F 를 통째로
+  건너뛴 경우에만 back 조회가 실제 발송으로 이어짐). 스케줄러 중복 실행도 같이 막힌다.
+  SW 는 `renotify` 를 주지 않아(기본 false), 혹시 중복이 새어나와도 같은 tag 로 조용히
+  교체된다(이중 방어).
 - fanout 페이로드에 과목·강의실 없음 → 서버 로그·DB엔 **타이밍 패턴만** 남는다
   (uid·과목·강의실·어느 시간표인지 전부 모름). `/dnd-config` 미러와 동일한 익명성 수준.
 - 캐시 증발 등으로 슬롯이 없으면 SW 가 조용히 스킵.
@@ -41,8 +49,12 @@ Triggers·Periodic Background Sync 모두 크로스플랫폼으로 못 쓴다. �
 **서버** — `pushSubscriptions/{sha256(endpoint)}` 에 필드 추가(기존 문서, uid 없음 유지):
 
 ```
-nextClassAlerts: { lead: 10, fireMinutes: [470, 650, …], updatedAt: <ts> }   // lead 0 / 없음이면 필드 삭제
+nextClassAlerts: { lead: 10, fireMinutes: [470, 650, …], updatedAt: <ts>,
+                   lastFired: { mow: 470, at: <ts> } }   // lead 0 / 없음이면 필드 삭제
 ```
+
+- `lastFired` 는 `nextClassNotify` 만 쓴다(중복 억제용). `setNextClassAlerts` 의
+  `set(..., { merge: true })` 는 `lead`/`fireMinutes` 만 갱신하므로 `lastFired` 는 보존된다.
 
 - `firestore.rules` 변경 없음 — 이 컬렉션은 이미 `allow read, write: if false`(CF 전용).
 - `firestore.indexes.json` 변경 없음 — `fieldOverrides: []` 라 nested array 자동 색인이

@@ -93,10 +93,11 @@ async function showNextClass(msg) {
   const body = slot
     ? [slot.subject, slot.room, slot.start].filter(Boolean).join(' · ')
     : '곧 수업이 시작돼요';
+  // renotify 미지정(기본 false): 한 수업 블록은 분값(mow) 하나로 한 번만 울리면 된다 —
+  // 서버 중복 억제가 뚫려 같은 mow 핑이 또 와도 같은 tag 로 조용히 교체되게 둔다(이중 방어).
   await self.registration.showNotification('⏰ 다음 수업', {
     body,
     tag: `next-class-${msg.mow}`,
-    renotify: true,
     vibrate: [180, 80, 180],
     icon: '/icons/icon.svg',
     data: { path: '/' },
