@@ -83,18 +83,18 @@ async function nextClassSchedule() {
 }
 
 // "⏰ 다음 수업 / 선형대수학 · 202 · 08:00". 사용자가 직접 정한 시각 알람이므로
-// 방해금지 창이어도 소리·진동을 유지한다(설계: 다음 수업 알림은 방해금지 무시).
+// 방해금지 창이어도 소리·진동을 유지하고(설계: 방해금지 무시), 홈을 보고 있어도 띄운다
+// (댓글 알림과 달리 '시각 알람'이라 항상 울려야 한다).
 async function showNextClass(msg) {
   const sched = await nextClassSchedule();
   const slot = sched && sched.slots ? sched.slots[String(msg.mow)] : null;
-  // 내용은 기기 Cache 에만 있다 — 비었으면(캐시 증발 등) 조용히 스킵.
-  // msg.subject 는 프로필 화면 '테스트' 버튼 전용 폴백(실제 서버 핑엔 없음).
-  const s = slot || (msg.subject ? { subject: msg.subject, room: msg.room, start: msg.start } : null);
-  if (!s) return;
-  const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  if (wins.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === '/')) return;
+  // 내용(과목·강의실·시각)은 기기 Cache 에만 있다 — 서버 핑엔 mow 뿐. 슬롯이 없으면
+  // (캐시 증발·낡음) 일반 문구로라도 띄운다.
+  const body = slot
+    ? [slot.subject, slot.room, slot.start].filter(Boolean).join(' · ')
+    : '곧 수업이 시작돼요';
   await self.registration.showNotification('⏰ 다음 수업', {
-    body: [s.subject, s.room, s.start].filter(Boolean).join(' · '),
+    body,
     tag: `next-class-${msg.mow}`,
     renotify: true,
     vibrate: [180, 80, 180],

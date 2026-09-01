@@ -84,11 +84,12 @@ export function blocksToSchedule(blocks, lead) {
 }
 
 async function mirrorSchedule(payload) {
-  if (!('caches' in window)) return;
+  if (!('caches' in window)) return false;
   try {
     const c = await caches.open(META_CACHE);
     await c.put(SCHEDULE_URL, new Response(JSON.stringify(payload)));
-  } catch { /* 미러 실패 → SW 가 핑을 받아도 슬롯이 없어 조용히 스킵. 무해 */ }
+    return true;
+  } catch { return false; }
 }
 async function clearSchedule() {
   try { await (await caches.open(META_CACHE)).delete(SCHEDULE_URL); } catch { /* 무시 */ }
@@ -130,12 +131,20 @@ export async function syncNextClassAlerts() {
     }
   }
 
-  const active = lead > 0 && fireMinutes.length > 0;
-  if (active) await mirrorSchedule({ lead, tz: 'Asia/Seoul', slots, updatedAt: Date.now() });
-  else await clearSchedule();
+  let active = lead > 0 && fireMinutes.length > 0;
+  if (active) {
+    // 내용을 기기 캐시에 못 넣었으면 서버에 발동 시각도 올리지 않는다(내용 없는 빈 핑 방지).
+    if (!(await mirrorSchedule({ lead, tz: 'Asia/Seoul', slots, updatedAt: Date.now() }))) return;
+  } else {
+    await clearSchedule();
+  }
 
   const sig = `${endpoint}|${active ? lead : 0}|${fireMinutes.join(',')}`;
   if (sig === readSig()) return;
-  const res = await callFn('setNextClassAlerts', { endpoint, lead: active ? lead : 0, fireMinutes });
+  const res = await callFn('setNextClassAlerts', {
+    endpoint,
+    lead: active ? lead : 0,
+    fireMinutes: active ? fireMinutes : [],
+  });
   if (res.ok) writeSig(sig);
 }

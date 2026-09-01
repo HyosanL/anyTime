@@ -87,13 +87,21 @@ function PushSettings() {
     }
   }
 
-  // "다음 수업" 알림 미리보기 — mow:-1 은 어떤 실제 슬롯과도 안 겹치므로 SW 가 msg 의
-  // subject/room/start 폴백(테스트 전용)으로 그린다. 실제 서버 핑엔 이 필드들이 없다.
+  // "다음 수업" 알림 미리보기 — SW 버전(업데이트 지연)에 안 기대도록, 실제 서버 핑 경로
+  // (sendTestPush→SW showNextClass) 대신 페이지에서 직접 같은 형식으로 알림을 띄운다.
+  // 실제 알림은 push-sw.js 의 showNextClass 가 그리며 문구는 여기와 동일하다.
   async function testNextClass() {
     setTestMsg('');
     try {
-      await sendTestPush({ kind: 'next_class', mow: -1, subject: '선형대수학', room: '202', start: '08:00' });
-      setTestMsg('테스트 “다음 수업” 알림을 보냈어요. “⏰ 다음 수업 / 선형대수학 · 202 · 08:00” 으로 오면 정상입니다.');
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification('⏰ 다음 수업', {
+        body: '선형대수학 · 202 · 08:00',
+        tag: 'next-class-preview',
+        renotify: true,
+        vibrate: [180, 80, 180],
+        icon: '/icons/icon.svg',
+      });
+      setTestMsg('“⏰ 다음 수업 / 선형대수학 · 202 · 08:00” 형식으로 알림이 오면 정상입니다. (실제 알림은 수업 시작 전에 이 형식으로 옵니다.)');
     } catch {
       setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
     }
