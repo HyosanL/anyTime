@@ -22,6 +22,7 @@ export const createMemo = onCall(async (request) => {
   if (!courseCode) invalid('courseCode가 필요합니다.');
   if (year == null || term == null || sectionNo == null) invalid('분반 정보가 필요합니다.');
   if (typeof content !== 'string' || !content.trim()) invalid('내용을 입력하세요.');
+  if (content.length > 10000) invalid('내용이 너무 깁니다.');
 
   const held = await inPrimaryTimetable(db, uid, courseCode, year, term, sectionNo);
   if (!held) invalid('확정시간표에 등록한 분반만 메모를 작성할 수 있습니다.');

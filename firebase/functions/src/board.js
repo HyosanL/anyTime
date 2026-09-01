@@ -60,6 +60,7 @@ export const createBoard = onCall(async (request) => {
   const { name } = request.data ?? {};
   const trimmed = typeof name === 'string' ? name.trim() : '';
   if (!trimmed) invalid('게시판 이름을 입력하세요.');
+  if (trimmed.length > 40) invalid('게시판 이름이 너무 깁니다.');
   await boardEnabledGuard();
 
   const boardsCol = db.collection('boards');
@@ -80,6 +81,11 @@ export const createPost = onCall(async (request) => {
   const { boardId, title, content, imageKeys, postPassword } = request.data ?? {};
   if (!boardId) invalid('게시판을 지정하세요.');
   if (!content) invalid('내용을 입력하세요.');
+  // Cap free-text length — the old TEXT columns were unbounded, but any signed-in
+  // cadet can call this, and Firestore's 1 MB doc limit only fails with an
+  // untranslated error. Generous ceilings: no real post/title comes close.
+  if (String(content).length > 20000) invalid('내용이 너무 깁니다.');
+  if (title != null && String(title).length > 300) invalid('제목이 너무 깁니다.');
   // Old create_post()'s BEFORE INSERT trigger fires before the board_id FK
   // check runs, so the guard is evaluated before the board lookup here too.
   await boardEnabledGuard();
@@ -251,6 +257,7 @@ export const createComment = onCall(async (request) => {
   const { postId, parentId, content, postPassword } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
   if (!content) invalid('내용을 입력하세요.');
+  if (String(content).length > 10000) invalid('내용이 너무 깁니다.');
 
   const postRef = db.collection('boardPosts').doc(postId);
   const postSnap = await postRef.get();

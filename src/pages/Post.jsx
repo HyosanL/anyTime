@@ -126,7 +126,7 @@ export default function Post() {
     // 요청 전에 먼저 로컬 기록/해제해 연타 차단
     if (on) unmarkReacted('post', id, kind); else markReacted('post', id, kind);
     setReacted(getReacted('post', id));
-    const r = await react(Number(id), on ? `un${kind}` : kind);
+    const r = await react(id, on ? `un${kind}` : kind);
     if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); kvDel(`bb:post:${id}`); navigate(-1); return; }
     // 'ALREADY' = 서버가 이미 내 반응을 갖고 있다(다른 기기에서 눌렀거나 로컬 기록이 지워진 경우).
     // 좋아요/싫어요는 로컬 상태만 맞추면 되니 조용히 넘어가고, 신고만 안내한다.
@@ -136,7 +136,7 @@ export default function Post() {
   async function submitComment(e) {
     e.preventDefault();
     if (!cText.trim()) return;
-    await addComment(Number(id), replyTo, await maskText(cText.trim()), cPw);
+    await addComment(id, replyTo, await maskText(cText.trim()), cPw);
     setCText(''); setCPw(''); setReplyTo(null); load();
     // 푸시를 쓰는 기기면 댓글 단 글을 조용히 지켜보기(대댓글 알림)
     if (pushEnabled() && !isWatched(id)) {
@@ -148,7 +148,7 @@ export default function Post() {
   // 메시지에는 맥락 문구를 함께 실어 받는 쪽에서 "이게 뭐야"가 되지 않게 한다.
   async function sharePost() {
     try {
-      const t = await createShare(Number(id));
+      const t = await createShare(id);
       if (!t) throw new Error('NO_TOKEN');
       const short = post.title && post.title.length > 24 ? `${post.title.slice(0, 24)}…` : post.title;
       // 어느 게시판의 어느 글인지 함께 실어 준다 — "애타 익명게시판 [우주공학과]의 "이찬" 글이에요."
@@ -164,13 +164,13 @@ export default function Post() {
   async function onDeleteClick() {
     if (post.hasPassword && !isAdmin) { setShowDel((v) => !v); return; }
     if (!confirm('이 게시글을 삭제할까요?')) return;
-    const { data, error } = await deletePost(Number(id), '');
+    const { data, error } = await deletePost(id, '');
     if (error || data === false) { alert('삭제에 실패했습니다.'); return; }
     kvDel(`bb:post:${id}`);
     navigate(-1);
   }
   async function doDelete() {
-    const { data, error } = await deletePost(Number(id), delPw);
+    const { data, error } = await deletePost(id, delPw);
     if (error || data === false) { alert('비밀번호가 일치하지 않습니다.'); return; }
     kvDel(`bb:post:${id}`);
     navigate(-1);
@@ -258,12 +258,12 @@ export default function Post() {
             <p className="comment-body">{c.content}</p>
             <div className="comment-actions">
               <button className="link-btn" onClick={() => setReplyTo(c.id)}>답글</button>
-              <CommentDelete postId={Number(id)} id={c.id} hasPw={!!c.hasPassword} isAdmin={isAdmin} onDone={load} />
+              <CommentDelete postId={id} id={c.id} hasPw={!!c.hasPassword} isAdmin={isAdmin} onDone={load} />
             </div>
             {(repliesByParent.get(c.id) || []).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
-                <div className="comment-actions"><CommentDelete postId={Number(id)} id={rc.id} hasPw={!!rc.hasPassword} isAdmin={isAdmin} onDone={load} /></div>
+                <div className="comment-actions"><CommentDelete postId={id} id={rc.id} hasPw={!!rc.hasPassword} isAdmin={isAdmin} onDone={load} /></div>
               </div>
             ))}
           </li>

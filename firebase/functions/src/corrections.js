@@ -307,6 +307,11 @@ export const submitCorrection = onCall({ secrets: [pushFanoutUrl, pushFanoutSecr
 
   if (!TARGETS.includes(target)) invalid('대상 오류');
   if (!FIELDS.includes(field)) invalid('항목 오류');
+  // Free-text ceiling (see board.js createPost): unbounded before, any cadet
+  // can call this. suggested holds a normalized token string / small JSON.
+  if (suggested != null && String(suggested).length > 2000) invalid('제안 값이 너무 깁니다.');
+  if (note != null && String(note).length > 2000) invalid('설명이 너무 깁니다.');
+  if (label != null && String(label).length > 300) invalid('대상 이름이 너무 깁니다.');
 
   const key = targetKey ?? {};
   let professorCode = null;

@@ -138,7 +138,7 @@ export default function Board() {
       let keys = [];
       if (files.length) keys = await uploadBoardImages(files);
       const [title, body] = await Promise.all([maskText(pTitle.trim()), maskText(content.trim())]);
-      const newId = await createPost(Number(id), title, body, password, keys);
+      const newId = await createPost(id, title, body, password, keys);
       // 푸시를 쓰는 기기면 내가 쓴 글을 조용히 지켜보기(댓글 알림).
       // 서버는 "watch 한 기기"만 알 뿐 작성자는 저장하지 않는다.
       if (newId && pushEnabled()) watchPost(newId, 'post').catch(() => {});
@@ -204,7 +204,7 @@ export default function Board() {
             )}
             {(posts ?? []).map((p) => {
               const snippet = preview(p.content);
-              const ago = timeAgo(p.created_at);
+              const ago = timeAgo(p.createdAt);
               return (
                 <li key={p.id}>
                   <Link to={`/board/post/${p.id}`} className="post-item">
@@ -215,7 +215,7 @@ export default function Board() {
                         <button
                           type="button"
                           className="post-board-chip"
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/board/${p.board_id}`); }}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/board/${p.boardId}`); }}
                           title={`${p.board.name} 게시판으로 이동`}
                         >{p.board.name}</button>
                       )}
@@ -226,10 +226,10 @@ export default function Board() {
                     {snippet && <span className="post-item-preview">{snippet}</span>}
                     <span className="post-item-meta">
                       {ago && <span className="post-meta-time">{ago}</span>}
-                      <span className="metric">👀 {p.view_count ?? 0}</span>
-                      <span className="metric">💬 {p.comment_count}</span>
-                      <span className="metric">👍 {p.like_count}</span>
-                      {p.dislike_count > 0 && <span className="metric">👎 {p.dislike_count}</span>}
+                      <span className="metric">👀 {p.viewCount ?? 0}</span>
+                      <span className="metric">💬 {p.commentCount}</span>
+                      <span className="metric">👍 {p.likeCount}</span>
+                      {p.dislikeCount > 0 && <span className="metric">👎 {p.dislikeCount}</span>}
                     </span>
                   </Link>
                 </li>

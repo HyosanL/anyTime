@@ -23,15 +23,6 @@ export function examExpiry(createdAt) {
   return d;
 }
 
-// 행의 첨부파일들을 [{key,name,size,mime}] 로 정규화.
-// 첨부는 exam_file 릴레이션(정규화)에 있고, 조회 시 embedded select 로 함께 온다:
-//   .select('*, exam_file(seq, object_key, file_name, file_size, mime_type)')
-export function examFiles(ex) {
-  const rows = Array.isArray(ex?.exam_file) ? [...ex.exam_file] : [];
-  rows.sort((a, b) => (a.seq || 0) - (b.seq || 0));
-  return rows.map((f) => ({ key: f.object_key, name: f.file_name, size: f.file_size, mime: f.mime_type }));
-}
-
 // 업로드 → { key, file_name, file_size, mime_type }
 export async function uploadExamFile(courseCode, file) {
   const fd = new FormData();

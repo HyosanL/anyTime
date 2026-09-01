@@ -31,6 +31,11 @@ export const createReview = onCall(async (request) => {
   for (const [name, v] of [['workload', workload], ['progress', progress], ['difficulty', difficulty], ['classTime', classTime]]) {
     if (v != null && !isValidScore(v)) invalid(`${name}은 1~5 사이 정수여야 합니다.`);
   }
+  // Free-text ceiling (see board.js createPost for why): unbounded before, any
+  // cadet can call this. 5000 chars is far past any real review comment.
+  if ((profComment && String(profComment).length > 5000) || (courseComment && String(courseComment).length > 5000)) {
+    invalid('후기 내용이 너무 깁니다.');
+  }
 
   // Old create_review() ran one EXISTS(...) query combining "row present" and
   // "held >= min_days" — the Firestore port needs both eligibility.js calls

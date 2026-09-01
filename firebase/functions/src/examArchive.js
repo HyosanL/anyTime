@@ -14,7 +14,10 @@ export const createExam = onCall(async (request) => {
 
   if (!courseCode) invalid('courseCode가 필요합니다.');
   if (!title) invalid('제목이 필요합니다.');
+  if (String(title).length > 300) invalid('제목이 너무 깁니다.');
+  if (description != null && String(description).length > 5000) invalid('설명이 너무 깁니다.');
   if (!Array.isArray(files) || files.length === 0) invalid('첨부파일이 필요합니다.');
+  if (files.length > 20) invalid('첨부파일이 너무 많습니다.');
 
   const embeddedFiles = files
     .filter((f) => f && typeof f.key === 'string' && f.key !== '')

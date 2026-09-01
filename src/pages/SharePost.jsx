@@ -55,7 +55,7 @@ export default function SharePost() {
       if (error || !d) { setState('gone'); return; }
       if (d.disabled) { setState('disabled'); return; }
       if (countView) markViewed(viewKey);
-      const appPath = `/board/post/${d.post_id}`;
+      const appPath = `/board/post/${d.postId}`;
       if (session) {
         if (!isMobile() || isStandalone()) { navigate(appPath, { replace: true }); return; }
         stashPendingNav(appPath);
@@ -75,7 +75,7 @@ export default function SharePost() {
   // 불가능한 유일한 플랫폼. 글 주소를 복사해 두면 앱 홈의 [붙여넣어 열기]가 이동시켜 준다.
   const iosBrowser = isIos() && !isStandalone();
   async function copyForApp() {
-    const link = appUrl(`/board/post/${data.post_id}`);
+    const link = appUrl(`/board/post/${data.postId}`);
     try { await navigator.clipboard.writeText(link); } catch { prompt('아래 주소를 복사해 애타 앱의 [붙여넣어 열기]에 붙여넣으세요', link); }
     setCopied(true);
   }
@@ -86,7 +86,7 @@ export default function SharePost() {
     const byParent = new Map();
     const rootList = [];
     for (const c of list) {
-      if (c.parent_id) { const a = byParent.get(c.parent_id); if (a) a.push(c); else byParent.set(c.parent_id, [c]); }
+      if (c.parentId) { const a = byParent.get(c.parentId); if (a) a.push(c); else byParent.set(c.parentId, [c]); }
       else rootList.push(c);
     }
     return { roots: rootList, repliesByParent: byParent };
@@ -119,8 +119,8 @@ export default function SharePost() {
   }
 
   const { post, comments = [], images = [], board } = data;
-  const keys = [...images].sort((a, b) => (a.seq || 0) - (b.seq || 0)).map((i) => i.object_key);
-  const ago = timeAgo(post.created_at);
+  const keys = [...images].sort((a, b) => (a.seq || 0) - (b.seq || 0)).map((i) => i.objectKey);
+  const ago = timeAgo(post.createdAt);
 
   return (
     <div className="page share-page noscreenshot">
@@ -147,14 +147,14 @@ export default function SharePost() {
           {board && <span className="post-board-chip">{board}</span>}
           {post.hot && <span className="post-flag post-flag-hot">🔥 HOT</span>}
           {ago && <span>{ago}</span>}
-          <span className="metric">👀 {post.view_count ?? 0}</span>
+          <span className="metric">👀 {post.viewCount ?? 0}</span>
           <span className="metric">💬 {comments.length}</span>
         </div>
         <p className="post-content">{post.content}</p>
         {keys.map((k) => <BoardImage key={k} imageKey={k} className="post-image" loader={imgLoader} />)}
         <div className="post-detail-meta share-react-static">
-          <span className="metric">👍 {post.like_count}</span>
-          <span className="metric">👎 {post.dislike_count}</span>
+          <span className="metric">👍 {post.likeCount}</span>
+          <span className="metric">👎 {post.dislikeCount}</span>
         </div>
       </article>
 
@@ -169,7 +169,7 @@ export default function SharePost() {
         {roots.map((c) => (
           <li key={c.id} className="comment">
             <p className="comment-body">{c.content}</p>
-            <div className="comment-actions"><span className="share-comment-time">{timeAgo(c.created_at)}</span></div>
+            <div className="comment-actions"><span className="share-comment-time">{timeAgo(c.createdAt)}</span></div>
             {(repliesByParent.get(c.id) || []).map((rc) => (
               <div key={rc.id} className="reply">
                 <p className="comment-body"><span className="reply-arrow">↳</span> {rc.content}</p>
