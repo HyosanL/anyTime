@@ -5,7 +5,7 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, authFunctions } from '../firebase';
 import { callFn } from './functions.js';
 
 // 아이디 → 합성 이메일 매핑. Firebase Auth 는 이메일/비번 로그인만 지원.
@@ -37,7 +37,7 @@ export function getPosition() {
 // 얕다. Onboarding.jsx 는 이 세분화된 문자열로 분기하므로(이번 작업 범위 밖이라
 // 못 고침), 서버가 고정으로 내려주는 한국어 메시지를 되짚어 옛 상태값으로 복원한다.
 export async function signup({ username, password, code, lat, lng }) {
-  const r = await callFn('signup', { username: username.trim(), password, code: code.trim(), lat, lng });
+  const r = await callFn('signup', { username: username.trim(), password, code: code.trim(), lat, lng }, authFunctions);
   if (r.ok) return { status: 'OK', username: r.data?.username };
   const msg = r.message || '';
   if (r.status === 'already-exists') return { status: 'USERNAME_TAKEN' };
@@ -75,6 +75,6 @@ export async function deleteAccount(password) {
   } catch {
     return 'BAD_PASSWORD';
   }
-  const r = await callFn('deleteAccount');
+  const r = await callFn('deleteAccount', {}, authFunctions);
   return r.ok ? 'OK' : 'ERROR';
 }
