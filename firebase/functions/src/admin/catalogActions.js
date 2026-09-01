@@ -517,7 +517,13 @@ async function deleteCatalog(uid, payload) {
     case 'course': return deleteCourseCascade(String(key.code ?? ''));
     case 'semester': return deleteSemesterCascade(Number(key.year), Number(key.term));
     case 'period': return deletePeriodChecked(Number(key.no));
-    case 'section': return deleteSectionCascade(String(key.courseCode ?? ''), Number(key.year), Number(key.term), Number(key.sectionNo));
+    // deleteSectionCascade is the shared low-level helper (course/semester
+    // cascades call it too) so it returns {removed, entries}, not the {status}
+    // shape callAdmin() keys success off — normalise it for the direct call.
+    case 'section': {
+      const r = await deleteSectionCascade(String(key.courseCode ?? ''), Number(key.year), Number(key.term), Number(key.sectionNo));
+      return { status: r.removed ? 'OK' : 'NOT_FOUND', entries: r.entries };
+    }
     case 'sectionTime': return deleteSectionTimeEntry(key);
     case 'commonBlock': return deleteCommonBlock(key);
     default: return invalid('알 수 없는 테이블입니다.'); // invalid() always throws; return keeps every switch arm uniform
