@@ -63,6 +63,40 @@ export const setNextClassAlerts = onCall(async (request) => {
   return { status: 'OK' };
 });
 
+// "오늘 수업 요약" 발동 시각 등록 — setNextClassAlerts 의 자매 함수. lead 개념이 없다(사용자가
+// 절대 시각을 직접 고른다). 요일당 최대 1개라 fireMinutes 상한을 60이 아니라 7로 좁힌다.
+// 설계: docs/superpowers/specs/2026-09-03-daily-brief-and-app-report-design.md.
+export const setTodaySummaryAlert = onCall(async (request) => {
+  requireAuth(request);
+  const { endpoint, fireMinutes } = request.data ?? {};
+  if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 1024) {
+    invalid('잘못된 구독 정보입니다.');
+  }
+  const mins = Array.isArray(fireMinutes) ? fireMinutes : [];
+  if (mins.length > 7 || mins.some((m) => !Number.isInteger(m) || m < 0 || m >= MINUTES_PER_WEEK)) {
+    invalid('잘못된 알림 설정입니다.');
+  }
+
+  const ref = db.collection('pushSubscriptions').doc(subscriptionId(endpoint));
+  const snap = await ref.get();
+  if (!snap.exists) return { status: 'OK' };
+
+  if (mins.length === 0) {
+    await ref.update({ todaySummaryAlerts: FieldValue.delete() });
+  } else {
+    await ref.set(
+      {
+        todaySummaryAlerts: {
+          fireMinutes: [...new Set(mins)].sort((a, b) => a - b),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
+  }
+  return { status: 'OK' };
+});
+
 // 매분 실행. 지금(±1분) 발동할 구독에 '내용 없는' 핑을 보낸다. Cloud Scheduler 지연·누락에
 // 대비해 직전 1분(mow-1)도 함께 조회하고, 각 구독이 실제로 매칭된 분값을 핑(mow)에 실어
 // SW 가 기기 Cache 에서 올바른 슬롯을 찾게 한다. array-contains-any 는 자동 단일필드
@@ -75,51 +109,62 @@ export const setNextClassAlerts = onCall(async (request) => {
 // 타임스탬프 창(3분)이 지나 정상 발송된다.
 const DEDUPE_MS = 3 * 60 * 1000;
 
+// 구독 목록 중 field(예: 'nextClassAlerts'/'todaySummaryAlerts')가 지금(mow)·직전 1분(back)에
+// 걸리는 것만 추려 { byMow: Map<발동분값, 대상[]>, toStamp: [{ref, mow}] } 로 만든다.
+// 두 알림 종류가 완전히 같은 매칭·중복억제 규칙을 쓰므로 한 곳에 둔다.
+function collectMatches(snap, field, mow, back, now) {
+  const byMow = new Map();
+  const toStamp = [];
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    if (!d.endpoint || !d.p256dh || !d.auth) continue;
+    const na = d[field] || {};
+    const fm = na.fireMinutes || [];
+    const hit = fm.includes(mow) ? mow : fm.includes(back) ? back : null;
+    if (hit == null) continue;
+    const lf = na.lastFired;
+    if (lf && lf.mow === hit && typeof lf.at?.toMillis === 'function'
+        && now - lf.at.toMillis() < DEDUPE_MS) continue;
+    if (!byMow.has(hit)) byMow.set(hit, []);
+    byMow.get(hit).push({ endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth });
+    toStamp.push({ ref: doc.ref, mow: hit });
+  }
+  return { byMow, toStamp };
+}
+
+// byMow 를 실제로 보내고, 보낸 구독에 그 알림 종류만의 lastFired 를 찍는다(두 알림 종류가
+// 서로 다른 네임스페이스에 독립적으로 중복억제되어야 하므로 stampField 로 구분).
+async function sendAndStamp(kind, byMow, toStamp, stampField) {
+  if (!byMow.size) return;
+  for (const [hit, targets] of byMow) {
+    await pushFanout(pushFanoutUrl.value(), pushFanoutSecret.value(), { kind, mow: hit, path: '/' }, targets);
+  }
+  // 발송 성패와 무관하게 찍는다(fire-and-forget) — 스케줄러가 그 분을 통째로 건너뛰면 이
+  // 스탬프가 아예 없어 back 조회가 정상적으로 놓친 알림을 잡는다. 개별 실패는 allSettled 로 흘린다.
+  await Promise.allSettled(toStamp.map(({ ref, mow: hit }) =>
+    ref.update({ [`${stampField}.lastFired`]: { mow: hit, at: FieldValue.serverTimestamp() } })
+  ));
+}
+
 export const nextClassNotify = onSchedule(
   { schedule: '* * * * *', timeZone: 'Asia/Seoul', secrets: [pushFanoutUrl, pushFanoutSecret] },
   async () => {
     const mow = seoulMinuteOfWeek();
     const back = (mow - 1 + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
-    const snap = await db
-      .collection('pushSubscriptions')
-      .where('nextClassAlerts.fireMinutes', 'array-contains-any', [mow, back])
-      .get();
-    if (snap.empty) return;
-
     const now = Date.now();
-    const byMow = new Map();  // 매칭된 분값 → 대상 구독 목록
-    const toStamp = [];       // 발송 후 lastFired 를 찍을 { ref, mow } 목록
-    for (const doc of snap.docs) {
-      const d = doc.data();
-      if (!d.endpoint || !d.p256dh || !d.auth) continue;
-      const na = d.nextClassAlerts || {};
-      const fm = na.fireMinutes || [];
-      const hit = fm.includes(mow) ? mow : fm.includes(back) ? back : null;
-      if (hit == null) continue;
-      const lf = na.lastFired;
-      if (lf && lf.mow === hit && typeof lf.at?.toMillis === 'function'
-          && now - lf.at.toMillis() < DEDUPE_MS) continue;
-      if (!byMow.has(hit)) byMow.set(hit, []);
-      byMow.get(hit).push({ endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth });
-      toStamp.push({ ref: doc.ref, mow: hit });
-    }
-    if (!byMow.size) return;
 
-    for (const [hit, targets] of byMow) {
-      await pushFanout(
-        pushFanoutUrl.value(),
-        pushFanoutSecret.value(),
-        { kind: 'next_class', mow: hit, path: '/' },
-        targets
-      );
-    }
+    const [ncSnap, tsSnap] = await Promise.all([
+      db.collection('pushSubscriptions').where('nextClassAlerts.fireMinutes', 'array-contains-any', [mow, back]).get(),
+      db.collection('pushSubscriptions').where('todaySummaryAlerts.fireMinutes', 'array-contains-any', [mow, back]).get(),
+    ]);
 
-    // 발송한 구독에 lastFired 를 찍는다(다음 분 back 조회의 중복 억제). fire-and-forget
-    // 설계라 발송 성패와 무관하게 찍는다 — 스케줄러가 F 분을 통째로 건너뛰면 이 스탬프가
-    // 아예 없어 back 조회가 정상적으로 놓친 알림을 잡는다. 개별 실패(그 사이 구독 해지 등)는
-    // 서로 영향 없게 allSettled 로 흘린다.
-    await Promise.allSettled(toStamp.map(({ ref, mow: hit }) =>
-      ref.update({ 'nextClassAlerts.lastFired': { mow: hit, at: FieldValue.serverTimestamp() } })
-    ));
+    if (!ncSnap.empty) {
+      const { byMow, toStamp } = collectMatches(ncSnap, 'nextClassAlerts', mow, back, now);
+      await sendAndStamp('next_class', byMow, toStamp, 'nextClassAlerts');
+    }
+    if (!tsSnap.empty) {
+      const { byMow, toStamp } = collectMatches(tsSnap, 'todaySummaryAlerts', mow, back, now);
+      await sendAndStamp('today_summary', byMow, toStamp, 'todaySummaryAlerts');
+    }
   }
 );

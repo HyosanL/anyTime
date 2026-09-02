@@ -77,4 +77,4 @@ export {
   adminPushUnsubscribe,
 } from './src/push.js';
 
-export { setNextClassAlerts, nextClassNotify } from './src/nextClass.js';
+export { setNextClassAlerts, setTodaySummaryAlert, nextClassNotify } from './src/nextClass.js';
