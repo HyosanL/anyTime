@@ -75,9 +75,10 @@ export async function enablePush() {
 
 export async function disablePush() {
   try { localStorage.removeItem(ENABLED_KEY); } catch { /* 무시 */ }
-  // 구독이 지워지면 서버 nextClassAlerts 필드도 문서와 함께 사라진다 — 재업로드 서명을
-  // 비워, 다시 켰을 때(같은 endpoint·같은 설정이어도) nextClass.js 가 재업로드하게 한다.
+  // 구독이 지워지면 서버 nextClassAlerts/todaySummaryAlerts 필드도 문서와 함께 사라진다 —
+  // 재업로드 서명을 비워, 다시 켰을 때(같은 endpoint·같은 설정이어도) 재업로드되게 한다.
   try { localStorage.removeItem('nextclass:sig'); } catch { /* 무시 */ }
+  try { localStorage.removeItem('dailybrief:sig'); } catch { /* 무시 */ }
   try {
     const sub = await getSubscription();
     if (sub) {

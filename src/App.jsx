@@ -4,6 +4,7 @@ import { AuthProvider, useAuthContext } from './contexts/AuthContext';
 import { verifyGeo } from './lib/geo';
 import { syncPush, consumePendingNav } from './lib/push';
 import { syncNextClassAlerts } from './lib/nextClass';
+import { syncDailyBrief } from './lib/dailyBrief';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -122,7 +123,10 @@ function PushSync() {
   useEffect(() => {
     if (!session) return undefined;
     syncPush();
-    const sync = () => syncNextClassAlerts().catch(() => { /* 다음 기회에 재시도 */ });
+    const sync = () => {
+      syncNextClassAlerts().catch(() => { /* 다음 기회에 재시도 */ });
+      syncDailyBrief().catch(() => { /* 다음 기회에 재시도 */ });
+    };
     sync();
     const onVisible = () => { if (document.visibilityState === 'visible') sync(); };
     document.addEventListener('visibilitychange', onVisible);
