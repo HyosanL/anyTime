@@ -10,6 +10,8 @@
 //   가 미러링. 창 안이면 알림을 소리·진동 없이 조용히(silent) 띄운다.
 // · /next-class-schedule: { lead, slots:{ [주간분값]: {subject,room,start} } } — "다음 수업"
 //   알림 내용. src/lib/nextClass.js 가 미러링. 서버는 발동 시각만 알고 내용은 여기만 있다.
+// · /today-summary-schedule: { hhmm, tz, byDay:{ [요일1~7]: "09:00 과목 · 강의실\n…" } } —
+//   "오늘 수업 요약" 알림 내용. src/lib/dailyBrief.js 가 미러링. 서버는 요일별 발동 시각만 안다.
 // · /pending-nav: 알림 클릭 목적지. openWindow 가 경로를 무시하는 플랫폼(iOS PWA 등)
 //   대비 보험 — 앱이 부팅하면서 회수해 이동한다(App.jsx PushNavigator).
 const META_CACHE = 'push-meta';
@@ -104,10 +106,35 @@ async function showNextClass(msg) {
   });
 }
 
+// "오늘 수업 요약" 스케줄(내용)을 Cache 에서 읽는다. 서버 핑엔 mow(요일을 역산하는 용도)뿐이다.
+async function todaySummarySchedule() {
+  try {
+    const c = await caches.open(META_CACHE);
+    const r = await c.match('/today-summary-schedule');
+    return r ? await r.json() : null;
+  } catch { return null; }
+}
+
+// "🌅 오늘 수업 / 09:00 경제원론 · 302\n11:00 물리학 · 401". 다음 수업 알림과 같은 이유로
+// 방해금지를 무시한다(사용자가 직접 정한 시각 알람).
+async function showTodaySummary(msg) {
+  const sched = await todaySummarySchedule();
+  const day = String(Math.floor(msg.mow / 1440) + 1);   // 1=월…7=일
+  const body = (sched && sched.byDay && sched.byDay[day]) || '오늘 수업 정보를 불러오지 못했어요.';
+  await self.registration.showNotification('🌅 오늘 수업', {
+    body,
+    tag: `today-summary-${msg.mow}`,
+    vibrate: [180, 80, 180],
+    icon: '/icons/icon.svg',
+    data: { path: '/' },
+  });
+}
+
 // 알림 표시 본체 — 실제 push 와 테스트 메시지(TEST_PUSH)가 같은 경로를 타게 분리했다.
 // 방해금지 silent 판정과 클릭 딥링크(data.path)가 어느 쪽이든 동일하게 적용된다.
 async function showPush(msg) {
   if (msg.kind === 'next_class') return showNextClass(msg);
+  if (msg.kind === 'today_summary') return showTodaySummary(msg);
   // 목적지: msg.path(테스트에서 명시) 우선, 없으면 post_id 로 유도.
   const path = (typeof msg.path === 'string' && msg.path.startsWith('/'))
     ? msg.path
@@ -116,8 +143,8 @@ async function showPush(msg) {
   // (댓글 단 직후 본인에게 돌아오는 알림도 대부분 이 경로로 걸러진다)
   const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   if (wins.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === path)) return;
-  // 관리자 알림(수정제안·신고삭제·자동반영) — 제목·본문을 서버가 직접 실어 보낸다.
-  const ADMIN_KINDS = ['correction', 'auto_correction', 'report_deleted'];
+  // 관리자 알림(수정제안·신고삭제·자동반영·앱문제리포트) — 제목·본문을 서버가 직접 실어 보낸다.
+  const ADMIN_KINDS = ['correction', 'auto_correction', 'report_deleted', 'app_report'];
   const admin = ADMIN_KINDS.includes(msg.kind);
   const hot = msg.kind === 'hot';
   const reason = (hot || admin) ? '' : await watchReason(String(msg.post_id || ''));
