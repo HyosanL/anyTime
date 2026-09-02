@@ -213,6 +213,24 @@ async function ackCorrection(uid, payload) {
 }
 
 // =====================================================================
+//  앱 문제 리포트 — appReports/{id} 필드명(text, path, ua, standalone, status,
+//  createdAt)은 ../appReport.js 의 실제 구현과 대조 확인됨.
+// =====================================================================
+
+async function listAppReports() {
+  const snap = await db.collection('appReports').where('status', '==', 'pending').orderBy('createdAt', 'desc').limit(200).get();
+  return { status: 'OK', items: snap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+}
+
+async function ackAppReport(uid, payload) {
+  // 확인 처리 = 즉시 삭제(수정제안 ackCorrection 과 동일 — 익명이라 이력 보관 가치 없음).
+  const id = String(payload.id ?? '');
+  if (!id) invalid('id가 필요합니다.');
+  await db.collection('appReports').doc(id).delete();
+  return { status: 'OK' };
+}
+
+// =====================================================================
 //  신고 확인 (report_count > 0 인 살아있는 글)
 // =====================================================================
 
@@ -663,6 +681,8 @@ export const moderationActions = {
   list_deleted: listDeleted,
   restore_deleted: restoreDeleted,
   ack_deleted: ackDeleted,
+  list_app_reports: listAppReports,
+  ack_app_report: ackAppReport,
   get_app_setting: getAppSetting,
   set_app_setting: setAppSetting,
   set_board_enabled: setBoardEnabled,
