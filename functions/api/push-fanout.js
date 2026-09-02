@@ -38,7 +38,9 @@ async function fanout(env, { kind, post_id, title, board, path, body: msgBody, m
     ? { ttl: 43200, urgency: 'normal', topic: `hot-${post_id}` }
     : kind === 'next_class'
       ? { ttl: 300, urgency: 'high', topic: 'next-class' }
-      : { ttl: 86400, urgency: 'high', ...(post_id != null ? { topic: `post-${post_id}` } : {}) };
+      : kind === 'today_summary'
+        ? { ttl: 300, urgency: 'high', topic: 'today-summary' }
+        : { ttl: 86400, urgency: 'high', ...(post_id != null ? { topic: `post-${post_id}` } : {}) };
 
   const jwtCache = new Map();   // VAPID JWT 는 푸시서비스 origin 당 1회만 서명
   const results = await Promise.allSettled(
