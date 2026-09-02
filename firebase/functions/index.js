@@ -48,6 +48,7 @@ export {
 } from './src/classMemo.js';
 
 export { submitCorrection } from './src/corrections.js';
+export { submitAppReport } from './src/appReport.js';
 
 export {
   createBoard,

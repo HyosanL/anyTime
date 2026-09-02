@@ -134,6 +134,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- app problem reports: no client access, function-gated only (same
+    // anonymity model as corrections above). ----
+    match /appReports/{id} {
+      allow read, write: if false;
+    }
+
     // ---- board & anonymity ----
     match /boards/{id} {
       allow read: if isSignedIn();
