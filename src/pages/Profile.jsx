@@ -4,6 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
 import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendTestPush } from '../lib/push';
 import { NEXT_CLASS_LEADS, getLead, setLeadPref, syncNextClassAlerts } from '../lib/nextClass';
+import { briefOn, setBriefOn, getBriefTime, setBriefTime, syncDailyBrief } from '../lib/dailyBrief';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
 import PalettePicker from '../components/PalettePicker';
@@ -25,6 +26,8 @@ function PushSettings() {
   const [hot, setHot] = useState(() => hotAlertsOn());
   const [dnd, setDndState] = useState(() => getDnd());
   const [lead, setLeadState] = useState(() => getLead());
+  const [brief, setBrief] = useState(() => briefOn());
+  const [briefTime, setBriefTimeState] = useState(() => getBriefTime());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
@@ -35,6 +38,19 @@ function PushSettings() {
     setLeadState(v);
     setLeadPref(v);
     syncNextClassAlerts({ force: true }).catch(() => {});
+  }
+
+  // "오늘 수업 요약" 켜기/끄기·시각 변경 — 다음 수업 알림과 독립적으로 동작한다.
+  function toggleBrief(e) {
+    const v = e.target.checked;
+    setBrief(v);
+    setBriefOn(v);
+    syncDailyBrief({ force: true }).catch(() => {});
+  }
+  function changeBriefTime(v) {
+    setBriefTimeState(v);
+    setBriefTime(v);
+    if (brief) syncDailyBrief({ force: true }).catch(() => {});
   }
 
   // 방해금지 설정 변경 — 로컬 저장 + SW(Cache) 미러(설정 반영은 다음 알림부터).
@@ -107,6 +123,25 @@ function PushSettings() {
     }
   }
 
+  // "오늘 수업 요약" 미리보기 — 실제 알림은 push-sw.js 의 showTodaySummary 가 그날 실제
+  // 수업으로 그리며 문구 형식은 여기와 동일하다.
+  async function testDailyBrief() {
+    setTestMsg('');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification('🌅 오늘 수업', {
+        body: '09:00 경제원론 · 302\n11:00 물리학 · 401',
+        tag: 'daily-brief-preview',
+        renotify: true,
+        vibrate: [180, 80, 180],
+        icon: '/icons/icon.svg',
+      });
+      setTestMsg('“🌅 오늘 수업” 형식으로 알림이 오면 정상입니다. (실제 알림은 설정한 시각에 그날 수업으로 옵니다.)');
+    } catch {
+      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
+    }
+  }
+
   async function toggle() {
     setBusy(true); setMsg('');
     if (on) {
@@ -173,6 +208,21 @@ function PushSettings() {
               )}
 
               <div className="account-note" style={{ marginTop: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={brief} onChange={toggleBrief} />
+                  🌅 오늘 수업 요약 <span className="muted">(다음 수업 알림과 별개 · 방해금지 무시)</span>
+                </label>
+                {brief && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, marginLeft: 22 }}>
+                    발송 시각 <input type="time" step="300" value={briefTime} onChange={(e) => changeBriefTime(e.target.value)} />
+                  </div>
+                )}
+                <p className="account-note" style={{ marginTop: 6 }}>
+                  매일 그 시각에 그날 수업 전체를 한 번에 요약해 알려드려요. 수업이 없는 날은 오지 않아요.
+                </p>
+              </div>
+
+              <div className="account-note" style={{ marginTop: 12 }}>
                 <div style={{ marginBottom: 5 }}>⏰ 다음 수업 알림 <span className="muted">(확정 시간표 기준 · 방해금지 무시)</span></div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {NEXT_CLASS_LEADS.map((n) => (
@@ -201,6 +251,9 @@ function PushSettings() {
                 </button>
                 <button className="btn-ghost btn-sm" onClick={testNextClass}>
                   ⏰ 다음 수업 알림 테스트
+                </button>
+                <button className="btn-ghost btn-sm" onClick={testDailyBrief}>
+                  🌅 오늘 수업 요약 테스트
                 </button>
               </div>
               {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
