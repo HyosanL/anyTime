@@ -42,6 +42,17 @@ export default function CourseSearch() {
     [catalog, target]
   );
 
+  // 검색 중인 학기 = 담을 시간표의 학기. 그 학기의 상태로 안내를 가른다.
+  const searchPhase = useMemo(
+    () => (catalog && target ? semesterPhase(catalog, target.year, target.term) : null),
+    [catalog, target]
+  );
+  const current = useMemo(() => (catalog ? currentSemester(catalog) : null), [catalog]);
+  const currentPrimary = useMemo(
+    () => (current ? timetables.find((t) => t.year === current.year && t.term === current.term && t.isPrimary) : null),
+    [timetables, current]
+  );
+
   // force: 당겨서 새로고침 — 서버 우선으로 다시 받되 전체 로딩 화면은 띄우지 않는다
   async function loadCatalog(force = false) {
     if (!force) setLoading(true);
@@ -223,6 +234,23 @@ export default function CourseSearch() {
           ))}
         </select>
       </div>
+
+      {target && (
+        <p className="cs-sem-note">
+          <strong>{target.year}-{target.term}학기</strong> 강의를 검색 중입니다.
+          {searchPhase === 'past' && (
+            <>
+              {' '}지난 학기예요.
+              {currentPrimary
+                ? <button type="button" className="link-btn" onClick={() => changeTarget(currentPrimary.id)}>
+                    {current.year}-{current.term}로 전환
+                  </button>
+                : <> 현재 학기 시간표는 홈에서 만들 수 있어요.</>}
+            </>
+          )}
+          {searchPhase === 'planning' && ' 아직 확정 전이라 시간·강의실·교수가 바뀔 수 있어요.'}
+        </p>
+      )}
 
       {/* 카탈로그는 학교 공지를 옮겨 담은 것이라 실제와 다를 수 있다 — 고치는 길을 함께 알려 준다 */}
       <p className="cor-notice">
