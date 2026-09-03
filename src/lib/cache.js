@@ -14,6 +14,7 @@ import { openDB } from 'idb';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { fetchBootInfo } from './appInfo';
+import { resolveCurrentSemester, semesterForDate, semesterPhaseOf } from './semesterPhase';
 
 const DB_NAME = 'anytime-cache';
 const DB_VERSION = 1;
@@ -234,20 +235,25 @@ function sectionKey(s) {
 
 export { sectionKey };
 
-// isCurrent 학기. 없으면 가장 최근 학기.
-export function currentSemester(catalog) {
-  const semesters = catalog.semesters ?? [];
-  return (
-    semesters.find((s) => s.isCurrent) ??
-    [...semesters].sort((a, b) => b.year - a.year || b.term - a.term)[0] ??
-    null
-  );
+// 현재 학기 — 관리자 플래그(isCurrent)를 하한선으로, 날짜(3월/8월 경계)가 앞지르면
+// 날짜가 이긴다. 순수 로직은 semesterPhase.js(의존성 0, 스크래치 테스트 대상).
+export function currentSemester(catalog, now = new Date()) {
+  return resolveCurrentSemester(catalog.semesters ?? [], now);
 }
 
-// 최신순 학기 목록(시간표 만들 때 고르는 후보)
+// 학생 대면 학기 목록 — 숨김(관리자 편람 입력 중) 학기는 뺀다. 최신순.
 export function semesterList(catalog) {
-  return [...(catalog.semesters ?? [])].sort((a, b) => b.year - a.year || b.term - a.term);
+  return [...(catalog.semesters ?? [])]
+    .filter((s) => !s.hidden)
+    .sort((a, b) => b.year - a.year || b.term - a.term);
 }
+
+// 특정 학기의 상태('hidden' | 'planning' | 'current' | 'past') — 배너·경고 분기용.
+export function semesterPhase(catalog, year, term, now = new Date()) {
+  return semesterPhaseOf(catalog.semesters ?? [], year, term, now);
+}
+
+export { semesterForDate };
 
 // 한 학기의 분반 목록(과목명·교수명·강의시간 조인). sem 을 주지 않으면 현재 학기.
 export function buildSections(catalog, sem = null) {
