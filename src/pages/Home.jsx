@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
-import { isIos } from '../components/InstallGate';
 import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
 import FeedbackPopup from '../components/FeedbackPopup';
@@ -75,7 +74,7 @@ function CustomClassForm({ onAdd }) {
 // 시간표는 학기마다 여러 개 가질 수 있고(지난 학기·다음 학기 초안), 학기별 1개가 '확정'이다.
 // 강의평·메모 자격은 확정 시간표만 인정한다(서버 RPC가 강제).
 export default function Home() {
-  const { cadet, session, settings, logout } = useAuthContext();
+  const { cadet, session, settings } = useAuthContext();
   const navigate = useNavigate();
   const uid = session?.uid;
   const count = cadet?.postCount ?? 0;
@@ -363,23 +362,6 @@ export default function Home() {
     setCatalog(cat);
   }, []);
 
-  // iOS 공유 핸드오프: 공유 화면(사파리)이 복사해 둔 글 주소를 붙여넣어 그 글로 이동.
-  // iOS 는 사파리↔홈화면앱 저장소 분리 + 앱 실행 API 부재라 Android(pending-nav)처럼
-  // 자동 전달이 불가능한 유일한 플랫폼 — 클립보드가 두 세계를 잇는 유일한 통로다.
-  const openCopiedLink = useCallback(async () => {
-    let text = '';
-    try { text = await navigator.clipboard.readText(); } catch {
-      alert('클립보드를 읽지 못했어요. 공유 화면에서 [앱에서 이어보기]를 다시 눌러주세요.');
-      return;
-    }
-    const m = String(text).match(/\/(board\/post\/\d+|s\/[0-9a-fA-F-]{36})/);
-    if (!m) {
-      alert('복사된 애타 글 주소가 없어요.\n공유 링크 화면에서 [앱에서 이어보기]를 먼저 눌러주세요.');
-      return;
-    }
-    navigate(`/${m[1]}`);
-  }, [navigate]);
-
   const handleDeleteCustom = useCallback(async (id, title) => {
     if (!confirm(`'${title}' 직접 추가한 강의를 삭제할까요?`)) return;
     try {
@@ -400,12 +382,8 @@ export default function Home() {
           <Badge tier={tier} level={count} size={22} />
         </Link>
         <div className="home-header-actions">
-          {/* iOS 전용 공유 핸드오프 진입점 — 클립보드는 몰래 확인이 불가(읽기=시스템 팝업)라
-              조건부 표시가 안 되므로, 아이콘 하나로 존재감을 최소화해 상시 배치한다. */}
-          {isIos() && <button className="link-btn" onClick={openCopiedLink} title="공유받은 글 붙여넣어 열기" aria-label="공유받은 글 붙여넣어 열기">📋</button>}
           <button className="link-btn" onClick={() => setAppReportOpen(true)} title="앱 문제 리포트" aria-label="앱 문제 리포트">🚩</button>
           {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link" title="검열" aria-label="검열">🧹</Link>}
-          <button className="link-btn" onClick={logout}>로그아웃</button>
         </div>
       </header>
 
@@ -468,7 +446,7 @@ export default function Home() {
               <p className="tt-conflict-t">⚠️ 시간이 겹치는 강의가 있습니다 — 저장한 뒤 수업정보가 바뀐 것 같아요.</p>
               <ul className="tt-conflict-list">
                 {conflicts.pairs.map((p) => (
-                  <li key={`${p.a} ${p.b}`}>‘{p.a}’ 와 ‘{p.b}’ 가 겹칩니다.</li>
+                  <li key={`${p.a} ${p.b}`}>‘{p.a}’ 와 ‘{p.b}’ 가 겹칩니다.</li>
                 ))}
               </ul>
               <button className="btn-add btn-sm" onClick={openWizardFix}>🪄 마법사로 고치기</button>
