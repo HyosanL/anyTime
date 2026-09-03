@@ -314,32 +314,17 @@ export function paintWallpaper(ctx, S, o) {
   const ph = (dh + 2 * padP) * S;
   const dark = o.glassTone === 'dark';
 
-  // 패널 반투명 틴트 색을 배경 밝기에서 역산한다 — 흰색이든 검정이든 패널이 배경보다
-  // 확실한 명도차로 떠서 구분되도록(예전엔 배경색에 가까운 반투명이라 극단에서 사라졌다).
-  const A = 0.62;                                  // 오버레이 불투명도(예전보다 높여 색이 더 지배)
-  const DELTA = dark ? 0.22 : 0.18;               // 배경 대비 목표 명도차(크게)
-  const L = typeof o.backdropLum === 'number' ? o.backdropLum : (dark ? 0.06 : 0.96);
+  // 패널 반투명 틴트 색을 배경 밝기에서 역산 — 흰색이든 검정이든 패널이 배경보다
+  // 일정 명도차(약 0.12)로 떠서 구분되도록. 진짜 가우시안 블러 위에 얹혀 프로스티드 유리.
+  const A = 0.5;
+  const DELTA = dark ? 0.13 : 0.12;
+  const L = typeof o.backdropLum === 'number' ? o.backdropLum : (dark ? 0.08 : 0.94);
   let greyL = dark ? L + DELTA / A : L - DELTA / A;
-  greyL = Math.max(0.05, Math.min(0.95, greyL));
+  greyL = Math.max(0, Math.min(1, greyL));
   const g8 = Math.round(greyL * 255);
-  const gc = (n) => Math.max(0, Math.min(255, n));
-  const tint = `rgba(${gc(g8)}, ${gc(g8 + 2)}, ${gc(g8 + 7)}, ${A})`;
-  const tintOpaque = `rgb(${gc(g8)}, ${gc(g8 + 2)}, ${gc(g8 + 7)})`;
+  const tint = `rgba(${g8}, ${Math.min(255, g8 + 2)}, ${Math.min(255, g8 + 6)}, ${A})`;
 
   const blur = blurredCopy(ctx.canvas, cw);
-
-  // 3a. 패널 그림자/글로우 — 저대비 배경에서도 경계가 분명하도록.
-  //     밝은 글래스는 어두운 그림자, 어두운 글래스는 밝은 글로우.
-  ctx.save();
-  ctx.shadowColor = dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.28)';
-  ctx.shadowBlur = Math.max(3, short * 0.028 * S);
-  ctx.shadowOffsetY = dark ? 0 : Math.max(1, short * 0.006 * S);
-  roundRect(ctx, px, py, pw, ph, rad);
-  ctx.fillStyle = tintOpaque;   // 불투명 베이스(그림자를 드리우고, 안쪽은 아래서 덮인다)
-  ctx.fill();
-  ctx.restore();
-
-  // 3b. 블러 backdrop + 반투명 틴트(패널 안쪽만) + 상단 하이라이트
   ctx.save();
   roundRect(ctx, px, py, pw, ph, rad);
   ctx.clip();
@@ -347,16 +332,15 @@ export function paintWallpaper(ctx, S, o) {
   ctx.fillStyle = tint;
   ctx.fillRect(px, py, pw, ph);
   const grad = ctx.createLinearGradient(0, py, 0, py + ph * 0.5);
-  grad.addColorStop(0, `rgba(255,255,255,${dark ? 0.09 : 0.18})`);
+  grad.addColorStop(0, `rgba(255,255,255,${dark ? 0.08 : 0.16})`);
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(px, py, pw, ph * 0.5);
   ctx.restore();
 
-  // 3c. 테두리
   roundRect(ctx, px, py, pw, ph, rad);
-  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.18)';
-  ctx.lineWidth = Math.max(1, short * 0.002 * S);
+  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = Math.max(1, short * 0.0018 * S);
   ctx.stroke();
 
   // 4. 시간표
