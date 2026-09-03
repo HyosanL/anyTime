@@ -79,3 +79,4 @@ export {
 } from './src/push.js';
 
 export { setNextClassAlerts, setTodaySummaryAlert, nextClassNotify } from './src/nextClass.js';
+export { rolloverSemester } from './src/semester.js';
