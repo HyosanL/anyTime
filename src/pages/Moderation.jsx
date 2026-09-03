@@ -597,7 +597,7 @@ export default function Moderation() {
 
           {processedCorrs.length > 0 && (
             <>
-              <h3 className="mod-subhead">처리함 <span className="mod-count">(최근 {processedCorrs.length}건 · 메모를 남기면 제출자에게 다시 표시됩니다)</span></h3>
+              <h3 className="mod-subhead">처리함 <span className="mod-count">(처리 후 30일 보관 · 메모를 남기면 제출자에게 다시 표시됩니다)</span></h3>
               <ul className="mod-list">
                 {processedCorrs.map((c) => (
                   <ProcessedCorrectionCard key={`pc-${c.id}`} c={c} fmtDateTime={fmtDateTime} onAnnotate={annotateCorr} />
