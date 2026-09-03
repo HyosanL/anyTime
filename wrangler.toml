@@ -18,8 +18,8 @@ VAPID_SUBJECT = "mailto:hyosanl0211@gmail.com"
 #   service_accounts/v1/jwk/securetoken@system.gserviceaccount.com)는 Google 이 공개
 #   호스팅하므로 인증 없이 조회 가능하고, jose 의 createRemoteJWKSet 이 응답을 캐싱한다.
 #   프로젝트 ID(`anytime-rokafa`)는 issuer/audience 검사에 _middleware.js 안 상수로 쓰인다.
-# ※ share-image.js·board-sweep.js 는 이제 Supabase 대신 Firebase Cloud Functions
-#   (shareImageOk·boardReferencedKeys, https://asia-northeast3-anytime-rokafa.cloudfunctions.net/…)
+# ※ board-sweep.js 는 이제 Supabase 대신 Firebase Cloud Functions
+#   (boardReferencedKeys, https://asia-northeast3-anytime-rokafa.cloudfunctions.net/…)
 #   를 직접 호출한다 — Supabase 관련 변수는 모두 제거됨(2026-09-01, Firebase 이관 완료).
 
 # R2 버킷 바인딩 (대시보드에서 'anytime-exams' 비공개 버킷 생성 필요)

@@ -7,7 +7,6 @@
 //   손으로 짜지 않고 라이브러리를 쓴다).
 // - /api/board-sweep 는 유저 토큰 대신 X-Sweep-Secret 으로 게이트(크론 전용, 그대로 유지).
 // - /api/push-fanout 는 유저 토큰 대신 X-Push-Secret 으로 게이트(웹훅 전용, 그대로 유지).
-// - /api/share-image 는 무인증 통과(핸들러가 공유 토큰을 자체 검증) — 그대로 유지.
 // context.data.user 에 { id, email, admin } 을 싣는다. admin 은 Firebase 커스텀 클레임
 // (`admin: true`)이 ID 토큰 payload 에 그대로 실려 오므로 별도 왕복 조회가 필요 없다.
 // context.data.token 에는 원본 Authorization 헤더 값을 그대로 실어 다음 핸들러로 전달한다
@@ -45,10 +44,6 @@ export async function onRequest(context) {
     if (env.PUSH_SECRET && request.headers.get('X-Push-Secret') === env.PUSH_SECRET) return next();
     return unauth();
   }
-
-  // 공유 링크 이미지(비회원 열람용): 접근 검증은 핸들러가 공유 토큰으로 자체 수행
-  // (토큰이 가리키는 글의 이미지 + 공개 허용 상태일 때만 스트리밍).
-  if (path === '/api/share-image') return next();
 
   const auth = request.headers.get('Authorization') || '';
   if (!auth.startsWith('Bearer ')) return unauth();

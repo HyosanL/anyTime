@@ -54,7 +54,7 @@ export const submitAppReport = onCall({ secrets: [pushFanoutUrl, pushFanoutSecre
 
 // 내가 낸 리포트의 답변 조회 — 기기가 localStorage 에 적어 둔 자기 리포트 ID 로만 조회한다.
 // uid 검증 없음: ID 를 안다는 것이 곧 소유 증명이다(Firestore auto-ID 20자 ≈ 119비트,
-// 열거 불가 — getSharedPost 공유 토큰·푸시 endpoint 와 같은 위협 모델). subId·ua·path 는
+// 열거 불가 — 푸시 endpoint 와 같은 위협 모델). subId·ua·path 는
 // 돌려주지 않는다(기기엔 불필요).
 export const getMyAppReports = onCall(async (request) => {
   requireAuth(request);

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
@@ -12,10 +11,9 @@ import { adminPush } from './lib/adminNotify.js';
 
 // Port of create_board()/create_post()/get_post_b()/check_hot()/board_react()/
 // create_comment_b()/delete_post()/delete_comment_b()/purge_board()/
-// board_referenced_keys()/create_share()/get_shared_post()/share_image_ok()/
-// notify_comment_push()/notify_hot_push() (db/schema.sql). Design doc §3 has
-// the Firestore collection map, §4 the anonymity/hash/password redesign, §5
-// the webhook/trigger table.
+// board_referenced_keys()/notify_comment_push()/notify_hot_push()
+// (db/schema.sql). Design doc §3 has the Firestore collection map, §4 the
+// anonymity/hash/password redesign, §5 the webhook/trigger table.
 
 async function boardEnabledGuard() {
   const appConfigSnap = await db.doc('config/app').get();
@@ -114,7 +112,6 @@ export const createPost = onCall(async (request) => {
     viewCount: 0,
     hot: false,
     hasPassword: !!passwordHash,
-    shareToken: null,
     createdAt: FieldValue.serverTimestamp(),
   });
   if (passwordHash) {
@@ -340,99 +337,6 @@ export const deleteComment = onCall(async (request) => {
   await db.collection('users').doc(uid).update({ postCount: FieldValue.increment(-1) });
 
   return { deleted: true };
-});
-
-export const createShare = onCall(async (request) => {
-  requireAuth(request);
-  const { postId } = request.data ?? {};
-  if (!postId) invalid('잘못된 요청입니다.');
-
-  const postRef = db.collection('boardPosts').doc(postId);
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(postRef);
-    if (!snap.exists) invalid('게시글 없음');
-    const existing = snap.get('shareToken');
-    if (existing) return { token: existing };
-    const token = randomUUID();
-    tx.update(postRef, { shareToken: token });
-    return { token };
-  });
-});
-
-// Deliberately public — no requireAuth() (design doc §3's "one public read
-// path", mirrors get_shared_post()'s anon GRANT). request.auth may still be
-// present if the caller happens to be signed in; that's consulted below to
-// reproduce the old function's `auth.uid() IS NULL` branches exactly.
-export const getSharedPost = onCall(async (request) => {
-  const { token, view } = request.data ?? {};
-  if (!token) invalid('잘못된 요청입니다.');
-
-  const snap = await db.collection('boardPosts').where('shareToken', '==', token).limit(1).get();
-  if (snap.empty) return null;
-  const postSnap = snap.docs[0];
-  const post = postSnap.data();
-  const isAuthed = !!request.auth;
-
-  const appConfigSnap = await db.doc('config/app').get();
-  const shareEnabled = appConfigSnap.get('shareEnabled') ?? true;
-  if (!shareEnabled && !isAuthed) return { disabled: true };
-
-  // Only bumps for anonymous viewers — signed-in members are counted through
-  // getPost() instead, avoiding a double count (old function's exact guard).
-  if (view === true && !isAuthed) {
-    await postSnap.ref.update({ viewCount: FieldValue.increment(1) });
-  }
-
-  const boardSnap = await db.collection('boards').doc(post.boardId).get();
-  const commentsSnap = await postSnap.ref.collection('comments').orderBy('createdAt').get();
-
-  // No password hash, no report counts — never exposed to this projection
-  // (design doc §4: structurally impossible here, hashes live in _private/*).
-  return {
-    postId: postSnap.id,
-    board: boardSnap.exists ? boardSnap.get('name') : null,
-    post: {
-      title: post.title ?? null,
-      content: post.content,
-      createdAt: post.createdAt,
-      likeCount: post.likeCount ?? 0,
-      dislikeCount: post.dislikeCount ?? 0,
-      commentCount: post.commentCount ?? 0,
-      viewCount: post.viewCount ?? 0,
-      hot: post.hot === true,
-    },
-    images: post.images ?? [],
-    comments: commentsSnap.docs.map((d) => ({
-      id: d.id,
-      parentId: d.get('parentId'),
-      content: d.get('content'),
-      createdAt: d.get('createdAt'),
-    })),
-  };
-});
-
-// Deliberately public — no requireAuth(). Called by the R2 image-serving
-// Cloudflare Pages Function (/api/share-image) on behalf of anonymous
-// visitors who followed a share link but have no Firebase session (port of
-// share_image_ok()).
-// onRequest, not onCall: functions/api/share-image.js (a Cloudflare Pages
-// Function, no Firebase SDK available there) calls this over plain HTTP —
-// same reasoning as boardReferencedKeys below. No secret gate needed, unlike
-// that one — the unguessable share token itself is the access control here,
-// matching the old anon-callable RPC's design.
-export const shareImageOk = onRequest(async (req, res) => {
-  const token = req.query.token;
-  const key = req.query.key;
-  if (!token || !key) { res.status(200).json(false); return; }
-
-  const appConfigSnap = await db.doc('config/app').get();
-  if (!(appConfigSnap.get('shareEnabled') ?? true)) { res.status(200).json(false); return; }
-
-  const snap = await db.collection('boardPosts').where('shareToken', '==', token).limit(1).get();
-  if (snap.empty) { res.status(200).json(false); return; }
-  const images = snap.docs[0].get('images') || [];
-  const ok = images.some((img) => img.objectKey === key || `${img.objectKey}.thumb` === key);
-  res.status(200).json(ok);
 });
 
 // Secret-gated HTTP endpoint (NOT onCall) — invoked by a cron job with no

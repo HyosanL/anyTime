@@ -538,8 +538,8 @@ async function ackDeleted(uid, payload) {
 
 // =====================================================================
 //  app_setting get/set — design doc §3 의 app/secrets 분리를 정확히 지켜야 한다.
-//  /config/app: geoValidDays, catalogVersion, boardEnabled, shareEnabled,
-//    reviewMinDays (옛 get_boot_info() 반환 필드와 정확히 동일, 그 이상도 이하도 아님)
+//  /config/app: geoValidDays, catalogVersion, boardEnabled, reviewMinDays
+//    (옛 get_boot_info() 반환 필드와 정확히 동일, 그 이상도 이하도 아님)
 //  /config/secrets: 그 나머지 전부(campusLat, campusLng, radiusM,
 //    accountDeleteDays, hotThreshold, reportDeleteCount, reportBurstCount,
 //    signupCode, modReviewedAt, professorsSyncedAt)
@@ -570,7 +570,6 @@ async function getAppSetting() {
       geoValidDays: app.geoValidDays ?? null,
       accountDeleteDays: secrets.accountDeleteDays ?? null,
       boardEnabled: app.boardEnabled ?? null,
-      shareEnabled: app.shareEnabled ?? null,
       hotThreshold: secrets.hotThreshold ?? null,
       reportDeleteCount: secrets.reportDeleteCount ?? null,
       reportBurstCount: secrets.reportBurstCount ?? null,
@@ -595,12 +594,6 @@ async function setAppSetting(uid, payload) {
 
 async function setBoardEnabled(uid, payload) {
   await db.doc('config/app').set({ boardEnabled: !!payload.value }, { merge: true });
-  return { status: 'OK' };
-}
-
-// 공유 링크 비회원 열람 허용/차단 (회원 링크는 항상 동작).
-async function setShareEnabled(uid, payload) {
-  await db.doc('config/app').set({ shareEnabled: !!payload.value }, { merge: true });
   return { status: 'OK' };
 }
 
@@ -883,7 +876,6 @@ export const moderationActions = {
   get_app_setting: getAppSetting,
   set_app_setting: setAppSetting,
   set_board_enabled: setBoardEnabled,
-  set_share_enabled: setShareEnabled,
   delete_board: deleteBoard,
   purge_all_boards: purgeAllBoards,
   list_recent: listRecent,
