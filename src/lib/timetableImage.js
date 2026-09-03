@@ -223,12 +223,41 @@ export function clampCover(t, { imgW, imgH, canvasW, canvasH }) {
   return { x, y, scale };
 }
 
-// 다운스케일 방식 블러(캔버스 filter 미지원 환경도 커버). 반투명 오버레이 뒤라 거칠어도 안 보인다.
-// 한 번에 크게 줄이면 계단현상(지글거림)이 생기므로 절반씩 반복 축소(mipmap식)한 뒤 되키운다.
+// 캔버스 2D filter(진짜 가우시안 블러) 지원 여부 — 한 번만 확인.
+let _filterOK = null;
+function canvasFilterOK() {
+  if (_filterOK === null) {
+    try {
+      const c = document.createElement('canvas').getContext('2d');
+      c.filter = 'blur(1px)';
+      _filterOK = c.filter === 'blur(1px)';
+    } catch { _filterOK = false; }
+  }
+  return _filterOK;
+}
+
+// 배경을 블러한 사본. 우선 ctx.filter 로 진짜 가우시안 블러 + 채도(iOS 유리 느낌)를 쓰고,
+// (구형 사파리 등) 미지원이면 절반씩 반복 축소(mipmap식 — 한 번에 크게 줄일 때의 계단현상 회피)로 폴백.
 // 스크래치 캔버스는 재사용한다 — 드래그 프레임마다 호출되므로 GC 부담을 줄인다.
 const _blurChain = [];
 let _blurOut = null;
 function blurredCopy(src, refW) {
+  if (!_blurOut) _blurOut = document.createElement('canvas');
+  _blurOut.width = src.width;
+  _blurOut.height = src.height;
+  const octx = _blurOut.getContext('2d');
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+
+  if (canvasFilterOK()) {
+    const radius = Math.max(10, Math.round(refW / 36));   // 캔버스 폭 비례(미리보기·최종 동일한 느낌)
+    octx.filter = `blur(${radius}px) saturate(1.5)`;
+    octx.drawImage(src, 0, 0);
+    octx.filter = 'none';
+    return _blurOut;
+  }
+
+  // 폴백: mipmap식 반복 축소 → 되키우기
   const target = Math.max(20, Math.round(refW / 12));
   let cur = src;
   let w = src.width;
@@ -247,12 +276,6 @@ function blurredCopy(src, refW) {
     cur = c;
     i += 1;
   }
-  if (!_blurOut) _blurOut = document.createElement('canvas');
-  _blurOut.width = src.width;
-  _blurOut.height = src.height;
-  const octx = _blurOut.getContext('2d');
-  octx.imageSmoothingEnabled = true;
-  octx.imageSmoothingQuality = 'high';
   octx.drawImage(cur, 0, 0, _blurOut.width, _blurOut.height);
   return _blurOut;
 }
