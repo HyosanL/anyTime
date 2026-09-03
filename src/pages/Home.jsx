@@ -4,6 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { isIos } from '../components/InstallGate';
 import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
+import AppReportReplyPopup from '../components/AppReportReplyPopup';
 import PullToRefresh from '../components/PullToRefresh';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSummary from '../components/TimetableSummary';
@@ -397,6 +398,7 @@ export default function Home() {
   return (
     <PullToRefresh className="page home" onRefresh={handleRefresh}>
       <NoticePopup />
+      <AppReportReplyPopup />
       <header className="page-header">
         <Link to="/profile" className="home-ident">
           <strong className="home-ident-name">{cadet?.username}</strong>
@@ -407,7 +409,7 @@ export default function Home() {
               조건부 표시가 안 되므로, 아이콘 하나로 존재감을 최소화해 상시 배치한다. */}
           {isIos() && <button className="link-btn" onClick={openCopiedLink} title="공유받은 글 붙여넣어 열기" aria-label="공유받은 글 붙여넣어 열기">📋</button>}
           <button className="link-btn" onClick={() => setAppReportOpen(true)} title="앱 문제 리포트" aria-label="앱 문제 리포트">🚩</button>
-          {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link">🧹 검열</Link>}
+          {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link" title="검열" aria-label="검열">🧹</Link>}
           <button className="link-btn" onClick={logout}>로그아웃</button>
         </div>
       </header>

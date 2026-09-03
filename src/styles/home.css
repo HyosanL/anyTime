@@ -851,3 +851,5 @@
   margin: 0; font-size: 0.86rem; line-height: 1.55; color: var(--text-2);
   white-space: pre-wrap; word-break: break-word;
 }
+/* 앱 리포트 답변 팝업: 원래 질문 인용 */
+.ar-pop-q { color: var(--text-3); font-size: 0.78rem; font-style: italic; }
