@@ -1,6 +1,8 @@
 import { FieldPath } from 'firebase-admin/firestore';
 import { db, FieldValue, invalid } from '../lib/context.js';
 import { applyCorrectionRowInternal } from '../corrections.js';
+import { pushFanout } from '../lib/pushFanout.js';
+import { pushFanoutUrl, pushFanoutSecret } from '../lib/secrets.js';
 
 // Port of admin-action/index.ts's non-catalog branches: notices, banned
 // words, admin grant/revoke, correction moderation, report moderation,
@@ -228,6 +230,63 @@ async function ackAppReport(uid, payload) {
   if (!id) invalid('id가 필요합니다.');
   await db.collection('appReports').doc(id).delete();
   return { status: 'OK' };
+}
+
+const REPLY_STATUSES = new Set(['reviewing', 'resolved', 'planned']);
+
+async function replyAppReport(uid, payload) {
+  const id = String(payload.id ?? '');
+  if (!id) invalid('id가 필요합니다.');
+  const reply = String(payload.reply ?? '').trim();
+  if (reply.length < 1 || reply.length > 1000) invalid('답변은 1자 이상 1000자 이하로 입력하세요.');
+  const replyStatus = String(payload.replyStatus ?? '');
+  if (!REPLY_STATUSES.has(replyStatus)) invalid('처리 상태가 올바르지 않습니다.');
+
+  const ref = db.collection('appReports').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) invalid('리포트를 찾을 수 없습니다.');
+
+  await ref.update({
+    reply,
+    replyStatus,
+    repliedAt: FieldValue.serverTimestamp(),
+    status: 'replied',
+  });
+
+  // 제출 시점 푸시 구독이 살아 있으면 그 한 기기에만 알린다(실패는 삼킨다 — 답변은 이미 저장됨).
+  const subId = snap.get('subId');
+  if (subId) {
+    try {
+      const subSnap = await db.collection('pushSubscriptions').doc(subId).get();
+      if (subSnap.exists) {
+        await pushFanout(pushFanoutUrl.value(), pushFanoutSecret.value(),
+          { kind: 'app_report_reply', title: '📬 문의 답변', body: reply.length > 80 ? `${reply.slice(0, 80)}…` : reply, path: '/' },
+          [{ endpoint: subSnap.get('endpoint'), p256dh: subSnap.get('p256dh'), auth: subSnap.get('auth') }]);
+      }
+    } catch (e) {
+      console.error('[replyAppReport] push failed', e);
+    }
+  }
+  return { status: 'OK' };
+}
+
+async function listRepliedAppReports() {
+  const snap = await db.collection('appReports')
+    .where('status', '==', 'replied')
+    .orderBy('repliedAt', 'desc')
+    .limit(50)
+    .get();
+  return {
+    status: 'OK',
+    items: snap.docs.map((d) => {
+      const x = d.data();
+      return {
+        id: d.id, text: x.text ?? '', path: x.path ?? null,
+        reply: x.reply ?? '', replyStatus: x.replyStatus ?? null,
+        repliedAt: x.repliedAt ?? null, createdAt: x.createdAt ?? null,
+      };
+    }),
+  };
 }
 
 // =====================================================================
@@ -682,7 +741,9 @@ export const moderationActions = {
   restore_deleted: restoreDeleted,
   ack_deleted: ackDeleted,
   list_app_reports: listAppReports,
+  list_replied_app_reports: listRepliedAppReports,
   ack_app_report: ackAppReport,
+  reply_app_report: replyAppReport,
   get_app_setting: getAppSetting,
   set_app_setting: setAppSetting,
   set_board_enabled: setBoardEnabled,
