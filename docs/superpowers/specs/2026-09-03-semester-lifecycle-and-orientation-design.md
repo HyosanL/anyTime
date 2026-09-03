@@ -118,34 +118,58 @@ export function currentSemester(catalog, now = new Date()) {
 
 ## Ⅱ. 학생 방향 잡기
 
-### 1. `pickTimetable` 규칙 변경 ([timetable.js:58-64](../../../src/lib/timetable.js#L58-L64))
+### 1. `pickTimetable` 규칙 변경 — 지난 학기 포인터는 유예 창 안에서만 존중
 
-기기 localStorage 포인터는 **그 시간표의 학기가 현재 이상일 때만** 존중한다.
-지난 학기를 가리키면 무시하고 현재 학기 확정본으로 되돌린다.
+기기 localStorage 포인터가 **현재 이상** 학기를 가리키면 지금처럼 존중한다.
+**지난 학기**를 가리키면, 그 선택이 스위처에서의 **명시적 전환**이었고 아직
+14일이 안 지났을 때만 존중하고, 그 외에는 현재 학기 확정본으로 되돌린다.
+
+**두 종류의 포인터 쓰기를 구분한다:**
+- `writeSelectedId(id)` — 기존. 수동 복원 이펙트([Home.jsx:226](../../../src/pages/Home.jsx#L226))에서도 불림. 타임스탬프 안 남김.
+- `selectTimetable(id)` — 신규. 스위처의 `handleSelect`([Home.jsx:292](../../../src/pages/Home.jsx#L292))·`changeTarget`(CourseSearch)에서만. `anytime:selectedTimetableAt` 에 `Date.now()` 기록.
 
 ```js
-export function pickTimetable(list, current, preferredId = null) {
+// src/lib/timetable.js
+const SELECTED_AT_KEY = 'anytime:selectedTimetableAt';
+const PAST_GRACE_MS = 14 * 24 * 60 * 60 * 1000;   // add/drop 참고 창
+
+export function selectTimetable(id) {              // 명시적 전환 전용
+  writeSelectedId(id);
+  try { localStorage.setItem(SELECTED_AT_KEY, String(Date.now())); } catch { /* ignore */ }
+}
+export function readSelectedAt() {
+  try { return Number(localStorage.getItem(SELECTED_AT_KEY)) || 0; } catch { return 0; }
+}
+
+export function pickTimetable(list, current, preferredId = null, preferredAt = 0) {
   if (!list?.length) return null;
-  const notPast = (t) => !current ||
-    t.year > current.year || (t.year === current.year && t.term >= current.term);
+  const key = (s) => s.year * 10 + s.term;
+  const curKey = current ? key(current) : 0;
   const byId = preferredId && list.find((t) => t.id === preferredId);
-  if (byId && notPast(byId)) return byId;                       // 현재·미래(수강계획)만 고정
+  if (byId) {
+    const past = curKey && key(byId) < curKey;
+    if (!past) return byId;                                       // 현재·미래(수강계획): 그대로
+    if (Date.now() - preferredAt < PAST_GRACE_MS) return byId;    // 최근 명시적 전환 → 유예
+  }
   const cur = current &&
     list.find((t) => t.year === current.year && t.term === current.term && t.isPrimary);
-  return cur ?? list.find((t) => t.isPrimary) ?? list[0];        // 없으면 최신 확정본(+배너)
+  return cur ?? list.find((t) => t.isPrimary) ?? list[0];         // 없으면 최신 확정본(+배너)
 }
 ```
 
-**의미**: 지난 학기 시간표는 "세션 내 방문"이다 — 앱을 껐다 켜면 현재 학기로
-돌아온다. 스위처에서 언제든 다시 열 수 있고, 여는 동안(그 세션)은 유지된다.
-미래(수강계획) 학기 초안은 그대로 고정된다(다음 학기 미리짜기 흐름 보존).
+호출부: `pickTimetable(list, currentSemester(catalog), readSelectedId(), readSelectedAt())`.
 
-> ⚠️ 검토 포인트: "지난 학기를 켜 두고 앱을 재시작하면 현재 학기로 스냅된다"는
-> 동작. **권장**: 위 규칙대로 스냅한다 — 갇힘 리포트가 나온 이상, 재시작 시
-> 현재 학기로 되돌아오는 쪽이 기본값으로 옳다. add/drop 기간에 지난 학기를
-> 참고하려면 스위처에서 한 번 더 탭(그 세션 유지). 대안(포인터 항상 존중 +
-> 배너로만 넛지)은 덜 놀랍지만 강의검색·알림이 계속 지난 학기를 따라 문제 #2가
-> 남는다.
+**의미 / add/drop 처리**:
+- 지난 학기 시간표를 **스위처에서 직접 골랐다면** 14일간 재시작해도 유지된다 —
+  add/drop 기간에 지난 학기를 참고용으로 띄워 두는 흐름을 덮는다.
+- 그 사이 26-2로 한 번이라도 명시적 전환하면 타임스탬프가 26-2를 가리키므로
+  정상 복귀. 유예 창은 "마지막으로 고른 게 지난 학기이고 이후 아무것도 안 골랐다"는
+  좁은 경우에만 지난 학기를 붙든다.
+- **갇힌 사용자**(작년 봄 26-1을 만들 때가 마지막 명시적 선택)는 타임스탬프가
+  수개월 전 → 유예 만료 → 26-2로 스냅. 갇힘 리포트가 풀린다.
+- 미래(수강계획) 학기 초안은 유예와 무관하게 항상 고정(다음 학기 미리짜기 보존).
+- 홈 배너(Ⅱ.2)는 유예 여부와 무관하게 `selected` 학기 < 현재면 항상 뜬다 —
+  유예 창 안에서 26-1을 봐도 "지금은 26-2학기입니다"는 계속 보인다.
 
 ### 2. 홈 상단 배너 ([Home.jsx](../../../src/pages/Home.jsx) 시간표 카드 위)
 
@@ -183,9 +207,11 @@ export function pickTimetable(list, current, preferredId = null) {
   옵션에 숨김 학기 시간표는 원래 없음(생성 자체가 막힘). 변화 없음.
 - `loadTimetables`의 `pickTimetable(list, null, readSelectedId())`
   ([CourseSearch.jsx:66](../../../src/pages/CourseSearch.jsx#L66))를
-  `pickTimetable(list, currentSemester(catalog), readSelectedId())`로 — Ⅱ.1
-  규칙이 여기서도 적용돼 지난 학기 시간표가 기본 대상이 되지 않게. (catalog 로드
-  이후 실행되도록 순서 조정 필요.)
+  `pickTimetable(list, currentSemester(catalog), readSelectedId(), readSelectedAt())`로
+  — Ⅱ.1 규칙이 여기서도 적용돼 지난 학기 시간표가 기본 대상이 되지 않게.
+  (catalog 로드 이후 실행되도록 순서 조정 필요.)
+- `changeTarget`([CourseSearch.jsx:108-111](../../../src/pages/CourseSearch.jsx#L108))의
+  `writeSelectedId` → `selectTimetable`(명시적 전환이므로 타임스탬프 기록).
 
 ### 5. 마법사 ([Wizard.jsx:721-730](../../../src/pages/Wizard.jsx#L721-L730))
 
@@ -253,9 +279,9 @@ const semesters = useMemo(() => {
 | 파일 | 변경 |
 |---|---|
 | `src/lib/cache.js` | `semesterForDate()` 신규, `currentSemester()` 날짜 인식, `semesterList()` 숨김 필터 |
-| `src/lib/timetable.js` | `pickTimetable()` 지난 학기 포인터 무시 |
-| `src/pages/Home.jsx` | 지난 학기 → 현재 학기 유도 배너, 수강계획 넛지 |
-| `src/pages/CourseSearch.jsx` | 검색 중인 학기 명시 + 지난/수강계획 경고·전환 |
+| `src/lib/timetable.js` | `pickTimetable()` 지난 학기 포인터 유예 창, `selectTimetable()`·`readSelectedAt()` 신규 |
+| `src/pages/Home.jsx` | 지난 학기 → 현재 학기 유도 배너, 수강계획 넛지, `handleSelect` → `selectTimetable` |
+| `src/pages/CourseSearch.jsx` | 검색 중인 학기 명시 + 지난/수강계획 경고·전환, `pickTimetable` 4-인자, `changeTarget` → `selectTimetable` |
 | `src/pages/Wizard.jsx` | 숨김 학기 제외(자동), 수강계획 경고 |
 | `src/pages/Calc.jsx` | 학기 후보 생성 범위 + `＋ 다른 학기`, 편람 의존 제거 |
 | `src/pages/EmptyRooms.jsx` | 공유 `currentSemester()` 사용 |
@@ -266,9 +292,10 @@ const semesters = useMemo(() => {
 
 ## Ⅴ. 테스트
 
-- **순수 로직**: `semesterForDate` 경계(2/28, 3/1, 7/31, 8/1, 12/31, 1/1), `currentSemester` 우선순위(flagged<dated / dated 카탈로그 부재 → flagged / 전부 숨김), `pickTimetable`(지난 포인터 무시, 미래 포인터 유지, 현재 확정본 폴백).
+- **순수 로직**: `semesterForDate` 경계(2/28, 3/1, 7/31, 8/1, 12/31, 1/1), `currentSemester` 우선순위(flagged<dated / dated 카탈로그 부재 → flagged / 전부 숨김), `pickTimetable`(지난 포인터: 유예 내 유지·유예 만료 시 무시·타임스탬프 없음 시 무시, 미래 포인터 항상 유지, 현재 확정본 폴백).
 - **컴포넌트**: 홈 배너 노출 조건(지난 학기 선택 시 표시 / 현재·미래 시 숨김), 강의검색 학기 라벨.
 - **수동**: 26-1만 있는 계정으로 로그인 → 홈 배너 → 마법사 26-2 시드 확인. 관리자 학기 추가 → 생도 화면에서 안 보임 → `수강계획으로 공개` → 마법사에 "확정 전" 배지와 함께 등장.
+- **수동(유예 창)**: 26-1·26-2 둘 다 있는 계정에서 스위처로 26-1 전환 → 앱 재시작 → 26-1 유지(배너는 뜸). 26-2로 전환 후 재시작 → 26-2 유지. `selectedTimetableAt`을 15일 전으로 조작 후 재시작 → 26-2로 스냅.
 - **배포 후**: `nextClassNotify` 로그에 승격 판정 오류 없는지, 26-1 갇힘 리포트가 줄어드는지.
 
 ## Ⅵ. 범위 밖 (YAGNI)
