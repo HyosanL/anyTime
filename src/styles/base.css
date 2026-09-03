@@ -343,6 +343,9 @@ a.list-row, .list-row a { color: inherit; }
 .tag-success { background: var(--success-weak); color: var(--success); }
 .tag .x { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0 0 0 0.15rem; opacity: 0.7; }
 .tag .x:hover { opacity: 1; }
+/* 학기 태그 — 숨김 상태(관리자 편람 입력 중, 생도 미노출) */
+.tag.tag-muted { opacity: 0.65; border: 1px dashed var(--border); }
+.adm-sem-publish { margin-left: 0.35rem; font-size: 0.72rem; color: var(--accent); }
 
 /* 구분선 */
 .divider { height: 1px; background: var(--border); margin: 0.6rem var(--pad); border: none; }

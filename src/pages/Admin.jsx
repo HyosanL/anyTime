@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { db, functions } from '../firebase';
-import { getCatalog } from '../lib/cache';
+import { getCatalog, semesterPhase } from '../lib/cache';
 import { useAuthContext } from '../contexts/AuthContext';
 import { dupProfessorGroups, isPlaceholderProf } from '../lib/profname';
 import { callAdmin as call, CATALOG_ACTIONS } from '../lib/admin';
@@ -1020,14 +1020,28 @@ export default function Admin() {
 
         {section === 'semesters' && (
           <>
-            <Card icon="🗓️" title="학기" desc="학기를 추가하거나 현재 학기를 지정합니다. 다음 학기를 미리 열려면 '학기 추가'만 하세요 — 생도가 그 학기 시간표를 미리 짤 수 있고, 현재 학기는 그대로 유지됩니다. ⚠️ 학기 삭제는 그 학기의 분반·강의시간과 생도들이 저장한 시간표까지 전부 지웁니다(되돌릴 수 없음).">
+            <Card icon="🗓️" title="학기" desc="학기 추가 → 편람 입력 → '수강계획으로 공개'(생도가 미리 짤 수 있음) → 학기 시작일이 지나면 자동으로 현재 학기가 됩니다(수동 지정도 가능). 추가 직후에는 '숨김' 상태라 생도 화면에 안 뜹니다. ⚠️ 학기 삭제는 그 학기의 분반·강의시간과 생도들이 저장한 시간표까지 전부 지웁니다(되돌릴 수 없음).">
               <div className="adm-tags">
-                {cat?.semesters?.length ? cat.semesters.map((s) => (
-                  <span key={s.year + '' + s.term} className={`tag ${s.isCurrent ? 'tag-primary' : ''}`}>{s.year}-{s.term}{s.isCurrent ? ' (현재)' : ''}
-                    <button className="x" title="이 학기 삭제 (분반·생도 시간표까지 연쇄 삭제)"
-                      onClick={() => deleteSemester(s)}>×</button>
-                  </span>
-                )) : <span className="note">등록된 학기가 없습니다.</span>}
+                {cat?.semesters?.length ? [...cat.semesters]
+                  .sort((a, b) => b.year - a.year || b.term - a.term)
+                  .map((s) => {
+                    const phase = semesterPhase(cat, s.year, s.term);
+                    const label = { hidden: '숨김', planning: '수강계획', current: '현재', past: '지난' }[phase];
+                    return (
+                      <span key={s.year + '' + s.term}
+                        className={`tag ${phase === 'current' ? 'tag-primary' : ''} ${phase === 'hidden' ? 'tag-muted' : ''}`}>
+                        {s.year}-{s.term} ({label})
+                        {phase === 'hidden' && (
+                          <button className="link-btn adm-sem-publish"
+                            title="생도가 이 학기 시간표를 미리 짤 수 있게 공개"
+                            onClick={() => run('set_semester', { year: s.year, term: s.term, hidden: false },
+                              `${s.year}-${s.term} 수강계획으로 공개`)}>공개</button>
+                        )}
+                        <button className="x" title="이 학기 삭제 (분반·생도 시간표까지 연쇄 삭제)"
+                          onClick={() => deleteSemester(s)}>×</button>
+                      </span>
+                    );
+                  }) : <span className="note">등록된 학기가 없습니다.</span>}
               </div>
               <div className="adm-form-grid">
                 <label className="field"><span className="field-label">연도</span><input type="number" value={sem.year} onChange={(e) => setSem({ ...sem, year: +e.target.value })} /></label>
@@ -1036,7 +1050,7 @@ export default function Admin() {
                 </label>
               </div>
               <div className="adm-btn-row">
-                <button className="btn-add" onClick={() => run('set_semester', { ...sem, isCurrent: false }, `${sem.year}-${sem.term} 학기 추가`)}>＋ 학기 추가</button>
+                <button className="btn-add" onClick={() => run('set_semester', { ...sem, isCurrent: false }, `${sem.year}-${sem.term} 학기 추가(숨김)`)}>＋ 학기 추가</button>
                 <button className="btn-ghost" onClick={() => run('set_semester', { ...sem, isCurrent: true }, '현재 학기 설정')}>현재 학기로 설정</button>
               </div>
             </Card>
