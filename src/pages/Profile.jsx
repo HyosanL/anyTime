@@ -7,7 +7,6 @@ import { NEXT_CLASS_LEADS, getLead, setLeadPref, syncNextClassAlerts } from '../
 import { briefOn, setBriefOn, getBriefTime, setBriefTime, syncDailyBrief } from '../lib/dailyBrief';
 import Badge, { badgeOf } from '../components/Badge';
 import ThemeToggle from '../components/ThemeToggle';
-import PalettePicker from '../components/PalettePicker';
 import BackButton from '../components/BackButton';
 
 const TIERS = [
@@ -166,14 +165,12 @@ function PushSettings() {
       <h3 className="account-sec-title">푸시 알림</h3>
       {!supported ? (
         <p className="account-note">
-          이 브라우저에서는 푸시 알림을 받을 수 없어요. 애타를 <b>홈 화면에 설치</b>하면
-          (아이폰: Safari 공유 → 홈 화면에 추가) 댓글 알림을 받을 수 있습니다.
+          홈 화면에 설치하면 댓글 알림을 받을 수 있어요. (아이폰: Safari 공유 → 홈 화면에 추가)
         </p>
       ) : (
         <>
           <p className="account-note">
-            내가 쓴 글·댓글 단 글에 새 댓글이 달리면 알려드려요. 게시글의 🔔 버튼으로
-            글마다 켜고 끌 수 있습니다. (알림은 이 기기에만 연결되며 계정과 연결되지 않아요.)
+            내 글·댓글에 새 댓글이 달리면 알려드려요. 이 기기에만 연결돼요.
           </p>
           <button className={on ? 'btn-danger-soft btn-block' : 'btn-add btn-block'} onClick={toggle} disabled={busy}>
             {on ? '푸시 알림 끄기' : '푸시 알림 켜기'}
@@ -201,8 +198,7 @@ function PushSettings() {
               )}
               {dnd.on && (
                 <p className="account-note" style={{ marginTop: 6 }}>
-                  이 시간대(디바이스 시간 기준)엔 알림이 소리·진동 없이 알림센터로만 조용히 도착해요.
-                  확실히 무음을 원하면 기기의 방해 금지 모드도 함께 켜두시는 걸 권해요.
+                  이 시간대엔 소리·진동 없이 알림센터로만 조용히 도착해요.
                 </p>
               )}
 
@@ -217,7 +213,7 @@ function PushSettings() {
                   </div>
                 )}
                 <p className="account-note" style={{ marginTop: 6 }}>
-                  매일 그 시각에 그날 수업 전체를 한 번에 요약해 알려드려요. 수업이 없는 날은 오지 않아요.
+                  매일 지정 시각에 그날 수업을 요약해 드려요. 수업 없는 날은 오지 않아요.
                 </p>
               </div>
 
@@ -236,26 +232,20 @@ function PushSettings() {
                   ))}
                 </div>
                 <p className="account-note" style={{ marginTop: 6 }}>
-                  수업 시작 전 “⏰ 다음 수업 / 과목 · 강의실 · 시각”을 알려드려요. 알림 시각(요일·시각)만
-                  이 기기 구독에 저장되고, 과목·강의실은 서버에 저장되지 않아요.
+                  수업 시작 전 과목·강의실을 알려드려요. 과목·강의실은 서버에 저장되지 않아요.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                <button className="btn-ghost btn-sm" onClick={sendTest}>
-                  🔔 테스트 알림 보내기
-                </button>
-                <button className="btn-ghost btn-sm" onClick={testQuietNow}>
-                  🌙 지금 방해금지로 무음 테스트
-                </button>
-                <button className="btn-ghost btn-sm" onClick={testNextClass}>
-                  ⏰ 다음 수업 알림 테스트
-                </button>
-                <button className="btn-ghost btn-sm" onClick={testDailyBrief}>
-                  🌅 오늘 수업 요약 테스트
-                </button>
-              </div>
-              {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
+              <details className="account-test">
+                <summary>알림 테스트</summary>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  <button className="btn-ghost btn-sm" onClick={sendTest}>🔔 테스트 알림</button>
+                  <button className="btn-ghost btn-sm" onClick={testQuietNow}>🌙 무음 테스트</button>
+                  <button className="btn-ghost btn-sm" onClick={testNextClass}>⏰ 다음 수업</button>
+                  <button className="btn-ghost btn-sm" onClick={testDailyBrief}>🌅 오늘 수업</button>
+                </div>
+                {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
+              </details>
             </>
           )}
           {msg && <p className="account-msg">{msg}</p>}
@@ -326,8 +316,6 @@ export default function Profile() {
       </header>
 
       <div className="home-body">
-        <PushSettings />
-
         <section className="card profile-card">
           <Badge tier={tier} level={count} size={64} />
           <p className="profile-name">{cadet?.username}</p>
@@ -363,53 +351,52 @@ export default function Profile() {
           <p className="note profile-todo">강의평·수업메모·족보 작성 +1 / 삭제 −1로 레벨이 오릅니다.</p>
         </section>
 
-        <section className="card account-sec anon-sec">
-          <h3 className="account-sec-title">🔒 이 앱의 익명성</h3>
-          <p className="anon-lead">
-            애타는 <b>누가 무엇을 썼는지</b> 앱 자체가 알 수 없도록 설계돼 있습니다.
-            강의평·수업메모·족보·게시글은 작성자 정보 없이 저장됩니다.
-          </p>
-          <ul className="anon-list">
-            <li><b>글에 작성자가 남지 않아요.</b> 게시글·강의평 데이터에는 내용과 시각만 저장되고, 누가 썼는지를 가리키는 정보가 아예 없습니다.</li>
-            <li><b>실명·전화번호를 받지 않아요.</b> 가입은 아이디·비밀번호만으로 이뤄지고 이메일·전화·실명은 수집하지 않습니다.</li>
-            <li><b>관리자도 작성자를 특정할 수 없어요.</b> 데이터를 전부 열람해도 “이 글을 누가 썼는지”는 나오지 않습니다. 신고가 쌓이면 내용만 자동으로 가려질 뿐, 작성자를 역추적하거나 지목하지 않습니다.</li>
-            <li><b>삭제는 글 비밀번호로 해요.</b> 계정 소유로 지우는 게 아니라(그런 연결이 없으니까) 글마다 정한 삭제 비밀번호로 지웁니다.</li>
-          </ul>
-          <p className="anon-caveat">
-            ⚠️ 다만 이건 <b>학교·관리자·다른 생도로부터의 익명성</b>이에요.
-            명예훼손·협박 같은 불법 콘텐츠는 다른 인터넷 서비스와 마찬가지로,
-            법적 절차(수사기관의 IP·통신기록 조회 등)에 따라 추적 대상이 될 수 있습니다.
-            서로 존중하며 이용해주세요.
-          </p>
-        </section>
+        <PushSettings />
 
         <section className="card account-sec">
           <h3 className="account-sec-title">화면 테마</h3>
-          <p className="account-note">시스템 설정을 따르거나 라이트·다크를 직접 고를 수 있습니다.</p>
           <div className="account-theme">
             <ThemeToggle />
           </div>
         </section>
 
-        <section className="card account-sec">
-          <h3 className="account-sec-title">시간표 색상</h3>
-          <p className="account-note">시간표 과목 칸의 색 테마를 고를 수 있어요. (이 기기에만 저장됩니다.)</p>
-          <PalettePicker />
+        <section className="card account-sec anon-sec">
+          <h3 className="account-sec-title">🔒 이 앱의 익명성</h3>
+          <p className="anon-lead">
+            애타는 <b>누가 무엇을 썼는지</b> 앱 자체가 알 수 없도록 설계돼 있어요.
+            강의평·수업메모·족보·게시글은 작성자 정보 없이 저장되고, 삭제는 글 비밀번호로 합니다.
+          </p>
+          <details className="anon-more">
+            <summary>자세히</summary>
+            <ul className="anon-list">
+              <li><b>글에 작성자가 남지 않아요.</b> 게시글·강의평 데이터에는 내용과 시각만 저장되고, 누가 썼는지를 가리키는 정보가 아예 없습니다.</li>
+              <li><b>실명·전화번호를 받지 않아요.</b> 가입은 아이디·비밀번호만으로 이뤄지고 이메일·전화·실명은 수집하지 않습니다.</li>
+              <li><b>관리자도 작성자를 특정할 수 없어요.</b> 데이터를 전부 열람해도 “이 글을 누가 썼는지”는 나오지 않습니다. 신고가 쌓이면 내용만 자동으로 가려질 뿐입니다.</li>
+              <li><b>삭제는 글 비밀번호로 해요.</b> 계정 소유로 지우는 게 아니라 글마다 정한 삭제 비밀번호로 지웁니다.</li>
+            </ul>
+            <p className="anon-caveat">
+              ⚠️ 다만 이건 <b>학교·관리자·다른 생도로부터의 익명성</b>이에요.
+              명예훼손·협박 같은 불법 콘텐츠는 다른 인터넷 서비스와 마찬가지로,
+              법적 절차(수사기관의 IP·통신기록 조회 등)에 따라 추적 대상이 될 수 있습니다.
+              서로 존중하며 이용해주세요.
+            </p>
+          </details>
         </section>
 
         <section className="card account-sec">
-          <h3 className="account-sec-title">비밀번호 변경</h3>
+          <h3 className="account-sec-title">계정</h3>
           <form className="account-form" onSubmit={onChangePw}>
             <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="새 비밀번호(6자 이상)" autoComplete="new-password" />
             <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" autoComplete="new-password" />
-            <button type="submit" className="btn-add btn-block" disabled={busy}>변경</button>
+            <button type="submit" className="btn-add btn-block" disabled={busy}>비밀번호 변경</button>
           </form>
           {pwMsg && <p className="account-msg">{pwMsg}</p>}
+          <button type="button" className="btn-ghost btn-block" style={{ marginTop: 10 }} onClick={logout}>로그아웃</button>
         </section>
 
         <section className="card account-sec danger">
           <h3 className="account-sec-title">회원 탈퇴</h3>
-          <p className="account-note">탈퇴하면 프로필·확정시간표·레벨 등 계정 정보가 모두 삭제됩니다. (익명으로 남긴 강의평·메모·족보는 작성자 식별 정보가 없어 그대로 유지됩니다.)</p>
+          <p className="account-note">프로필·시간표·레벨이 삭제됩니다. 익명으로 남긴 강의평·메모·족보·글은 그대로 유지돼요.</p>
           {!confirming ? (
             <button className="btn-danger-soft btn-block" onClick={() => { setConfirming(true); setDelMsg(''); }}>회원 탈퇴</button>
           ) : (

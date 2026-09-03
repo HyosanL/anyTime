@@ -685,6 +685,33 @@
 }
 .anon-caveat b { color: var(--text); font-weight: 650; }
 
+/* 익명성 "자세히" 접기 */
+.anon-more {
+  margin-top: 0.6rem;
+}
+.anon-more > summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 650;
+  color: var(--primary);
+  list-style: none;
+}
+.anon-more > summary::-webkit-details-marker { display: none; }
+.anon-more[open] > summary { margin-bottom: 0.7rem; }
+
+/* 알림 테스트 접기 */
+.account-test {
+  margin-top: 0.9rem;
+}
+.account-test > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--text-2);
+  list-style: none;
+}
+.account-test > summary::-webkit-details-marker { display: none; }
+
 /* ============================================================
    시간표 그리드 (TimetableGrid)
    - 셀 배경은 컴포넌트 inline style(lib/palettes 팔레트) 이 칠한다.
