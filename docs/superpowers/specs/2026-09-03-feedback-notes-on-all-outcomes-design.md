@@ -172,7 +172,10 @@ else if (reportDismissedAt)     → { type, id, outcome: 'kept',    note: report
 
 계획: `docs/superpowers/plans/2026-09-03-feedback-notes-on-all-outcomes.md`.
 
-2026-09-03 구현·배포 완료.
+2026-09-03 구현 완료. 프론트는 `main` 푸시로 배포. **함수 배포 대기** — 이 환경에서
+`storage.googleapis.com` 도달 불가로 `firebase deploy --only functions` 미실행.
+`getMyFeedback` 배포 전까지 `FeedbackPopup.contentLine` 이 `it.reason` 폴백으로 구버전
+응답을 흡수한다(적용/정리/수정 메모는 함수 배포 후 반영).
 - `archiveDeleted` 에 `adminNote`. `applyCorrection`/`resolveCorrection` 가 `reply` 저장,
   `pushCorrectionOutcome` 상태별 문구. `editPost`/`deletePost` 가 신고 맥락이면
   `reportEditNote`/`reportEditedAt` 브레드크럼 + 삭제는 `archiveDeleted(reason:'admin')`.

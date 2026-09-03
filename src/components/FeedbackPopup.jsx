@@ -17,11 +17,14 @@ function correctionLine(it) {
   return a ? { key: `correction:${it.id}`, badge: '수정 제안', q: it.summary, a, note: it.reply || null } : null;
 }
 function contentLine(it) {
+  // '유지' 사유는 신 getMyFeedback 에선 it.note, 구버전에선 it.reason 으로 온다(배포 시차 흡수).
+  const keptNote = it.outcome === 'kept' ? (it.note || it.reason || null) : null;
+  const note = it.outcome === 'kept' ? keptNote : (it.note || null);
   const a = it.outcome === 'removed' ? '🗑️ 신고하신 내용이 삭제 조치됐어요.'
     : it.outcome === 'edited' ? '✏️ 신고하신 내용이 수정 조치됐어요.'
-    : it.outcome === 'kept' ? (it.note ? '검토 결과 유지됩니다.' : '검토 결과 규정 위반이 아니라 유지됩니다.')
+    : it.outcome === 'kept' ? (keptNote ? '검토 결과 유지됩니다.' : '검토 결과 규정 위반이 아니라 유지됩니다.')
     : null;
-  return a ? { key: `content:${it.type}_${it.id}`, badge: '신고', q: '', a, note: it.note || null } : null;
+  return a ? { key: `content:${it.type}_${it.id}`, badge: '신고', q: '', a, note } : null;
 }
 
 export default function FeedbackPopup() {
