@@ -4,7 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import BackButton from '../components/BackButton';
 import CorrectionModal from '../components/CorrectionModal';
 import { correctionMeta, sectionCorrectionOptions, sectionSubject } from '../lib/correction';
-import { getCatalog, buildSections, currentSemester, semesterList, formatTimes, dayLabel } from '../lib/cache';
+import { getCatalog, buildSections, currentSemester, semesterList, semesterPhase, formatTimes, dayLabel } from '../lib/cache';
 import {
   listTimetables, createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
   addSections, findEmptyTimetables, selectTimetable, isOverlapError,
@@ -229,6 +229,11 @@ export default function Wizard() {
     const [y, t] = semKey.split('-').map(Number);
     return y && t ? { year: y, term: t } : null;
   }, [semKey]);
+
+  const semPhase = useMemo(
+    () => (catalog && sem ? semesterPhase(catalog, sem.year, sem.term) : null),
+    [catalog, sem]
+  );
 
   const sections = useMemo(
     () => (catalog && sem ? buildSections(catalog, sem).sections : []),
@@ -728,6 +733,9 @@ export default function Wizard() {
                 ))}
               </select>
             </label>
+            {semPhase === 'planning' && (
+              <p className="wz-warn">⚠️ {sem.year}-{sem.term}학기는 아직 확정 전입니다 — 편람 조정 중이라 시간·강의실·교수가 바뀔 수 있어요.</p>
+            )}
             <p className="wz-lead">들어야 하는 과목을 모두 담으세요. 분반은 다음 단계에서 고릅니다.</p>
 
             <div className="search-bar">
