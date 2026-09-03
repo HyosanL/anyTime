@@ -144,11 +144,11 @@ async function showPush(msg) {
   const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   if (wins.some((c) => c.visibilityState === 'visible' && new URL(c.url).pathname === path)) return;
   // 제목·본문을 서버가 직접 실어 보내는 알림(관리자 알림 + 앱 리포트 답변).
-  const ADMIN_KINDS = ['correction', 'auto_correction', 'report_deleted', 'app_report', 'app_report_reply'];
+  const ADMIN_KINDS = ['correction', 'auto_correction', 'report_deleted', 'app_report', 'app_report_reply', 'feedback_reply'];
   const admin = ADMIN_KINDS.includes(msg.kind);
   const hot = msg.kind === 'hot';
   const reason = (hot || admin) ? '' : await watchReason(String(msg.post_id || ''));
-  const title = admin ? (msg.title || (msg.kind === 'app_report_reply' ? '📬 문의 답변' : '🔔 관리자 알림'))
+  const title = admin ? (msg.title || ((msg.kind === 'app_report_reply' || msg.kind === 'feedback_reply') ? '📬 결과 알림' : '🔔 관리자 알림'))
     : hot ? '🔥 인기글이 나왔어요' : commentTitle(msg.kind, reason, msg.title);
   // 방해금지 창(디바이스 시간 기준)이면 소리·진동 없이 알림센터로만 조용히 내려보낸다.
   // userVisibleOnly 규약상 알림 자체는 계속 띄운다(발송 억제 시 브라우저가 일반 알림을
