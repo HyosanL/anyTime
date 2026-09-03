@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthContext } from '../contexts/AuthContext';
 import BackButton from '../components/BackButton';
-import { getCatalog, currentSemester, semesterList, buildMyTimetable } from '../lib/cache';
+import { getCatalog, currentSemester, semesterForDate, buildMyTimetable } from '../lib/cache';
 import { listTimetables, listEntries } from '../lib/timetable';
 import {
   GRADE_ORDER, listGrades, addGrade, addGrades, updateGrade, deleteGrade,
@@ -36,6 +36,24 @@ function GpaTab({ catalog, uid }) {
   const [err, setErr] = useState('');
   const [seeding, setSeeding] = useState(false);
 
+  // 성적은 편람과 무관한 개인 기록이라(스키마 주석), 편람에 없는 과거 학기도 직접 넣을 수 있어야 한다.
+  const MANUAL_SEMS_KEY = `calc:manualSems:${uid || 'anon'}`;
+  const [manualSems, setManualSems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MANUAL_SEMS_KEY) || '[]'); } catch { return []; }
+  });
+  const addManualSem = useCallback(() => {
+    const y = Number(prompt('연도 (예: 2023)'));
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) return;
+    const t = Number(prompt('학기 (1 또는 2)'));
+    if (t !== 1 && t !== 2) return;
+    setManualSems((prev) => {
+      if (prev.some((s) => s.year === y && s.term === t)) return prev;
+      const next = [...prev, { year: y, term: t }];
+      try { localStorage.setItem(MANUAL_SEMS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [MANUAL_SEMS_KEY]);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -58,13 +76,20 @@ function GpaTab({ catalog, uid }) {
     return () => { active = false; };
   }, []);
 
-  // 학기 후보: 편람 학기 ∪ 내 성적행의 학기.
+  // 학기 후보: 편람과 무관한 개인 기록이므로(스키마 주석) 생성 범위(현재~4년 전) ∪
+  // 내 성적행 ∪ '＋ 다른 학기'로 직접 넣은 것. 편람의 숨김·미래 학기는 여기 안 나온다.
   const semesters = useMemo(() => {
     const map = new Map();
-    for (const s of (catalog ? semesterList(catalog) : [])) map.set(`${s.year}-${s.term}`, { year: s.year, term: s.term });
+    const cur = (catalog ? currentSemester(catalog) : null) ?? semesterForDate();
+    for (let y = cur.year; y >= cur.year - 4; y--) {
+      for (const t of [2, 1]) {
+        if (y < cur.year || t <= cur.term) map.set(`${y}-${t}`, { year: y, term: t });
+      }
+    }
     for (const r of (rows ?? [])) map.set(`${r.year}-${r.term}`, { year: r.year, term: r.term });
+    for (const m of manualSems) map.set(`${m.year}-${m.term}`, { year: m.year, term: m.term });
     return [...map.values()].sort((a, b) => b.year - a.year || b.term - a.term);
-  }, [catalog, rows]);
+  }, [catalog, rows, manualSems]);
 
   // 기본 선택 학기: 현재 학기 → 없으면 가장 최근 후보.
   useEffect(() => {
@@ -163,6 +188,7 @@ function GpaTab({ catalog, uid }) {
             <option key={`${s.year}-${s.term}`} value={`${s.year}-${s.term}`}>{s.year}년 {s.term}학기</option>
           ))}
         </select>
+        <button type="button" className="link-btn calc-sem-add" onClick={addManualSem}>＋ 다른 학기</button>
       </div>
 
       {err && <p className="error-msg calc-err">{err}</p>}
