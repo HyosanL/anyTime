@@ -314,33 +314,24 @@ export function paintWallpaper(ctx, S, o) {
   const ph = (dh + 2 * padP) * S;
   const dark = o.glassTone === 'dark';
 
-  // 패널 반투명 틴트 색을 배경 밝기에서 역산 — 흰색이든 검정이든 패널이 배경보다
-  // 일정 명도차(약 0.12)로 떠서 구분되도록. 진짜 가우시안 블러 위에 얹혀 프로스티드 유리.
-  const A = 0.5;
-  const DELTA = dark ? 0.13 : 0.12;
-  const L = typeof o.backdropLum === 'number' ? o.backdropLum : (dark ? 0.08 : 0.94);
-  let greyL = dark ? L + DELTA / A : L - DELTA / A;
-  greyL = Math.max(0, Math.min(1, greyL));
-  const g8 = Math.round(greyL * 255);
-  const tint = `rgba(${g8}, ${Math.min(255, g8 + 2)}, ${Math.min(255, g8 + 6)}, ${A})`;
-
+  // 톤별 고정 반투명 틴트 — 진짜 가우시안 블러(blurredCopy) 위에 얹혀 iOS 프로스티드 유리.
   const blur = blurredCopy(ctx.canvas, cw);
   ctx.save();
   roundRect(ctx, px, py, pw, ph, rad);
   ctx.clip();
   ctx.drawImage(blur, px, py, pw, ph, px, py, pw, ph);
-  ctx.fillStyle = tint;
+  ctx.fillStyle = dark ? 'rgba(18,20,26,0.44)' : 'rgba(241,243,246,0.52)';
   ctx.fillRect(px, py, pw, ph);
-  const grad = ctx.createLinearGradient(0, py, 0, py + ph * 0.5);
-  grad.addColorStop(0, `rgba(255,255,255,${dark ? 0.08 : 0.16})`);
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  const grad = ctx.createLinearGradient(0, py, 0, py + ph);
+  grad.addColorStop(0, `rgba(255,255,255,${dark ? 0.10 : 0.24})`);
+  grad.addColorStop(0.4, 'rgba(255,255,255,0)');
   ctx.fillStyle = grad;
-  ctx.fillRect(px, py, pw, ph * 0.5);
+  ctx.fillRect(px, py, pw, ph);
   ctx.restore();
 
   roundRect(ctx, px, py, pw, ph, rad);
-  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)';
-  ctx.lineWidth = Math.max(1, short * 0.0018 * S);
+  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = Math.max(1, short * 0.0016 * S);
   ctx.stroke();
 
   // 4. 시간표
@@ -360,7 +351,7 @@ export function paintWallpaper(ctx, S, o) {
 // mode 'wallpaper': screen={w,h} 캔버스 + 사진/단색 + iOS 폴더풍 글래스 패널 + transform 배치.
 export function composeTimetableImage({
   grid, mode, background = '#ffffff', screen, transform,
-  photo = null, photoT = null, glassTone = 'light', backdropLum,
+  photo = null, photoT = null, glassTone = 'light',
 }) {
   const g = grid.canvas;
   const out = document.createElement('canvas');
@@ -371,7 +362,7 @@ export function composeTimetableImage({
     const ctx = out.getContext('2d');
     paintWallpaper(ctx, 1, {
       canvasW: screen.w, canvasH: screen.h, bgColor: background,
-      photo, photoT, glassTone, backdropLum,
+      photo, photoT, glassTone,
       gridCanvas: g, gridW: grid.w, gridH: grid.h, gridT: transform, guides: null,
     });
     return out;

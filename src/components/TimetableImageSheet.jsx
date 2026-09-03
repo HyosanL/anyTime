@@ -100,10 +100,11 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   const pinchRef = useRef(null);
   const wheelTimer = useRef(null);
 
-  // 글래스 톤 — 자동은 뒤 배경(사진 평균밝기 또는 색) 밝기로 매칭. 패널 색은 배경 밝기에서
-  // 역산해 흰색·검정 배경에서도 약 0.12 명도차로 떠 구분된다. 사용자가 밝게/어둡게로 덮어쓰기 가능.
-  const backdropLum = photo ? photoLum : luminance(bg);
-  const glassTone = glassMode === 'auto' ? (backdropLum < 0.5 ? 'dark' : 'light') : glassMode;
+  // 글래스 톤 — 자동은 뒤 배경(사진 평균밝기 또는 색)이 어두우면 어두운 글래스(밝은 글자).
+  // 사용자가 밝게/어둡게로 덮어쓰기 가능.
+  const glassTone = glassMode === 'auto'
+    ? ((photo ? photoLum : luminance(bg)) < 0.5 ? 'dark' : 'light')
+    : glassMode;
   const glassBase = glassTone === 'dark' ? '#1b1d23' : '#e9ebef';
   const isWall = mode === 'wallpaper';
 
@@ -162,7 +163,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       const S = cv.width / dims.w;
       paintWallpaper(ctx, S, {
         canvasW: dims.w, canvasH: dims.h, bgColor: bg,
-        photo, photoT: photoTRef.current, glassTone, backdropLum,
+        photo, photoT: photoTRef.current, glassTone,
         gridCanvas: g.canvas, gridW: g.w, gridH: g.h,
         gridT: t || centeredTransform({ gridW: g.w, gridH: g.h, canvasW: dims.w, canvasH: dims.h, scale: baselineRef.current }),
         guides: gd,
@@ -180,7 +181,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.drawImage(g.canvas, margin * S, margin * S, g.w * S, g.h * S);
-  }, [isWall, bg, dims, photo, glassTone, backdropLum]);
+  }, [isWall, bg, dims, photo, glassTone]);
 
   // 미리보기 캔버스 백킹 해상도 설정 + 첫 그림 (모드/격자/화면 바뀔 때만)
   useEffect(() => {
@@ -432,7 +433,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
         ? composeTimetableImage({
             grid: g, mode: 'wallpaper', background: bg, screen: dims,
             transform: transformRef.current, photo, photoT: photoTRef.current,
-            glassTone, backdropLum,
+            glassTone,
           })
         : composeTimetableImage({ grid: g, mode: 'plain', background: bg });
       const base = String(title || '시간표').replace(/\s+/g, '');
@@ -443,7 +444,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     } finally {
       setBusy(false);
     }
-  }, [isWall, bg, dims, title, photo, glassTone, backdropLum]);
+  }, [isWall, bg, dims, title, photo, glassTone]);
 
   const hasGrid = !!gridRef.current;
   const bgLower = bg.toLowerCase();
