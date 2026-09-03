@@ -18,7 +18,7 @@ import {
 } from '../lib/timetable';
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 import { detectConflicts } from '../lib/conflict';
-import { buildSeed, seedDraft, readDraft } from '../lib/wizardDraft';
+import { buildSeed, seedDraft, readDraft, clearDraft } from '../lib/wizardDraft';
 import AppReportModal from '../components/AppReportModal';
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
@@ -101,6 +101,23 @@ export default function Home() {
   );
   const semesters = useMemo(() => (catalog ? semesterList(catalog) : []), [catalog]);
 
+  const current = useMemo(() => (catalog ? currentSemester(catalog) : null), [catalog]);
+  const curKey = current ? current.year * 10 + current.term : 0;
+  // 선택한 시간표가 현재보다 지난 학기인가 → 앞으로 유도 배너
+  const isStale = !!(selected && curKey && (selected.year * 10 + selected.term) < curKey);
+  // 현재 학기 확정본이 이미 있나(있으면 배너는 '전환'만, 없으면 '만들기')
+  const currentPrimary = useMemo(
+    () => (current ? timetables.find((t) => t.year === current.year && t.term === current.term && t.isPrimary) : null),
+    [timetables, current]
+  );
+  // 수강계획(공개된 미래) 학기 중 내 시간표가 하나도 없는 것 — 약한 넛지
+  const planningSem = useMemo(() => {
+    if (!catalog || !curKey) return null;
+    return semesterList(catalog)
+      .filter((s) => s.year * 10 + s.term > curKey)
+      .find((s) => !timetables.some((t) => t.year === s.year && t.term === s.term)) ?? null;
+  }, [catalog, curKey, timetables]);
+
   // 선택한 시간표의 학기 기준으로 격자를 조립한다(지난·다음 학기도 그대로 그려진다).
   const { mine, periods } = useMemo(() => {
     if (!catalog) return { mine: [], periods: [] };
@@ -123,6 +140,14 @@ export default function Home() {
     seedDraft(uid, seed);
     navigate('/wizard');
   }, [selected, mine, uid, navigate]);
+
+  // 지난 학기에 있을 때 새 학기 시간표를 마법사로 짜러 간다.
+  // 마법사는 초안이 없으면 currentSemester(날짜 인식)로 열리므로 시드 불필요 — 스테일 초안만 정리.
+  const startNewSemesterWizard = useCallback(() => {
+    if (readDraft(uid) && !confirm('마법사에 짜던 초안이 있습니다.\n새 학기로 새로 시작할까요?')) return;
+    clearDraft();
+    navigate('/wizard');
+  }, [uid, navigate]);
 
   // 전 생도 공통 비수업 시간(생도대·군사훈련·공통연구) — 격자에 함께 깐다.
   // 생도마다 DB에 담지 않는다: 모두에게 똑같은 시간이라 저장할 이유가 없고(계정당 쓰기 0),
@@ -418,6 +443,29 @@ export default function Home() {
             </div>
           </div>
           {adding && selected && <CustomClassForm onAdd={handleAddCustom} />}
+          {isStale && (
+            <div className="tt-sem-banner" role="status">
+              <p className="tt-sem-banner-t">
+                📅 지금은 <strong>{current.year}-{current.term}학기</strong>입니다.
+                {selected.name ? ` ‘${selected.name}’은(는) ` : ' 지금 보는 건 '}지난 학기 시간표예요.
+              </p>
+              <div className="tt-sem-banner-actions">
+                {currentPrimary ? (
+                  <button className="btn-add btn-sm" onClick={() => handleSelect(currentPrimary.id)}>
+                    {current.year}-{current.term} 시간표로
+                  </button>
+                ) : (
+                  <>
+                    <button className="btn-add btn-sm" onClick={startNewSemesterWizard}>🪄 마법사로 짜기</button>
+                    <button className="btn-ghost btn-sm"
+                      onClick={() => handleCreate({ year: current.year, term: current.term, name: '내 시간표' })}>
+                      빈 시간표
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           {conflicts.pairs.length > 0 && (
             <div className="tt-conflict-warn" role="alert">
               <p className="tt-conflict-t">⚠️ 시간이 겹치는 강의가 있습니다 — 저장한 뒤 수업정보가 바뀐 것 같아요.</p>
@@ -455,6 +503,16 @@ export default function Home() {
           {selected && !selected.isPrimary && (
             <p className="tt-draft-note">
               초안 시간표입니다. 강의평·수업메모는 <strong>확정</strong> 시간표에 담긴 강의만 열립니다.
+            </p>
+          )}
+          {planningSem && !isStale && (
+            <p className="tt-draft-note">
+              📖 {planningSem.year}-{planningSem.term}학기 수강 계획을 미리 시작할 수 있어요.
+              {' '}
+              <button type="button" className="link-btn"
+                onClick={() => handleCreate({ year: planningSem.year, term: planningSem.term, name: '수강 계획' })}>
+                {planningSem.year}-{planningSem.term} 시간표 만들기
+              </button>
             </p>
           )}
         </section>

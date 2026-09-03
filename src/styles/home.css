@@ -302,6 +302,26 @@
   border-radius: var(--r-sm);
 }
 
+/* 새 학기가 시작됐는데 지난 학기 시간표를 보고 있을 때의 유도 배너(정보 톤 — 경고 아님) */
+.tt-sem-banner {
+  margin: 0 0.65rem 0.7rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.tt-sem-banner-t {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+.tt-sem-banner-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
 /* 저장한 뒤 관리자가 분반 시간을 고쳐 담아 둔 시간표가 겹치게 됐을 때의 경고 */
 .tt-conflict-warn {
   margin: 0 0.65rem 0.7rem;
