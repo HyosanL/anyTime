@@ -1,6 +1,7 @@
 # 시간표 이미지 저장 옵션 — 배경화면 채우기 · 배경색 — 설계
 
 작성: 2026-09-03
+구현: 2026-09-03 완료 — plan `docs/superpowers/plans/2026-09-03-timetable-image-save-options.md`
 
 ## 배경 — 요청
 
