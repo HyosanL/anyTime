@@ -30,7 +30,8 @@ async function lookupCorrections(ids) {
     const d = s.data();
     return { id: s.id, label: d.label ?? null, field: d.field ?? null,
       status: d.status ?? 'pending', autoApplied: d.autoApplied === true,
-      reply: d.reply ?? null, repliedAt: d.repliedAt ?? null };
+      // 팝업 seen 키에 쓰므로 millis 로 — 관리자가 사후 메모를 남겨 repliedAt 이 갱신되면 다시 뜬다.
+      reply: d.reply ?? null, repliedAt: d.repliedAt?.toMillis?.() ?? null };
   });
 }
 

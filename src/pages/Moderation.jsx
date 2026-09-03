@@ -186,6 +186,7 @@ export default function Moderation() {
   const [items, setItems] = useState([]);       // 게시글·댓글(list_recent)
   const [reported, setReported] = useState([]);  // 신고 누적 글(list_reported)
   const [corrs, setCorrs] = useState([]);        // 수정 제안(pending)
+  const [processedCorrs, setProcessedCorrs] = useState([]); // 처리함(반려·적용·정리, 최신순)
   const [autos, setAutos] = useState([]);        // 자동반영됨(미확인)
   const [deleted, setDeleted] = useState([]);    // 신고 누적 자동삭제 아카이브
   const [appReports, setAppReports] = useState([]); // 앱 문제 리포트(pending)
@@ -198,7 +199,7 @@ export default function Moderation() {
   const freshRef = useRef(false); // 서버 응답 도착 후 늦게 온 캐시가 덮어쓰지 않도록
 
   const load = useCallback(async () => {
-    const [r, rc, rr, ra, rd, rap, rrep] = await callBatch([
+    const [r, rc, rr, ra, rd, rap, rrep, rpc] = await callBatch([
       { action: 'list_recent', payload: { limit: 100 } },
       { action: 'list_corrections', payload: { status: 'pending' } },
       { action: 'list_reported' },
@@ -206,6 +207,7 @@ export default function Moderation() {
       { action: 'list_deleted' },
       { action: 'list_app_reports' },
       { action: 'list_replied_app_reports' },
+      { action: 'list_processed_corrections' },
     ]);
     freshRef.current = true;
     if (rc.ok) setCorrs(rc.data.items ?? []);
@@ -214,6 +216,7 @@ export default function Moderation() {
     if (rd.ok) setDeleted(rd.data.items ?? []);
     if (rap.ok) setAppReports(rap.data.items ?? []);
     if (rrep.ok) setRepliedReports(rrep.data.items ?? []);
+    if (rpc.ok) setProcessedCorrs(rpc.data.items ?? []);
     if (r.ok) {
       const withFlags = (r.data.items ?? []).map((it) => ({ ...it, flags: flagText(it.text) }));
       // 부정어 포함 글을 위로, 그 다음 최신순
@@ -225,11 +228,11 @@ export default function Moderation() {
       setItems(withFlags);
       setReviewedAt(r.data.reviewedAt ?? null);
       // 다음 진입 때 즉시 표시할 스냅샷(SWR). 전부 성공했을 때만 저장.
-      if (rc.ok && rr.ok && ra.ok && rd.ok && rap.ok && rrep.ok) {
+      if (rc.ok && rr.ok && ra.ok && rd.ok && rap.ok && rrep.ok && rpc.ok) {
         kvSet('mod:snapshot', {
           items: withFlags, corrs: rc.data.items ?? [], reported: rr.data.items ?? [],
           autos: ra.data.items ?? [], deleted: rd.data.items ?? [], appReports: rap.data.items ?? [],
-          repliedReports: rrep.data.items ?? [],
+          repliedReports: rrep.data.items ?? [], processedCorrs: rpc.data.items ?? [],
           reviewedAt: r.data.reviewedAt ?? null,
         });
       }
@@ -253,7 +256,7 @@ export default function Moderation() {
       if (freshRef.current || !c) return;
       setItems(c.items ?? []); setCorrs(c.corrs ?? []); setReported(c.reported ?? []);
       setAutos(c.autos ?? []); setDeleted(c.deleted ?? []); setAppReports(c.appReports ?? []);
-      setRepliedReports(c.repliedReports ?? []);
+      setRepliedReports(c.repliedReports ?? []); setProcessedCorrs(c.processedCorrs ?? []);
       setReviewedAt(c.reviewedAt ?? null);
     });
 
@@ -400,6 +403,18 @@ export default function Moderation() {
     if (!confirm('이 제안을 반려할까요?')) return;
     for (const id of g.ids) await call('reject_correction', { id, reason: note });
     setCorrs((prev) => prev.filter((c) => !g.ids.includes(c.id)));
+  }
+  // 처리함: 이미 적용/반려한 제안에 사후 메모를 남긴다(제출자에게 다시 뜬다).
+  async function annotateCorr(id, note) {
+    const r = await call('annotate_correction', { id, reason: note });
+    if (r.status === 'GONE') { alert('30일이 지나 정리된 제안입니다.'); return false; }
+    if (!r.ok) { alert('메모 저장 실패: ' + (r.status ?? '오류')); return false; }
+    setProcessedCorrs((prev) => {
+      const hit = prev.find((c) => c.id === id);
+      const rest = prev.filter((c) => c.id !== id);
+      return hit ? [{ ...hit, reply: note || null }, ...rest] : prev;
+    });
+    return true;
   }
   // 자동반영 알림 확인 처리
   async function ackGroup(g) {
@@ -579,6 +594,17 @@ export default function Moderation() {
                 onApply={applyGroup} onReject={rejectGroup} onEdit={openEdit} />
             ))}
           </ul>
+
+          {processedCorrs.length > 0 && (
+            <>
+              <h3 className="mod-subhead">처리함 <span className="mod-count">(최근 {processedCorrs.length}건 · 메모를 남기면 제출자에게 다시 표시됩니다)</span></h3>
+              <ul className="mod-list">
+                {processedCorrs.map((c) => (
+                  <ProcessedCorrectionCard key={`pc-${c.id}`} c={c} fmtDateTime={fmtDateTime} onAnnotate={annotateCorr} />
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
 
@@ -694,6 +720,50 @@ function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit }) {
         <button className="btn-add btn-sm" onClick={() => onApply(g, memo)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
         {editPath(g) && <button className="link-btn" onClick={() => onEdit(g)}>✏️ 편집에서 열기</button>}
         <button className="rev-del-btn" onClick={() => onReject(g, memo)}>반려</button>
+      </div>
+    </li>
+  );
+}
+
+const CORR_STATUS_LABEL = { applied: '반영됨', rejected: '반려', resolved: '직접 수정' };
+
+// 처리함 카드: 이미 적용/반려한 제안. 사후 메모를 남기거나 고칠 수 있다.
+function ProcessedCorrectionCard({ c, fmtDateTime, onAnnotate }) {
+  const [note, setNote] = useState(c.reply || '');
+  const [busy, setBusy] = useState(false);
+  const dirty = (note.trim() || '') !== (c.reply || '');
+  const statusLabel = c.autoApplied ? '자동 반영' : (CORR_STATUS_LABEL[c.status] || c.status);
+
+  async function save() {
+    setBusy(true);
+    await onAnnotate(c.id, note.trim() || undefined);
+    setBusy(false);
+  }
+
+  return (
+    <li className="card mod-card">
+      <div className="mod-card-top">
+        <span className={`tag mod-type ${c.status === 'rejected' ? 'tag-warn' : 'tag-primary'}`}>{statusLabel}</span>
+        <span className="mod-course">{c.label || c.target} · <span className="mod-corr-field">{FIELD_LABEL[c.field] || c.field}</span></span>
+        <span className="mod-time">{fmtDateTime(c.repliedAt)}</span>
+      </div>
+      {(c.prevValue || c.suggested) && (
+        <p className="mod-corr-diff">
+          <span className="mod-diff-label">이전</span>
+          <span className="mod-diff-before">{c.prevValue ?? '—'}</span>
+          <span className="mod-diff-arrow">→</span>
+          <span className="mod-diff-label">제안</span>
+          <b className="mod-diff-after">{c.suggested ? fmtCorrAfter(c) : '—'}</b>
+        </p>
+      )}
+      {c.note ? <p className="mod-corr-note">설명: {c.note}</p> : null}
+      <textarea className="ar-reply-ta" rows={2} value={note} maxLength={300}
+        placeholder="제출자에게 남길 메모 (저장하면 앱에 다시 표시됩니다)"
+        onChange={(e) => setNote(e.target.value)} />
+      <div className="mod-actions">
+        <button className="btn-add btn-sm" disabled={busy || !dirty} onClick={save}>
+          {c.reply ? '메모 수정' : '메모 남기기'}
+        </button>
       </div>
     </li>
   );

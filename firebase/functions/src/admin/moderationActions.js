@@ -220,6 +220,28 @@ async function resolveCorrection(uid, payload) {
   return { status: 'OK' };
 }
 
+// 처리함: 이미 반려/적용/정리된 제안을 최신 처리순으로. pending 은 repliedAt 이 null 이라
+// orderBy('repliedAt') 가 자동으로 걸러낸다(단일필드 색인 — 복합 색인 불필요).
+// 자동반영(autoApplied, repliedAt 없음)은 별도 list_auto_notices 탭에 남는다.
+async function listProcessedCorrections() {
+  const snap = await db.collection('corrections').orderBy('repliedAt', 'desc').limit(50).get();
+  return { status: 'OK', items: snap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+}
+
+// 처리함에서 사후 메모 남기기/수정 — 이미 적용해 큐에서 사라진 뒤 잘못을 발견했을 때.
+// status 는 유지하고 reply 만 갈아끼운다. repliedAt 을 갱신해 처리함 맨 위로 올리고,
+// FeedbackPopup 이 (키에 repliedAt 을 넣으므로) 제출자에게 다시 뜬다.
+async function annotateCorrection(uid, payload) {
+  const id = String(payload.id ?? '');
+  if (!id) invalid('id가 필요합니다.');
+  const ref = db.collection('corrections').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { status: 'GONE' }; // 30일 경과 후 purgeCorrections 가 정리함
+  await ref.update({ reply: noteOf(payload), repliedAt: FieldValue.serverTimestamp() });
+  await pushCorrectionOutcome(await ref.get());
+  return { status: 'OK' };
+}
+
 // 편집 페이지로 딥링크했을 때 배너에 제안값을 그리기 위한 단건 조회.
 async function getCorrection(uid, payload) {
   const id = String(payload.id ?? '');
@@ -840,9 +862,11 @@ export const moderationActions = {
   grant_admin: grantAdmin,
   revoke_admin: revokeAdmin,
   list_corrections: listCorrections,
+  list_processed_corrections: listProcessedCorrections,
   reject_correction: rejectCorrection,
   apply_correction: applyCorrection,
   resolve_correction: resolveCorrection,
+  annotate_correction: annotateCorrection,
   get_correction: getCorrection,
   list_auto_notices: listAutoNotices,
   ack_correction: ackCorrection,

@@ -161,6 +161,21 @@ else if (reportDismissedAt)     → { type, id, outcome: 'kept',    note: report
   5. 게시글 신고 → `삭제` + 메모 → 신고자 "🗑️ 삭제 조치" + 메모, `삭제됨` 탭에 뜨고 복구 가능.
   6. 무시 + 메모(회귀) → "검토 결과 유지" + 메모.
 
+## Ⅸ-b. 수정 제안 "처리함" + 사후 메모 (2026-09-03 추가)
+
+실사용 피드백: 제안을 적용한 뒤 잘못을 발견했는데 이미 큐에서 사라져 메모를 못 남김.
+앱 리포트 "답변함"과 같은 처리 이력 뷰가 필요.
+
+- **`list_processed_corrections`** (신규) — `corrections` 를 `orderBy('repliedAt','desc').limit(50)`.
+  pending 은 `repliedAt: null` 이라 자동 제외. **단일필드 색인**(auto) — 복합 색인 없음.
+  자동반영(`autoApplied`, `repliedAt` 없음)은 기존 `list_auto_notices` 탭 유지.
+- **`annotate_correction({ id, reason })`** (신규) — `status` 유지, `reply` 교체 +
+  `repliedAt` 갱신(처리함 맨 위로) + `pushCorrectionOutcome` 재발송. 문서 없으면 `GONE`.
+- `getMyFeedback` `lookupCorrections` 의 `repliedAt` 을 **millis 로** 반환.
+  `FeedbackPopup` correction 키 = `correction:${id}:${repliedAt}` → 메모 갱신 시 재표시.
+- `Moderation.jsx` 수정 제안 탭에 "처리함" 섹션(`ProcessedCorrectionCard`) —
+  상태 배지·diff·설명·`reply` textarea + "메모 남기기/수정". `load()` batch 에 1개 추가.
+
 ## Ⅹ. 범위 밖 (YAGNI)
 
 - 신고자에게 푸시(핸들 미보관 — 팝업만).
@@ -172,14 +187,16 @@ else if (reportDismissedAt)     → { type, id, outcome: 'kept',    note: report
 
 계획: `docs/superpowers/plans/2026-09-03-feedback-notes-on-all-outcomes.md`.
 
-2026-09-03 구현 완료. 프론트는 `main` 푸시로 배포. **함수 배포 대기** — 이 환경에서
-`storage.googleapis.com` 도달 불가로 `firebase deploy --only functions` 미실행.
-`getMyFeedback` 배포 전까지 `FeedbackPopup.contentLine` 이 `it.reason` 폴백으로 구버전
-응답을 흡수한다(적용/정리/수정 메모는 함수 배포 후 반영).
+2026-09-03 구현 완료. 배포는 다른 세션(anytime-86)이 여러 작업과 함께 통합 push +
+`firebase deploy` 로 처리(이 환경은 `storage.googleapis.com` 도달 불가 — [[firebase-deploy-gcs-blocked]]).
+함수 배포 전까지 `FeedbackPopup.contentLine` 이 `it.reason` 폴백으로 구버전 응답을 흡수.
 - `archiveDeleted` 에 `adminNote`. `applyCorrection`/`resolveCorrection` 가 `reply` 저장,
   `pushCorrectionOutcome` 상태별 문구. `editPost`/`deletePost` 가 신고 맥락이면
   `reportEditNote`/`reportEditedAt` 브레드크럼 + 삭제는 `archiveDeleted(reason:'admin')`.
 - `getMyFeedback` `contentReports` 결과 필드 `reason`→`note` 통일, `edited` 결과 추가.
-- `FeedbackPopup` 메모 줄(`.ar-pop-note`) + `edited` 문구.
+  `lookupCorrections.repliedAt` → millis.
+- `FeedbackPopup` 메모 줄(`.ar-pop-note`) + `edited` 문구. correction 키에 `repliedAt`.
 - `Moderation.jsx` `ModMemo`(접이식) + `CorrectionCard`/`ReportCard` 서브컴포넌트,
   반려·무시 prompt() → 인라인 메모 + confirm(). 검열 탭 편집·AdminCourse 배너에 메모.
+- 수정 제안 탭 "처리함"(`ProcessedCorrectionCard`) + `list_processed_corrections` /
+  `annotate_correction` 사후 메모.

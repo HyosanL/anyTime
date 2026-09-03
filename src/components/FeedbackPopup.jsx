@@ -14,7 +14,8 @@ function correctionLine(it) {
     : it.status === 'rejected' ? '🔎 검토했지만 이번엔 반영하지 않았어요.'
     : it.status === 'resolved' ? '✅ 확인 후 처리했어요.'
     : null;
-  return a ? { key: `correction:${it.id}`, badge: '수정 제안', q: it.summary, a, note: it.reply || null } : null;
+  // 키에 repliedAt 을 넣어, 관리자가 사후 메모를 남기면(repliedAt 갱신) 팝업이 다시 뜨게 한다.
+  return a ? { key: `correction:${it.id}:${it.repliedAt || 0}`, badge: '수정 제안', q: it.summary, a, note: it.reply || null } : null;
 }
 function contentLine(it) {
   // '유지' 사유는 신 getMyFeedback 에선 it.note, 구버전에선 it.reason 으로 온다(배포 시차 흡수).
