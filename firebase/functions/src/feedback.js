@@ -46,12 +46,15 @@ async function lookupContentReports(refs) {
       db.collection('deletedContent').where('origId', '==', id).limit(1).get(),
       db.collection(CONTENT_COLLECTION[type]).doc(id).get(),
     ]);
+    // note = 관리자가 남긴 자유 문구(있으면). removed 의 delSnap.reason 은 자동삭제 코드라 노출 안 함.
     if (!delSnap.empty) {
-      out.push({ type, id, outcome: 'removed', reason: delSnap.docs[0].get('reason') ?? null });
+      out.push({ type, id, outcome: 'removed', note: delSnap.docs[0].get('adminNote') ?? null });
     } else if (!docSnap.exists) {
-      out.push({ type, id, outcome: 'removed', reason: null }); // 작성자 자삭 — 신고자엔 '사라짐'으로 동일
+      out.push({ type, id, outcome: 'removed', note: null }); // 작성자 자삭 — 신고자엔 '사라짐'으로 동일
+    } else if (docSnap.get('reportEditedAt')) {
+      out.push({ type, id, outcome: 'edited', note: docSnap.get('reportEditNote') ?? null });
     } else if (docSnap.get('reportDismissedAt')) {
-      out.push({ type, id, outcome: 'kept', reason: docSnap.get('reportDismissReason') ?? null });
+      out.push({ type, id, outcome: 'kept', note: docSnap.get('reportDismissReason') ?? null });
     }
     // else: pending — 알리지 않으므로 넣지 않는다
   }
