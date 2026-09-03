@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import BackButton from '../components/BackButton';
-import { getCatalog, subscribeCatalog, dayLabel } from '../lib/cache';
+import { getCatalog, subscribeCatalog, dayLabel, currentSemester } from '../lib/cache';
 import '../styles/rooms.css';
 
 // =====================================================================
@@ -50,10 +50,7 @@ export default function EmptyRooms() {
   // 현재 학기 강의시간 → 요일·교시별 사용 중 강의실 + 전체 강의실 목록
   const model = useMemo(() => {
     if (!catalog) return null;
-    const semesters = catalog.semesters ?? [];
-    const current =
-      semesters.find((s) => s.isCurrent) ??
-      [...semesters].sort((a, b) => b.year - a.year || b.term - a.term)[0];
+    const current = currentSemester(catalog);
     if (!current) return { current: null };
 
     const periods = [...(catalog.periods ?? [])].sort((a, b) => a.no - b.no);
