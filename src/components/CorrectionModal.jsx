@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { callFn } from '../lib/functions';
+import { submitCorrection } from '../lib/feedback';
 import '../styles/correction.css';
 
 // 정보 수정 제안 모달 (익명). options: [{label, target, targetKey, field, placeholder, current, kind?, periods?, professors?}]
@@ -138,7 +138,7 @@ export default function CorrectionModal({ subject, options, onClose }) {
       return setErr('올바른 값이나 설명 중 하나는 입력하세요.');
     }
     setBusy(true); setErr('');
-    const r = await callFn('submitCorrection', {
+    const r = await submitCorrection({
       target: opt.target,
       targetKey: opt.targetKey,
       label: subject,
@@ -217,6 +217,7 @@ export default function CorrectionModal({ subject, options, onClose }) {
         {done ? (
           <div className="cor-done">
             <p>✅ 제안이 접수되었습니다. 관리자 검토 후 반영됩니다. 감사합니다!</p>
+            <p className="cor-hint">결과는 앱을 다시 열 때 알려드려요.</p>
             <button className="btn-add btn-block" onClick={onClose}>닫기</button>
           </div>
         ) : (

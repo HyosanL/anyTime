@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { submitReport, fetchMyReports } from '../lib/appReport';
+import { submitAppReport as submitReport, fetchMyAppReports as fetchMyReports } from '../lib/feedback';
 import { isStandalone } from './InstallGate';
 import '../styles/correction.css';
 
