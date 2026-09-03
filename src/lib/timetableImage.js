@@ -1,30 +1,19 @@
-// 시간표를 PNG 이미지로 렌더링해 저장/공유한다.
-// DOM→이미지 라이브러리(html-to-image 등)는 iOS Safari에서 canvas 오염으로 자주 실패하므로,
-// TimetableGrid 와 동일한 블록 계산(lib/timetableLayout)을 canvas 2D로 직접 그린다(모든 기기에서 안정적).
-//
-// ⭐ 화면 격자(home.css)와 '똑같은 그림'이 나오도록 그린다:
-//   - 격자선 없이 3px 간격으로 분리된 둥근 타일(빈 칸도 연한 테두리 박스)
-//   - 공통 공강은 수업 없는 칸에만 회색으로(공용 cells 모델을 그대로 사용)
-//   - 직접추가 칸엔 '직접' 태그, 글자색은 팔레트 밝기 자동 대비(cell.fg)
-//   - 색은 사용자가 고른 팔레트(lib/palettes)를 클릭 시점에 읽어 화면과 일치
+// 시간표를 PNG 이미지로 렌더링해 저장/공유한다. 3단계로 나뉜다:
+//   renderTimetableGrid   — 격자만 canvas 2D 로 직접 그린다(바깥 투명, 배경색 인지).
+//   composeTimetableImage — 모드(일반/배경화면)·배경색으로 최종 이미지를 합성.
+//   saveComposedImage     — 공유 시트(iOS 사진저장 / 안드 공유) 또는 다운로드.
+// DOM→이미지 라이브러리는 iOS Safari 에서 canvas 오염으로 자주 실패하므로 canvas 직접 렌더를 유지한다.
+// 격자 계산(블록·요일·시)은 화면(TimetableGrid)과 공유하는 lib/timetableLayout 을 쓴다
+// — 저장본이 화면과 '똑같은 그림'이 되도록.
 import { dayLabel } from './cache';
 import { paletteByKey, getPaletteKey } from './palettes';
 import { buildClassBlocks, layoutTimetable, pad2 } from './timetableLayout';
+import { contrastText, overlayTint } from './imageColor';
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
-// 화면 토큰과 맞춘 값(이미지는 항상 밝게 — 다크모드와 무관하게 가독성).
-const C = {
-  bg: '#ffffff',
-  title: '#111827',
-  dayHead: '#374151',
-  emptyFill: '#ffffff',
-  emptyBorder: '#e5e7eb',   // --border(라이트) 근사
-  block: '#e5eaf1',         // --block-bg(라이트)
-  blockText: '#475569',     // 회색 위 읽는 색(--text-2 근사)
-  axisPeriod: '#9ca3af',
-  axisHour: '#6b7280',
-};
+// 격자는 항상 이 픽셀 밀도로 그린다 — 배경화면 모드에서 확대해도 덜 흐리도록 넉넉히.
+const PIX = 3;
 
 // 텍스트를 maxWidth 안에서 최대 maxLines 줄로 접고, 넘치면 말줄임.
 function wrapText(ctx, text, maxWidth, maxLines) {
@@ -52,7 +41,7 @@ function wrapText(ctx, text, maxWidth, maxLines) {
   return lines.slice(0, maxLines);
 }
 
-function roundRect(ctx, x, y, w, h, r) {
+export function roundRect(ctx, x, y, w, h, r) {
   if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -62,44 +51,48 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+
 function tile(ctx, x, y, w, h, r, fill, stroke) {
   roundRect(ctx, x, y, w, h, r);
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
   if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
 }
 
-// 시간표 canvas 를 생성. 블록이 없으면 null.
-export function renderTimetableCanvas({ mine, periods, customClasses, commonBlocks = [], title = '시간표' }) {
-  // 화면과 같은 팔레트·같은 격자 계산.
+// 시간표 격자만 캔버스로. 바깥(paper)은 투명 — 배경 위에 얹는다.
+// background: 최종 배경색 — 빈 칸 틴트·글자 대비가 여기에 종속(밝으면 짙은 글자, 어두우면 밝은 글자).
+// 반환: { canvas, w, h }  (w,h = 캔버스 실제 픽셀 크기)  또는 blocks 없으면 null.
+export function renderTimetableGrid({
+  mine, periods, customClasses, commonBlocks = [], title = '시간표', background = '#ffffff',
+}) {
   const pal = paletteByKey(getPaletteKey());
   const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg });
   const grid = layoutTimetable({ classBlocks, periods, commonBlocks });
   if (grid.empty) return null;
-  const { days, hours, minH, periodNoByHour, cells } = grid;
+  const { days, hours, periodNoByHour, cells } = grid;
 
-  // 레이아웃(CSS px). DPR 로 스케일해 선명하게.
   const PAD = 16, TITLE_H = 44, HEAD_H = 34, HOURCOL_W = 52, DAYCOL_W = 118, ROW_H = 58;
-  const RAD = 8;      // --r-sm
-  const INSET = 1.5;  // 타일 사이 3px 간격(화면 border-spacing) 근사
+  const RAD = 8;
+  const INSET = 1.5;
   const gridW = HOURCOL_W + days.length * DAYCOL_W;
   const gridH = hours.length * ROW_H;
   const W = PAD * 2 + gridW;
   const H = PAD * 2 + TITLE_H + HEAD_H + gridH;
-  const DPR = Math.min(window.devicePixelRatio || 1, 3);
+
+  const ink = contrastText(background);
+  const emptyFill = overlayTint(background, 0.05);
+  const emptyBorder = overlayTint(background, 0.16);
+  const blockFill = overlayTint(background, 0.11);
 
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(W * DPR);
-  canvas.height = Math.round(H * DPR);
+  canvas.width = Math.round(W * PIX);
+  canvas.height = Math.round(H * PIX);
   const ctx = canvas.getContext('2d');
-  ctx.scale(DPR, DPR);
+  ctx.scale(PIX, PIX);
   ctx.textBaseline = 'top';
-
-  // 배경
-  ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, W, H);
+  // 바깥은 투명(fillRect 안 함).
 
   // 제목
-  ctx.fillStyle = C.title;
+  ctx.fillStyle = ink.strong;
   ctx.font = `700 20px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.fillText(title, W / 2, PAD + 8);
@@ -109,7 +102,7 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
 
   // 요일 헤더
   ctx.font = `600 14px ${FONT}`;
-  ctx.fillStyle = C.dayHead;
+  ctx.fillStyle = ink.mid;
   days.forEach((d, i) => ctx.fillText(dayLabel(d), gridLeft + i * DAYCOL_W + DAYCOL_W / 2, PAD + TITLE_H + 9));
 
   // 좌축(시각·교시) — 격자선은 그리지 않는다(화면처럼 분리 타일).
@@ -117,11 +110,11 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
     const y = gridTop + i * ROW_H;
     ctx.textAlign = 'center';
     if (periodNoByHour[h] != null) {
-      ctx.fillStyle = C.axisPeriod;
+      ctx.fillStyle = ink.soft;
       ctx.font = `600 11px ${FONT}`;
       ctx.fillText(String(periodNoByHour[h]), PAD + HOURCOL_W / 2, y + 6);
     }
-    ctx.fillStyle = C.axisHour;
+    ctx.fillStyle = ink.mid;
     ctx.font = `600 13px ${FONT}`;
     ctx.fillText(pad2(h), PAD + HOURCOL_W / 2, y + 22);
   });
@@ -133,8 +126,8 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
       const cy = gridTop + hi * ROW_H;
       const cell = cells[`${d}-${h}`];
 
-      if (!cell) {   // 빈 칸 — 연한 테두리 둥근 박스
-        tile(ctx, cx + INSET, cy + INSET, DAYCOL_W - 2 * INSET, ROW_H - 2 * INSET, RAD, C.emptyFill, C.emptyBorder);
+      if (!cell) {   // 빈 칸 — 배경색 위 옅은 틴트 박스
+        tile(ctx, cx + INSET, cy + INSET, DAYCOL_W - 2 * INSET, ROW_H - 2 * INSET, RAD, emptyFill, emptyBorder);
         return;
       }
       if (cell.skip) return;   // 위 칸의 rowSpan 이 덮음
@@ -144,9 +137,9 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
       const tw = DAYCOL_W - 2 * INSET;
       const th = cell.span * ROW_H - 2 * INSET;
 
-      if (cell.block) {   // 공통 공강 — 회색 타일 + 회색 글자(가운데)
-        tile(ctx, tx, ty, tw, th, RAD, C.block, null);
-        ctx.fillStyle = C.blockText;
+      if (cell.block) {   // 공통 공강 — 틴트 타일 + 대비 글자(가운데)
+        tile(ctx, tx, ty, tw, th, RAD, blockFill, null);
+        ctx.fillStyle = ink.soft;
         ctx.font = `600 11.5px ${FONT}`;
         ctx.textAlign = 'center';
         const lines = wrapText(ctx, cell.title, tw - 16, 2);
@@ -155,7 +148,7 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
         return;
       }
 
-      // 수업 칸 — 팔레트 색 타일 + 자동 대비 글자(가운데)
+      // 수업 칸 — 팔레트 색 타일 + 팔레트 글자색(가운데)
       tile(ctx, tx, ty, tw, th, RAD, cell.color, null);
       ctx.textAlign = 'center';
       ctx.fillStyle = cell.fg;
@@ -185,7 +178,50 @@ export function renderTimetableCanvas({ mine, periods, customClasses, commonBloc
     });
   });
 
-  return canvas;
+  return { canvas, w: canvas.width, h: canvas.height };
+}
+
+// 격자 캔버스를 배경색·모드로 최종 이미지에 합성한다.
+// mode 'plain'    : 내용맞춤 + 배경색 여백.
+// mode 'wallpaper': screen={w,h} 캔버스 + iOS 폴더풍 반투명 패널 + transform 배치.
+export function composeTimetableImage({ grid, mode, background = '#ffffff', screen, transform }) {
+  const g = grid.canvas;
+  const out = document.createElement('canvas');
+
+  if (mode === 'wallpaper') {
+    out.width = screen.w;
+    out.height = screen.h;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, out.width, out.height);
+
+    const t = transform;
+    const dw = grid.w * t.scale;
+    const dh = grid.h * t.scale;
+    const shortSide = Math.min(out.width, out.height);
+    const padP = shortSide * 0.03;
+    const rad = shortSide * 0.055;
+
+    roundRect(ctx, t.x - padP, t.y - padP, dw + 2 * padP, dh + 2 * padP, rad);
+    ctx.fillStyle = overlayTint(background, 0.12);
+    ctx.fill();
+    ctx.strokeStyle = overlayTint(background, 0.20);
+    ctx.lineWidth = Math.max(1, shortSide * 0.002);
+    ctx.stroke();
+
+    ctx.drawImage(g, t.x, t.y, dw, dh);
+    return out;
+  }
+
+  // plain — 내용맞춤 + 배경색 여백
+  const margin = Math.round(g.width * 0.05);
+  out.width = g.width + margin * 2;
+  out.height = g.height + margin * 2;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(g, margin, margin);
+  return out;
 }
 
 function dataURLtoBlob(dataUrl) {
@@ -197,24 +233,22 @@ function dataURLtoBlob(dataUrl) {
   return new Blob([arr], { type: mime });
 }
 
-// 시간표를 이미지로 저장/공유. 반환: 'empty' | 'shared' | 'cancelled' | 'downloaded'
-// 사용자 제스처(클릭) 안에서 동기적으로 canvas·blob 을 만들어 공유(iOS 활성화 유지).
-export async function saveTimetableImage(opts) {
-  const canvas = renderTimetableCanvas(opts);
-  if (!canvas) return 'empty';
+// 최종 캔버스를 공유/다운로드. 반환: 'shared' | 'cancelled' | 'downloaded'
+// 사용자 제스처(클릭) 안에서 동기적으로 호출해야 iOS 공유가 뜬다 —
+// 첫 await 가 곧 navigator.share 그 자체가 되도록 그 앞은 전부 동기.
+export async function saveComposedImage(canvas, filename) {
   const blob = dataURLtoBlob(canvas.toDataURL('image/png'));
-  const fname = `${(opts.title || '시간표').replace(/\s+/g, '')}.png`;
-  const file = new File([blob], fname, { type: 'image/png' });
+  const file = new File([blob], filename, { type: 'image/png' });
 
   // 모바일: 파일 공유 시트(아이폰=사진에 저장, 안드=이미지 공유/저장)
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: opts.title || '내 시간표' }); return 'shared'; }
-    catch (e) { if (e?.name === 'AbortError') return 'cancelled'; /* 실패 시 다운로드로 폴백 */ }
+    try { await navigator.share({ files: [file] }); return 'shared'; }
+    catch (e) { if (e?.name === 'AbortError') return 'cancelled'; /* 그 외엔 다운로드로 폴백 */ }
   }
   // 데스크톱 등: 다운로드
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = fname;
+  a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
   return 'downloaded';
