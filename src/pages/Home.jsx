@@ -19,6 +19,7 @@ import {
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 import { detectConflicts } from '../lib/conflict';
 import { buildSeed, seedDraft, readDraft } from '../lib/wizardDraft';
+import AppReportModal from '../components/AppReportModal';
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
 
@@ -88,6 +89,7 @@ export default function Home() {
   const [customClasses, setCustomClasses] = useState([]);
   const [adding, setAdding] = useState(false);
   const [palOpen, setPalOpen] = useState(false);   // 시간표 색상 테마 시트(⚙️)
+  const [appReportOpen, setAppReportOpen] = useState(false);   // 앱 문제 리포트 모달(🚩)
   // 수강신청용 요약표(어느 시간표든 목록에서 바로) — { tt, entries, customs, loading }
   const [summary, setSummary] = useState(null);
   // 게시판 활성 여부는 부팅 RPC 로 이미 와 있다 — 홈 진입마다 board_enabled() 를 따로 부르지 않는다.
@@ -379,6 +381,7 @@ export default function Home() {
           {/* iOS 전용 공유 핸드오프 진입점 — 클립보드는 몰래 확인이 불가(읽기=시스템 팝업)라
               조건부 표시가 안 되므로, 아이콘 하나로 존재감을 최소화해 상시 배치한다. */}
           {isIos() && <button className="link-btn" onClick={openCopiedLink} title="공유받은 글 붙여넣어 열기" aria-label="공유받은 글 붙여넣어 열기">📋</button>}
+          <button className="link-btn" onClick={() => setAppReportOpen(true)} title="앱 문제 리포트" aria-label="앱 문제 리포트">🚩</button>
           {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link">🧹 검열</Link>}
           <button className="link-btn" onClick={logout}>로그아웃</button>
         </div>
@@ -513,6 +516,7 @@ export default function Home() {
       )}
 
       {palOpen && <PaletteSheet onClose={() => setPalOpen(false)} />}
+      {appReportOpen && <AppReportModal onClose={() => setAppReportOpen(false)} />}
     </PullToRefresh>
   );
 }
