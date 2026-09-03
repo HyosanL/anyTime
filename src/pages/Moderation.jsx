@@ -188,6 +188,7 @@ export default function Moderation() {
   const [corrs, setCorrs] = useState([]);        // 수정 제안(pending)
   const [autos, setAutos] = useState([]);        // 자동반영됨(미확인)
   const [deleted, setDeleted] = useState([]);    // 신고 누적 자동삭제 아카이브
+  const [appReports, setAppReports] = useState([]); // 앱 문제 리포트(pending)
   const [cat, setCat] = useState(null);          // 카탈로그(대기중 제안의 '수정 전' 현재값 계산용)
   const [updatedAt, setUpdatedAt] = useState(null);
   const [reviewedAt, setReviewedAt] = useState(null); // 마지막 '모두 확인 처리' 컷오프
@@ -196,18 +197,20 @@ export default function Moderation() {
   const freshRef = useRef(false); // 서버 응답 도착 후 늦게 온 캐시가 덮어쓰지 않도록
 
   const load = useCallback(async () => {
-    const [r, rc, rr, ra, rd] = await callBatch([
+    const [r, rc, rr, ra, rd, rap] = await callBatch([
       { action: 'list_recent', payload: { limit: 100 } },
       { action: 'list_corrections', payload: { status: 'pending' } },
       { action: 'list_reported' },
       { action: 'list_auto_notices' },
       { action: 'list_deleted' },
+      { action: 'list_app_reports' },
     ]);
     freshRef.current = true;
     if (rc.ok) setCorrs(rc.data.items ?? []);
     if (rr.ok) setReported(rr.data.items ?? []);
     if (ra.ok) setAutos(ra.data.items ?? []);
     if (rd.ok) setDeleted(rd.data.items ?? []);
+    if (rap.ok) setAppReports(rap.data.items ?? []);
     if (r.ok) {
       const withFlags = (r.data.items ?? []).map((it) => ({ ...it, flags: flagText(it.text) }));
       // 부정어 포함 글을 위로, 그 다음 최신순
@@ -219,10 +222,11 @@ export default function Moderation() {
       setItems(withFlags);
       setReviewedAt(r.data.reviewedAt ?? null);
       // 다음 진입 때 즉시 표시할 스냅샷(SWR). 전부 성공했을 때만 저장.
-      if (rc.ok && rr.ok && ra.ok && rd.ok) {
+      if (rc.ok && rr.ok && ra.ok && rd.ok && rap.ok) {
         kvSet('mod:snapshot', {
           items: withFlags, corrs: rc.data.items ?? [], reported: rr.data.items ?? [],
-          autos: ra.data.items ?? [], deleted: rd.data.items ?? [], reviewedAt: r.data.reviewedAt ?? null,
+          autos: ra.data.items ?? [], deleted: rd.data.items ?? [], appReports: rap.data.items ?? [],
+          reviewedAt: r.data.reviewedAt ?? null,
         });
       }
     }
@@ -244,7 +248,8 @@ export default function Moderation() {
     kvGet('mod:snapshot').then((c) => {
       if (freshRef.current || !c) return;
       setItems(c.items ?? []); setCorrs(c.corrs ?? []); setReported(c.reported ?? []);
-      setAutos(c.autos ?? []); setDeleted(c.deleted ?? []); setReviewedAt(c.reviewedAt ?? null);
+      setAutos(c.autos ?? []); setDeleted(c.deleted ?? []); setAppReports(c.appReports ?? []);
+      setReviewedAt(c.reviewedAt ?? null);
     });
 
     // 화면이 보일 때만 15초 폴링. 백그라운드 탭/앱에서는 5개 edge function 호출을 멈춘다.
@@ -331,6 +336,12 @@ export default function Moderation() {
     if (r.ok) setDeleted((prev) => prev.map((x) => (x.id === it.id ? { ...x, reviewed: true } : x)));
   }
 
+  // ── 앱 문제 리포트: 확인 처리(즉시 삭제, 익명이라 이력 보관 가치 없음) ──
+  async function ackAppReport(it) {
+    const r = await call('ack_app_report', { id: it.id });
+    if (r.ok) setAppReports((prev) => prev.filter((x) => x.id !== it.id));
+  }
+
   // ── 수정 제안: 그룹 단위 적용/반려 ──
   async function applyGroup(g) {
     for (const id of g.ids) {
@@ -411,6 +422,10 @@ export default function Moderation() {
         <button className={`mod-tab ${tab === 'deleted' ? 'is-active' : ''}`} onClick={() => setTab('deleted')}>
           삭제됨
           {deletedUnread > 0 && <span className="mod-tab-badge warn">{deletedUnread}</span>}
+        </button>
+        <button className={`mod-tab ${tab === 'appreports' ? 'is-active' : ''}`} onClick={() => setTab('appreports')}>
+          앱 문제
+          {appReports.length > 0 && <span className="mod-tab-badge warn">{appReports.length}</span>}
         </button>
       </div>
 
@@ -591,6 +606,34 @@ export default function Moderation() {
                 <div className="mod-actions">
                   <button className="btn-add btn-sm" onClick={() => restoreDeleted(it)}>복구</button>
                   {!it.reviewed && <button className="rev-del-btn" onClick={() => ackDeleted(it)}>확인</button>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {/* ⑤ 앱 문제 리포트 */}
+      {tab === 'appreports' && (
+        <>
+          <p className="mod-status muted">
+            사용자가 접수한 앱 문제 리포트입니다. 확인하면 목록에서 삭제됩니다(익명이라 이력을 남기지 않습니다).
+          </p>
+          <ul className="mod-list">
+            {appReports.length === 0 && (
+              <li className="empty"><span className="empty-emoji">🐞</span><p>접수된 앱 문제가 없습니다.</p></li>
+            )}
+            {appReports.map((it) => (
+              <li key={`ar-${it.id}`} className="card mod-card flagged">
+                <div className="mod-card-top">
+                  <span className="tag tag-primary mod-type">앱 문제</span>
+                  <span className="mod-course">{it.path || '경로 없음'}</span>
+                  <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
+                </div>
+                <p className="mod-text">{it.text}</p>
+                <p className="mod-corr-note">{it.standalone ? '설치된 앱' : '브라우저'} · {it.ua || 'UA 없음'}</p>
+                <div className="mod-actions">
+                  <button className="btn-add btn-sm" onClick={() => ackAppReport(it)}>확인</button>
                 </div>
               </li>
             ))}
