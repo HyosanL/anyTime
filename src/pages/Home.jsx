@@ -4,7 +4,7 @@ import { useAuthContext } from '../contexts/AuthContext';
 import { isIos } from '../components/InstallGate';
 import Badge, { badgeOf } from '../components/Badge';
 import NoticePopup from '../components/NoticePopup';
-import AppReportReplyPopup from '../components/AppReportReplyPopup';
+import FeedbackPopup from '../components/FeedbackPopup';
 import PullToRefresh from '../components/PullToRefresh';
 import TimetableGrid from '../components/TimetableGrid';
 import TimetableSummary from '../components/TimetableSummary';
@@ -398,7 +398,7 @@ export default function Home() {
   return (
     <PullToRefresh className="page home" onRefresh={handleRefresh}>
       <NoticePopup />
-      <AppReportReplyPopup />
+      <FeedbackPopup />
       <header className="page-header">
         <Link to="/profile" className="home-ident">
           <strong className="home-ident-name">{cadet?.username}</strong>
