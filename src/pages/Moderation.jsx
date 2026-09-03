@@ -189,6 +189,7 @@ export default function Moderation() {
   const [autos, setAutos] = useState([]);        // 자동반영됨(미확인)
   const [deleted, setDeleted] = useState([]);    // 신고 누적 자동삭제 아카이브
   const [appReports, setAppReports] = useState([]); // 앱 문제 리포트(pending)
+  const [repliedReports, setRepliedReports] = useState([]); // 답변한 리포트
   const [cat, setCat] = useState(null);          // 카탈로그(대기중 제안의 '수정 전' 현재값 계산용)
   const [updatedAt, setUpdatedAt] = useState(null);
   const [reviewedAt, setReviewedAt] = useState(null); // 마지막 '모두 확인 처리' 컷오프
@@ -197,13 +198,14 @@ export default function Moderation() {
   const freshRef = useRef(false); // 서버 응답 도착 후 늦게 온 캐시가 덮어쓰지 않도록
 
   const load = useCallback(async () => {
-    const [r, rc, rr, ra, rd, rap] = await callBatch([
+    const [r, rc, rr, ra, rd, rap, rrep] = await callBatch([
       { action: 'list_recent', payload: { limit: 100 } },
       { action: 'list_corrections', payload: { status: 'pending' } },
       { action: 'list_reported' },
       { action: 'list_auto_notices' },
       { action: 'list_deleted' },
       { action: 'list_app_reports' },
+      { action: 'list_replied_app_reports' },
     ]);
     freshRef.current = true;
     if (rc.ok) setCorrs(rc.data.items ?? []);
@@ -211,6 +213,7 @@ export default function Moderation() {
     if (ra.ok) setAutos(ra.data.items ?? []);
     if (rd.ok) setDeleted(rd.data.items ?? []);
     if (rap.ok) setAppReports(rap.data.items ?? []);
+    if (rrep.ok) setRepliedReports(rrep.data.items ?? []);
     if (r.ok) {
       const withFlags = (r.data.items ?? []).map((it) => ({ ...it, flags: flagText(it.text) }));
       // 부정어 포함 글을 위로, 그 다음 최신순
@@ -222,10 +225,11 @@ export default function Moderation() {
       setItems(withFlags);
       setReviewedAt(r.data.reviewedAt ?? null);
       // 다음 진입 때 즉시 표시할 스냅샷(SWR). 전부 성공했을 때만 저장.
-      if (rc.ok && rr.ok && ra.ok && rd.ok && rap.ok) {
+      if (rc.ok && rr.ok && ra.ok && rd.ok && rap.ok && rrep.ok) {
         kvSet('mod:snapshot', {
           items: withFlags, corrs: rc.data.items ?? [], reported: rr.data.items ?? [],
           autos: ra.data.items ?? [], deleted: rd.data.items ?? [], appReports: rap.data.items ?? [],
+          repliedReports: rrep.data.items ?? [],
           reviewedAt: r.data.reviewedAt ?? null,
         });
       }
@@ -249,6 +253,7 @@ export default function Moderation() {
       if (freshRef.current || !c) return;
       setItems(c.items ?? []); setCorrs(c.corrs ?? []); setReported(c.reported ?? []);
       setAutos(c.autos ?? []); setDeleted(c.deleted ?? []); setAppReports(c.appReports ?? []);
+      setRepliedReports(c.repliedReports ?? []);
       setReviewedAt(c.reviewedAt ?? null);
     });
 
@@ -340,6 +345,18 @@ export default function Moderation() {
   async function ackAppReport(it) {
     const r = await call('ack_app_report', { id: it.id });
     if (r.ok) setAppReports((prev) => prev.filter((x) => x.id !== it.id));
+  }
+
+  async function replyToAppReport(it, reply, replyStatus) {
+    const r = await call('reply_app_report', { id: it.id, reply, replyStatus });
+    if (r.ok) {
+      setAppReports((prev) => prev.filter((x) => x.id !== it.id));
+      setRepliedReports((prev) => [
+        { ...it, reply, replyStatus, repliedAt: { toMillis: () => Date.now() } },
+        ...prev.filter((x) => x.id !== it.id),
+      ]);
+    }
+    return r;
   }
 
   // ── 수정 제안: 그룹 단위 적용/반려 ──
@@ -617,30 +634,83 @@ export default function Moderation() {
       {tab === 'appreports' && (
         <>
           <p className="mod-status muted">
-            사용자가 접수한 앱 문제 리포트입니다. 확인하면 목록에서 삭제됩니다(익명이라 이력을 남기지 않습니다).
+            사용자가 접수한 앱 문제 리포트입니다. 답변하면 그 사용자에게 앱 접속 시 공지처럼 뜨고(익명 유지),
+            푸시 구독 중이면 알림도 갑니다. ‘확인’은 답변 없이 삭제(스팸용).
           </p>
           <ul className="mod-list">
             {appReports.length === 0 && (
               <li className="empty"><span className="empty-emoji">🐞</span><p>접수된 앱 문제가 없습니다.</p></li>
             )}
             {appReports.map((it) => (
-              <li key={`ar-${it.id}`} className="card mod-card flagged">
-                <div className="mod-card-top">
-                  <span className="tag tag-primary mod-type">앱 문제</span>
-                  <span className="mod-course">{it.path || '경로 없음'}</span>
-                  <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
-                </div>
-                <p className="mod-text">{it.text}</p>
-                <p className="mod-corr-note">{it.standalone ? '설치된 앱' : '브라우저'} · {it.ua || 'UA 없음'}</p>
-                <div className="mod-actions">
-                  <button className="btn-add btn-sm" onClick={() => ackAppReport(it)}>확인</button>
-                </div>
-              </li>
+              <AppReportCard key={`ar-${it.id}`} it={it} onReply={replyToAppReport} onAck={ackAppReport} fmtDateTime={fmtDateTime} />
             ))}
           </ul>
+
+          {repliedReports.length > 0 && (
+            <>
+              <h3 className="mod-subhead">답변함</h3>
+              <ul className="mod-list">
+                {repliedReports.map((it) => (
+                  <li key={`arr-${it.id}`} className="card mod-card">
+                    <div className="mod-card-top">
+                      <span className="tag mod-type">답변함</span>
+                      <span className="mod-course">{it.path || '경로 없음'}</span>
+                    </div>
+                    <p className="mod-text">{it.text}</p>
+                    <p className="mod-corr-note">↳ {REPLY_STATUS_LABEL[it.replyStatus] || '답변'} · {it.reply}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
     </PullToRefresh>
+  );
+}
+
+const REPLY_STATUS_LABEL = { reviewing: '검토중', resolved: '해결됨', planned: '반영예정' };
+
+function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
+  const [reply, setReply] = useState('');
+  const [status, setStatus] = useState('resolved');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function send() {
+    const t = reply.trim();
+    if (t.length < 1) { setErr('답변을 입력하세요.'); return; }
+    setBusy(true); setErr('');
+    const r = await onReply(it, t, status);
+    setBusy(false);
+    if (!r.ok) setErr(r.status || '전송 실패');
+  }
+
+  return (
+    <li className="card mod-card flagged">
+      <div className="mod-card-top">
+        <span className="tag tag-primary mod-type">앱 문제</span>
+        <span className="mod-course">{it.path || '경로 없음'}</span>
+        <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
+      </div>
+      <p className="mod-text">{it.text}</p>
+      <p className="mod-corr-note">
+        {it.standalone ? '설치된 앱' : '브라우저'} · {it.ua || 'UA 없음'}
+        {it.subId ? ' · 푸시 가능' : ' · 푸시 없음'}
+      </p>
+      <textarea className="ar-reply-ta" rows={2} value={reply} placeholder="답변 (사용자에게 그대로 전달됩니다)"
+        onChange={(e) => setReply(e.target.value)} maxLength={1000} />
+      {err && <p className="error-msg">{err}</p>}
+      <div className="mod-actions">
+        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="reviewing">검토중</option>
+          <option value="resolved">해결됨</option>
+          <option value="planned">반영예정</option>
+        </select>
+        <button className="btn-add btn-sm" disabled={busy} onClick={send}>답변 보내기</button>
+        <button className="btn-ghost btn-sm" disabled={busy} onClick={() => onAck(it)}>확인(삭제)</button>
+      </div>
+    </li>
   );
 }
 
