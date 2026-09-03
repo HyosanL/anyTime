@@ -42,7 +42,7 @@ export function useAuth() {
   const [session, setSession] = useState(null);
   const [cadet, setCadet] = useState(() => readCadetCache()); // 캐시로 헤더 즉시(오프라인) 표시
   const [geo, setGeo] = useState({ expired: false, daysLeft: null }); // 지오펜싱 재인증 상태
-  // 서버 설정(게시판 활성화·공유 허용·강의평 자격일수). 부팅 정보 한 번으로 받아 전 화면이 나눠 쓴다
+  // 서버 설정(게시판 활성화·강의평 자격일수). 부팅 정보 한 번으로 받아 전 화면이 나눠 쓴다
   // → 홈·게시판·메모가 각자 부르던 board_enabled()·get_review_min_days() RPC 가 사라진다.
   const [settings, setSettings] = useState(BOOT_DEFAULTS);
   const [loading, setLoading] = useState(true);

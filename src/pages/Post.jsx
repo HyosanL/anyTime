@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
-import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys, createShare } from '../lib/board';
-import { shareLink, appUrl } from '../lib/share';
+import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { hasViewed, markViewed } from '../lib/views';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
@@ -143,23 +142,6 @@ export default function Post() {
       watchPost(id, 'comment').then(() => setWatching(true)).catch(() => {});
     }
   }
-  // 🔗 공유: 글당 고정 토큰(/s/{token})을 발급받아 OS 공유 시트(폴백: 클립보드)로.
-  // 링크는 비회원도 읽기 전용으로 열람 가능(관리자 토글로 차단 가능), 글 삭제 시 무효.
-  // 메시지에는 맥락 문구를 함께 실어 받는 쪽에서 "이게 뭐야"가 되지 않게 한다.
-  async function sharePost() {
-    try {
-      const t = await createShare(id);
-      if (!t) throw new Error('NO_TOKEN');
-      const short = post.title && post.title.length > 24 ? `${post.title.slice(0, 24)}…` : post.title;
-      // 어느 게시판의 어느 글인지 함께 실어 준다 — "애타 익명게시판 [우주공학과]의 "이찬" 글이에요."
-      const where = post.board?.name ? `익명게시판 [${post.board.name}]` : '익명게시판';
-      await shareLink({
-        title: '애타 - AnyTime',
-        text: short ? `애타 ${where}의 "${short}" 글이에요.` : `애타 ${where}에서 공유된 글이에요.`,
-        url: appUrl(`/s/${t}`),
-      });
-    } catch { alert('공유 링크를 만들지 못했습니다. 잠시 후 다시 시도해주세요.'); }
-  }
   // 삭제 클릭: 비번 있는 글은 입력창을, 없는 글·관리자는 확인 후 바로 삭제
   async function onDeleteClick() {
     if (post.hasPassword && !isAdmin) { setShowDel((v) => !v); return; }
@@ -222,7 +204,6 @@ export default function Post() {
           <button className={`react-pill${watching ? ' is-on' : ''}`} onClick={toggleWatch} title="이 글에 댓글이 달리면 푸시 알림">
             {watching ? '🔔' : '🔕'} 알림
           </button>
-          <button className="react-pill" onClick={sharePost} title="이 글의 링크 공유">🔗 공유</button>
           <button className="rev-del-btn post-del-toggle" onClick={onDeleteClick}>삭제</button>
         </div>
         {showDel && (

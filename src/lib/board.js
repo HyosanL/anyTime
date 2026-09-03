@@ -74,20 +74,6 @@ export async function boardImageObjectUrl(key, { thumb = false } = {}) {
   return URL.createObjectURL(await res.blob());
 }
 
-// 공유 화면(비회원)용 이미지 로드 — 인증 헤더 대신 공유 토큰으로 /api/share-image 를 탄다.
-// 썸네일 우선 + 404 시 원본 폴백은 위 boardImageObjectUrl 과 동일한 규약.
-export async function shareImageObjectUrl(token, key, { thumb = false } = {}) {
-  const url = (k) => `/api/share-image?share=${encodeURIComponent(token)}&key=${encodeURIComponent(k)}`;
-  if (thumb) {
-    const t = await fetch(url(key + '.thumb'));
-    if (t.ok) return URL.createObjectURL(await t.blob());
-    if (t.status !== 404) return null; // 진짜 오류(차단·토큰 불일치 등)면 폴백 없이 종료
-  }
-  const res = await fetch(url(key));
-  if (!res.ok) return null;
-  return URL.createObjectURL(await res.blob());
-}
-
 // Cloud Function 응답(JSON 직렬화)에서 Firestore Timestamp 는 {_seconds,_nanoseconds}
 // (또는 {seconds,nanoseconds})로 오고, 클라이언트 직접 읽기(getDocs)에서는 Timestamp
 // 인스턴스(.toDate())로 온다 — 화면의 new Date(x)/timeAgo(iso) 호출부가 이 차이를
@@ -219,28 +205,4 @@ export async function deleteComment(postId, commentId, password) {
   const r = await callFn('deleteComment', { postId, commentId, postPassword: password });
   if (!r.ok) return { data: null, error: new Error(r.message || r.status) };
   return { data: r.data.deleted, error: null };
-}
-
-// ── 공유 링크 ─────────────────────────────────────────────────────────
-// 공유 토큰 발급(회원 전용, 글당 1개 고정 — 재호출 시 기존 토큰 반환)
-export async function createShare(postId) {
-  const r = await callFn('createShare', { postId });
-  if (!r.ok) throw new Error(r.message || r.status);
-  return r.data.token;
-}
-// 공유 글 읽기(비회원 가능). view=true 면 서버가 비회원 열람만 조회수 +1(기기당 1회는 호출부가 보장).
-// 반환: { data: { postId, board, post, images, comments } | { disabled: true } | null, error }
-export async function getSharedPost(token, view = false) {
-  const r = await callFn('getSharedPost', { token, view: !!view });
-  if (!r.ok) return { data: null, error: new Error(r.message || r.status) };
-  const d = r.data;
-  if (!d || d.disabled) return { data: d, error: null };
-  return {
-    data: {
-      ...d,
-      post: { ...d.post, createdAt: toIso(d.post.createdAt) },
-      comments: d.comments.map((c) => ({ ...c, createdAt: toIso(c.createdAt) })),
-    },
-    error: null,
-  };
 }

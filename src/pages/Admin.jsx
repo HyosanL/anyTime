@@ -1136,18 +1136,6 @@ export default function Admin() {
               </button>
             </div>
 
-            {/* 공유 링크(/s/…)를 받은 비로그인 사용자가 그 글을 읽을 수 있는지. 차단해도 링크
-                생성·공유와 회원의 링크 접속(앱 글 화면으로 이동)은 계속 동작한다. */}
-            <div className="adm-toggle-row">
-              <div className="adm-toggle-body">
-                <span className="adm-toggle-label">비회원 공유 열람</span>
-                <span className={`tag ${setting.shareEnabled === false ? 'tag-warn' : 'tag-success'}`}>{setting.shareEnabled === false ? '차단' : '허용'}</span>
-              </div>
-              <button className="btn-ghost btn-sm" onClick={() => run('set_share_enabled', { value: !(setting.shareEnabled !== false) }, '비회원 공유 열람 변경')}>
-                {setting.shareEnabled === false ? '허용' : '차단'}
-              </button>
-            </div>
-
             <div className="section-label adm-sub-label">게시판별 삭제</div>
             <div className="adm-tags">
               {boardsList.length === 0 ? <span className="note">게시판이 없습니다.</span> : boardsList.map((b) => (

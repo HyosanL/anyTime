@@ -36,7 +36,7 @@ function ImageLightbox({ imageKey, onClose, loader = boardImageObjectUrl }) {
 }
 
 // 게시판 이미지: 평소엔 저화질 썸네일, 탭하면 원본을 크게. 인증 blob 표시(다운로드 X).
-// loader 로 로드 경로를 바꿀 수 있다(기본: 인증 /api/board-image, 공유 화면: 토큰 /api/share-image).
+// loader 로 로드 경로를 바꿀 수 있다(기본: 인증 /api/board-image).
 export default function BoardImage({ imageKey, className, loader = boardImageObjectUrl }) {
   const [thumb, setThumb] = useState(null);
   const [open, setOpen] = useState(false);

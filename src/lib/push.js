@@ -171,17 +171,6 @@ export async function consumePendingNav() {
   } catch { return null; }
 }
 
-// 공유 링크 화면(모바일 브라우저 탭)이 목적지를 남길 때 사용 — 위 consumePendingNav 와
-// 같은 통로(캐시·3분 TTL). Android WebAPK 는 브라우저와 저장소를 공유하므로 사용자가
-// 애타 앱을 열면 PushNavigator 가 회수해 해당 글로 이동한다(iOS 는 저장소 분리라 미동작).
-export async function stashPendingNav(path) {
-  if (!('caches' in window)) return;
-  try {
-    const c = await caches.open(META_CACHE);
-    await c.put('/pending-nav', new Response(JSON.stringify({ path, ts: Date.now() })));
-  } catch { /* 실패해도 무해 — 화면의 안내 배너에 의존 */ }
-}
-
 // ── HOT 방송 수신(기기별 설정) ───────────────────────────────────────
 export function hotAlertsOn() { return localStorage.getItem(HOT_KEY) !== '0'; }
 export async function setHotAlerts(on) {

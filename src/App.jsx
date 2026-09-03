@@ -34,7 +34,6 @@ const Moderation = lazy(() => import('./pages/Moderation'));
 const Boards = lazy(() => import('./pages/Boards'));
 const Board = lazy(() => import('./pages/Board'));
 const Post = lazy(() => import('./pages/Post'));
-const SharePost = lazy(() => import('./pages/SharePost'));
 const About = lazy(() => import('./pages/About'));
 
 // 로그인(세션)한 사용자만. 미로그인 시 로그인 화면으로.
@@ -144,15 +143,10 @@ function PushNavigator() {
   const navigate = useNavigate();
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
-    // 공유 링크 화면(/s/*)에서는 소비·이동 금지 — 그 화면이 방금 stashPendingNav 로
-    // 남긴 목적지(앱을 열면 그 글로)를 자기 자신이 삼켜 버리거나, 브라우저 탭을
-    // 앱 내부 경로로 끌고 가 설치 게이트에 부딪히는 것을 막는다.
-    const inShare = () => window.location.pathname.startsWith('/s/');
     const go = (path) => {
       if (path && window.location.pathname !== path) navigate(path);
     };
     const onMsg = (e) => {
-      if (inShare()) return;
       const d = e.data;
       if (d?.type !== 'PUSH_NAV' || typeof d.path !== 'string' || !d.path.startsWith('/')) return;
       consumePendingNav();  // 캐시 보험 소비(다음 부팅 때 이중 이동 방지)
@@ -161,11 +155,11 @@ function PushNavigator() {
     // 백그라운드에 있던 앱이 알림 탭으로 다시 앞으로 나올 때: postMessage 가 유실됐어도
     // SW 가 남긴 목적지를 회수해 이동한다(가장 흔한 실패 경로의 안전망 — 콜드/웜 모두 커버).
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && !inShare()) consumePendingNav().then(go);
+      if (document.visibilityState === 'visible') consumePendingNav().then(go);
     };
     navigator.serviceWorker.addEventListener('message', onMsg);
     document.addEventListener('visibilitychange', onVisible);
-    if (!inShare()) consumePendingNav().then(go);  // 콜드스타트(openWindow 가 경로를 무시한 경우)
+    consumePendingNav().then(go);  // 콜드스타트(openWindow 가 경로를 무시한 경우)
     return () => {
       navigator.serviceWorker.removeEventListener('message', onMsg);
       document.removeEventListener('visibilitychange', onVisible);
@@ -225,8 +219,6 @@ export default function App() {
           <Route path="/board/post/:id" element={<ProtectedRoute><BoardRoute><Post /></BoardRoute></ProtectedRoute>} />
           <Route path="/signup" element={<PublicOnly><Onboarding /></PublicOnly>} />
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-          {/* 공유 링크: 유일한 공개 콘텐츠 라우트 — 세션·게이트 없이 그 글 하나만 읽기 전용 */}
-          <Route path="/s/:token" element={<SharePost />} />
           {/* 앱 소개: 가드 없음(PublicOnly 도 아님) — 로그인 여부와 무관하게 열려야 한다.
               로그인한 사람도 '이 앱이 뭘 하는지' 보러 올 수 있고, 아직 가입 안 한 사람에게
               링크로 보낼 수도 있어야 하므로. 데이터를 부르지 않아 세션이 필요 없다. */}

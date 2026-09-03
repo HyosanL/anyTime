@@ -57,15 +57,12 @@ export default function InstallGate({ children }) {
   const [installed, setInstalled] = useState(false);
   const [installedApp, setInstalledApp] = useState(false); // 이미 설치된 WebAPK 감지됨
 
-  // 설치 여부는 세션 동안 불변(standalone 은 실행 방식). 단 공유 링크(/s/*)는 게이트
-  // 예외 — 비회원이 브라우저에서 읽는 화면이므로 막으면 공유 자체가 무효가 된다
-  // (지난 공유 기능이 이 게이트에 막혀 회수된 전례: 0e001f7). 공유 화면을 벗어나
-  // 앱 내부 경로로 이동하면 경로 재평가로 게이트가 다시 걸린다.
-  // 앱 소개(/about)도 같은 이유로 예외 — 설치할지 말지 판단하려고 보는 화면인데
-  // 설치 안내로 막으면 순서가 뒤집힌다. 데이터를 부르지 않는 정적 화면이라 안전하다.
+  // 설치 여부는 세션 동안 불변(standalone 은 실행 방식). 앱 소개(/about)만 게이트 예외 —
+  // 설치할지 말지 판단하려고 보는 화면인데 설치 안내로 막으면 순서가 뒤집힌다.
+  // 데이터를 부르지 않는 정적 화면이라 안전하다.
   const { pathname } = useLocation();
   const gated = !import.meta.env.DEV && isMobile() && !isStandalone()
-    && !pathname.startsWith('/s/') && pathname !== '/about';
+    && pathname !== '/about';
 
   useEffect(() => {
     if (!gated) return;

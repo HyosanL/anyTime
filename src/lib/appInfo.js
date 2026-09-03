@@ -3,7 +3,6 @@
 //  - geoValidDays  : 위치 재인증 유효기간
 //  - catalogVersion: 카탈로그 변경 일련번호(관리자가 강의 정보를 고칠 때마다 +1)
 //  - boardEnabled  : 익명게시판 전체 활성화(관리자 긴급 차단 스위치)
-//  - shareEnabled  : 공유링크 비회원 열람 허용
 //  - reviewMinDays : 강의평 작성 자격 일수
 //
 //  요청을 새로 늘리지 않는 것이 요점이다. config/app 문서 하나에서 나오는 값은 전부 여기에 싣는다.
@@ -15,12 +14,11 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// 서버 응답 전(그리고 오프라인)에 쓰는 기본값. 게시판·공유는 '열림'이 기본이라 첫 화면이 깜빡이지 않는다.
+// 서버 응답 전(그리고 오프라인)에 쓰는 기본값. 게시판은 '열림'이 기본이라 첫 화면이 깜빡이지 않는다.
 export const BOOT_DEFAULTS = {
   geoValidDays: 90,
   catalogVersion: null,
   boardEnabled: true,
-  shareEnabled: true,
   reviewMinDays: 30,
 };
 
@@ -37,7 +35,6 @@ export function fetchBootInfo() {
         geoValidDays: data?.geoValidDays ?? BOOT_DEFAULTS.geoValidDays,
         catalogVersion: data?.catalogVersion ?? BOOT_DEFAULTS.catalogVersion,
         boardEnabled: data?.boardEnabled ?? BOOT_DEFAULTS.boardEnabled,
-        shareEnabled: data?.shareEnabled ?? BOOT_DEFAULTS.shareEnabled,
         reviewMinDays: data?.reviewMinDays ?? BOOT_DEFAULTS.reviewMinDays,
       };
     })

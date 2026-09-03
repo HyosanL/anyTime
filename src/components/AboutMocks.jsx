@@ -630,7 +630,6 @@ function ScreenPost() {
           <span className="ab-react-pill">👎 <b>1</b></span>
           <span className="ab-react-pill is-rep">🚨 <b>0</b></span>
           <span className="ab-react-pill is-on">🔔 알림</span>
-          <span className="ab-react-pill">🔗 공유</span>
         </div>
         <div className="ab-m-label">댓글 3</div>
         <div className="ab-comment" style={{ borderTop: 0, paddingTop: 0 }}>
@@ -914,10 +913,9 @@ export const SCREENS = [
   },
   {
     key: 'post', tab: '글 상세', icon: '🗨️', name: '글 상세 · 댓글',
-    desc: '공감·비공감·신고·알림·공유가 한 줄에. 댓글은 대댓글까지 한 단계 들어갑니다.',
+    desc: '공감·비공감·신고·알림이 한 줄에. 댓글은 대댓글까지 한 단계 들어갑니다.',
     points: [
       ['🔔', '<b>글마다 알림</b>을 켜면 새 댓글이 달릴 때 푸시가 옵니다.'],
-      ['🔗', '<b>공유</b> — 로그인 없이 열리는 링크(/s/…)를 만듭니다. 미리보기에 글 내용은 실리지 않아요.'],
       ['🚨', '신고 <b>15분 내 10건</b> 또는 <b>누적 30건</b>이면 글이 자동 삭제됩니다.'],
       ['🗑️', '삭제는 글 비밀번호로. 관리자는 복구용 스냅샷으로만 볼 수 있고 작성자는 알 수 없습니다.'],
     ],
