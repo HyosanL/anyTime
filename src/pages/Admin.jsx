@@ -397,7 +397,7 @@ const SECTIONS = [
   { key: 'signup', icon: '🔑', title: '가입코드', sub: '신규 가입 코드 확인·변경' },
   { key: 'settings', icon: '⚙️', title: '계정 위치 인증 및 인증 기간', sub: '캠퍼스 위치·반경, 위치 재인증·자격 기간' },
   { key: 'thresholds', icon: '🎚️', title: '기준값 설정', sub: 'HOT 승격·신고 자동삭제·강의평 작성 자격 기준' },
-  { key: 'board', icon: '💬', title: '게시판 관리', sub: '활성화·비회원 공유 열람·게시판별/전체 글 삭제' },
+  { key: 'board', icon: '💬', title: '게시판 관리', sub: '활성화·게시판별/전체 글 삭제' },
   { key: 'admins', icon: '🛡️', title: '관리자', sub: '관리자 권한 부여·취소' },
 ];
 const TITLE_OF = Object.fromEntries(SECTIONS.map((s) => [s.key, s.title]));
