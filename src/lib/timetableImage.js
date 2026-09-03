@@ -13,7 +13,8 @@ import { contrastText, overlayTint } from './imageColor';
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
 // 격자는 항상 이 픽셀 밀도로 그린다 — 배경화면 모드에서 확대해도 덜 흐리도록 넉넉히.
-const PIX = 3.5;
+// 정수 배율이 텍스트가 가장 또렷하다. 합성 시 imageSmoothingQuality='high' 로 축소한다.
+const PIX = 3;
 
 // 배경화면 패널(iOS 폴더풍)이 시간표 밖으로 두는 여백 — 캔버스 짧은 변 기준 비율.
 // (시트 미리보기와 최종 합성이 같은 값을 써야 하므로 export.)
@@ -73,9 +74,11 @@ function tile(ctx, x, y, w, h, r, fill, stroke) {
 // background: 최종 배경색(글래스면 글래스 베이스색) — 빈 칸 틴트·글자 대비가 여기에 종속.
 // textScale: 글자 크기 배율(TEXT_SCALES).
 // glass: 배경화면 모드 — 빈 칸을 채우지 않고(뒤 글래스가 비침) 테두리만 그린다.
+// showTitle: 상단 제목(학기·이름) 표시 여부(기본 표시).
 // 반환: { canvas, w, h }  (w,h = 캔버스 실제 픽셀 크기)  또는 blocks 없으면 null.
 export function renderTimetableGrid({
-  mine, periods, customClasses, commonBlocks = [], title = '시간표', background = '#ffffff', textScale = 1, glass = false,
+  mine, periods, customClasses, commonBlocks = [], title = '시간표',
+  background = '#ffffff', textScale = 1, glass = false, showTitle = true,
 }) {
   const pal = paletteByKey(getPaletteKey());
   const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg });
@@ -83,7 +86,7 @@ export function renderTimetableGrid({
   if (grid.empty) return null;
   const { days, hours, periodNoByHour, cells } = grid;
 
-  const PAD = 18, TITLE_H = 48, HEAD_H = 32, HOURCOL_W = 46, DAYCOL_W = 126, ROW_H = 70;
+  const PAD = 18, TITLE_H = showTitle ? 48 : 8, HEAD_H = 32, HOURCOL_W = 46, DAYCOL_W = 126, ROW_H = 80;
   const RAD = 9;
   const INSET = 1.5;
   const gridW = HOURCOL_W + days.length * DAYCOL_W;
@@ -93,7 +96,7 @@ export function renderTimetableGrid({
 
   const ts = textScale || 1;
   const fpx = (base) => Math.round(base * ts * 10) / 10;
-  const step = Math.round(fpx(F.course) * 1.16);   // 제목 줄 간격(폰트 비례)
+  const step = Math.round(fpx(F.course) * 1.1);   // 제목 줄 간격(폰트 비례) — 화면처럼 여유 있게
 
   const ink = contrastText(background);
   const emptyFill = overlayTint(background, 0.05);
@@ -115,11 +118,13 @@ export function renderTimetableGrid({
   ctx.textBaseline = 'top';
   // 바깥은 투명(fillRect 안 함).
 
-  // 제목
-  ctx.fillStyle = ink.strong;
-  ctx.font = `700 ${fpx(F.title)}px ${FONT}`;
-  ctx.textAlign = 'center';
-  ctx.fillText(title, W / 2, PAD + 9);
+  // 제목 (옵션)
+  if (showTitle) {
+    ctx.fillStyle = ink.strong;
+    ctx.font = `700 ${fpx(F.title)}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W / 2, PAD + 9);
+  }
 
   const gridTop = PAD + TITLE_H + HEAD_H;
   const gridLeft = PAD + HOURCOL_W;
@@ -219,23 +224,36 @@ export function clampCover(t, { imgW, imgH, canvasW, canvasH }) {
 }
 
 // 다운스케일 방식 블러(캔버스 filter 미지원 환경도 커버). 반투명 오버레이 뒤라 거칠어도 안 보인다.
-// 스크래치 캔버스를 재사용한다 — 드래그 프레임마다 호출되므로 GC 부담을 줄인다.
-let _blurSmall = null;
+// 한 번에 크게 줄이면 계단현상(지글거림)이 생기므로 절반씩 반복 축소(mipmap식)한 뒤 되키운다.
+// 스크래치 캔버스는 재사용한다 — 드래그 프레임마다 호출되므로 GC 부담을 줄인다.
+const _blurChain = [];
 let _blurOut = null;
 function blurredCopy(src, refW) {
-  const factor = Math.max(6, Math.round(refW / 110));
-  const w = Math.max(1, Math.round(src.width / factor));
-  const h = Math.max(1, Math.round(src.height / factor));
-  if (!_blurSmall) _blurSmall = document.createElement('canvas');
+  const target = Math.max(20, Math.round(refW / 12));
+  let cur = src;
+  let w = src.width;
+  let h = src.height;
+  let i = 0;
+  while (w > target * 2 && i < 8) {
+    w = Math.max(1, w >> 1);
+    h = Math.max(1, h >> 1);
+    let c = _blurChain[i];
+    if (!c) { c = document.createElement('canvas'); _blurChain[i] = c; }
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = 'high';
+    cx.drawImage(cur, 0, 0, w, h);
+    cur = c;
+    i += 1;
+  }
   if (!_blurOut) _blurOut = document.createElement('canvas');
-  _blurSmall.width = w; _blurSmall.height = h;
-  const sctx = _blurSmall.getContext('2d');
-  sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = 'high';
-  sctx.drawImage(src, 0, 0, w, h);
-  _blurOut.width = src.width; _blurOut.height = src.height;
+  _blurOut.width = src.width;
+  _blurOut.height = src.height;
   const octx = _blurOut.getContext('2d');
-  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
-  octx.drawImage(_blurSmall, 0, 0, _blurOut.width, _blurOut.height);
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+  octx.drawImage(cur, 0, 0, _blurOut.width, _blurOut.height);
   return _blurOut;
 }
 
@@ -244,6 +262,8 @@ function blurredCopy(src, refW) {
 export function paintWallpaper(ctx, S, o) {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';   // 사진·격자 축소 시 계단현상 줄이기
   ctx.clearRect(0, 0, cw, ch);
 
   // 1. 단색 배경(사진 로딩 전·여백 안전망)
@@ -324,7 +344,7 @@ export function composeTimetableImage({
     return out;
   }
 
-  // plain — 내용맞춤 + 배경색 여백(예전의 절반)
+  // plain — 내용맞춤 + 배경색 여백(예전의 절반). 격자를 원본 크기로 얹으므로 스케일 없음.
   const margin = Math.round(g.width * 0.025);
   out.width = g.width + margin * 2;
   out.height = g.height + margin * 2;

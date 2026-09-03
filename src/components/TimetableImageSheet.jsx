@@ -1,6 +1,6 @@
-// 시간표 이미지 저장 시트 — 일반/배경화면 모드, 배경색·배경사진, 글래스 패널, 글자 크기,
-// (배경화면은) 드래그·핀치·휠로 시간표(또는 사진) 배치.
-// 격자 캔버스는 배경(글래스 베이스)·글자크기가 바뀔 때만 다시 렌더하고, 드래그 프레임엔 미리보기만.
+// 시간표 이미지 저장 시트 — 일반/배경화면 모드, 배경색·배경사진, iOS 글래스 패널, 글자 크기, 제목 표시.
+// 배경화면: 시간표 영역을 드래그하면 시간표가, 그 바깥을 드래그하면 사진이 움직인다.
+// 격자 캔버스는 배경(글래스 베이스)·글자크기·제목이 바뀔 때만 다시 렌더하고, 드래그 프레임엔 미리보기만.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   renderTimetableGrid, composeTimetableImage, saveComposedImage, paintWallpaper,
@@ -10,7 +10,7 @@ import {
   fitWidthBaseline, clampScale, centeredTransform, snapCenter,
   toStored, fromStored, nudgeIntoView,
 } from '../lib/wallpaperTransform';
-import { overlayTint, recommendBackground, luminance } from '../lib/imageColor';
+import { recommendBackground, luminance } from '../lib/imageColor';
 import { paletteByKey, getPaletteKey, usePalette } from '../lib/palettes';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 import '../styles/palette.css';
@@ -19,18 +19,16 @@ import '../styles/timetableImage.css';
 // 프리셋 배경색 — 화이트/오프화이트/라이트그레이/차콜/블랙/소프트 블루·그린·핑크.
 const PRESETS = ['#ffffff', '#f7f5f0', '#e8eaed', '#2b2f36', '#0b0d10', '#dbe8f7', '#dcefe0', '#f6e0e6'];
 const SIZES = [['S', '작게'], ['M', '보통'], ['L', '크게']];
-const GLASS_MODES = [['auto', '자동'], ['light', '밝게'], ['dark', '어둡게']];
-const GLASS_BASE = { light: '#e9ebef', dark: '#1b1d23' };
 
 const LS = {
   get mode() { try { return localStorage.getItem('ttimg:mode') || 'plain'; } catch { return 'plain'; } },
   set mode(v) { try { localStorage.setItem('ttimg:mode', v); } catch { /* ignore */ } },
   get bg() { try { return localStorage.getItem('ttimg:bg') || null; } catch { return null; } },
   set bg(v) { try { if (v) localStorage.setItem('ttimg:bg', v); else localStorage.removeItem('ttimg:bg'); } catch { /* ignore */ } },
-  get glass() { try { const v = localStorage.getItem('ttimg:glass'); return ['auto', 'light', 'dark'].includes(v) ? v : 'auto'; } catch { return 'auto'; } },
-  set glass(v) { try { localStorage.setItem('ttimg:glass', v); } catch { /* ignore */ } },
   get textsize() { try { const v = localStorage.getItem('ttimg:textsize'); return TEXT_SCALES[v] ? v : 'M'; } catch { return 'M'; } },
   set textsize(v) { try { localStorage.setItem('ttimg:textsize', v); } catch { /* ignore */ } },
+  get showtitle() { try { return localStorage.getItem('ttimg:title') === '1'; } catch { return false; } },
+  set showtitle(v) { try { localStorage.setItem('ttimg:title', v ? '1' : '0'); } catch { /* ignore */ } },
   get wp() { try { return JSON.parse(localStorage.getItem('ttimg:wp') || 'null'); } catch { return null; } },
   set wp(v) { try { localStorage.setItem('ttimg:wp', JSON.stringify(v)); } catch { /* ignore */ } },
 };
@@ -71,14 +69,13 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   const [mode, setMode] = useState(LS.mode);
   const [bg, setBg] = useState(() => LS.bg || recommendBackground(paletteByKey(getPaletteKey())));
   const [textSize, setTextSize] = useState(LS.textsize);
-  const [glassMode, setGlassMode] = useState(LS.glass);
+  const [showTitle, setShowTitle] = useState(LS.showtitle);
   const [busy, setBusy] = useState(false);
   const [transform, setTransform] = useState(null);   // 시간표 배치 { x, y, scale }
   const [guides, setGuides] = useState({ v: false, h: false });
   const [photo, setPhoto] = useState(null);           // HTMLImageElement | null (기기 저장 안 함)
   const [photoLum, setPhotoLum] = useState(0.5);
   const [photoT, setPhotoT] = useState(null);         // 사진 배치 { x, y, scale }
-  const [dragTarget, setDragTarget] = useState('grid');   // 'grid' | 'photo'
 
   const dims = useMemo(screenDims, []);
   const autoBgRef = useRef(!LS.bg);   // 사용자가 배경색을 직접 안 골랐으면 테마 추천색을 따라간다
@@ -87,6 +84,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   const baselineRef = useRef(1);
   const transformRef = useRef(null);
   const photoTRef = useRef(null);
+  const gestureTargetRef = useRef('grid');   // 이번 제스처가 움직이는 대상 (첫 포인터 위치로 결정)
   const fileRef = useRef(null);
   const urlRef = useRef(null);
   const canvasRef = useRef(null);
@@ -94,11 +92,9 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   const pinchRef = useRef(null);
   const wheelTimer = useRef(null);
 
-  // 글래스 톤 — 자동은 뒤 배경(사진 or 단색) 밝기로 판정.
-  const glassTone = glassMode === 'auto'
-    ? ((photo ? photoLum : luminance(bg)) < 0.5 ? 'dark' : 'light')
-    : glassMode;
-  const glassBase = GLASS_BASE[glassTone];
+  // 글래스 톤은 자동 — 뒤 배경(사진 평균밝기 또는 색) 어두우면 어두운 글래스(밝은 글자).
+  const glassTone = (photo ? photoLum : luminance(bg)) < 0.5 ? 'dark' : 'light';
+  const glassBase = glassTone === 'dark' ? '#1b1d23' : '#e9ebef';
   const isWall = mode === 'wallpaper';
 
   // Esc + 배경 스크롤 잠금 + 사진 objectURL 정리
@@ -116,16 +112,17 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   // 테마가 바뀌었고 사용자가 배경색을 직접 안 골랐으면 추천색을 새로 반영.
   useEffect(() => { if (autoBgRef.current) setBg(recBg); }, [recBg]);
 
-  // 격자 렌더 — 배경(글래스 베이스)·글자크기·모드(또는 시간표 입력)가 바뀔 때만.
+  // 격자 렌더 — 배경(글래스 베이스)·글자크기·제목·모드(또는 시간표 입력)가 바뀔 때만.
   useEffect(() => {
     gridRef.current = renderTimetableGrid({
       mine, periods, customClasses, commonBlocks, title,
       background: isWall ? glassBase : bg,
       glass: isWall,
       textScale: TEXT_SCALES[textSize] || 1,
+      showTitle,
     });
     setGridVer((v) => v + 1);
-  }, [isWall, glassBase, bg, textSize, mine, periods, customClasses, commonBlocks, title]);
+  }, [isWall, glassBase, bg, textSize, showTitle, mine, periods, customClasses, commonBlocks, title]);
 
   // 배경화면 모드로 들어오거나 격자가 바뀌면 시간표 transform 초기화(저장본 있으면 복원).
   useEffect(() => {
@@ -164,6 +161,8 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     }
 
     // plain — 배경색 위 격자(중앙, 여백)
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, cv.width, cv.height);
     const margin = Math.round(g.w * 0.025);
     const fullW = g.w + margin * 2;
@@ -213,7 +212,6 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       photoTRef.current = t;
       setPhotoT(t);
       setPhoto(img);
-      setDragTarget('grid');
     };
     img.onerror = () => alert('사진을 불러오지 못했어요.');
     img.src = url;
@@ -221,10 +219,10 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
 
   const removePhoto = useCallback(() => {
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
-    setPhoto(null); setPhotoT(null); photoTRef.current = null; setDragTarget('grid');
+    setPhoto(null); setPhotoT(null); photoTRef.current = null;
   }, []);
 
-  // ── 포인터: 드래그 이동 + 핀치 확대 (대상 = 시간표 또는 사진) ──────
+  // ── 포인터: 시간표 영역이면 시간표, 바깥이면 사진을 이동/확대 ──────
   const cvToCanvas = useCallback((e) => {
     const cv = canvasRef.current;
     const r = cv.getBoundingClientRect();
@@ -232,22 +230,35 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
   }, [dims]);
 
-  const movingPhoto = dragTarget === 'photo' && !!photo;
+  // pt(최종 캔버스 px)가 시간표 패널 안인가.
+  const inPanel = useCallback((pt) => {
+    const g = gridRef.current;
+    const t = transformRef.current;
+    if (!g || !t) return true;
+    const pad = Math.min(dims.w, dims.h) * PANEL_PAD_FRAC;
+    return pt.x >= t.x - pad && pt.x <= t.x + g.w * t.scale + pad
+        && pt.y >= t.y - pad && pt.y <= t.y + g.h * t.scale + pad;
+  }, [dims]);
+
+  const targetFor = useCallback((pt) => (photo && !inPanel(pt) ? 'photo' : 'grid'), [photo, inPanel]);
 
   const onPointerDown = useCallback((e) => {
     if (!isWall) return;
+    const pt = cvToCanvas(e);
+    const first = pointers.current.size === 0;
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    pointers.current.set(e.pointerId, cvToCanvas(e));
+    pointers.current.set(e.pointerId, pt);
+    if (first) gestureTargetRef.current = targetFor(pt);
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
-      const cur = movingPhoto ? photoTRef.current : transformRef.current;
+      const cur = gestureTargetRef.current === 'photo' ? photoTRef.current : transformRef.current;
       pinchRef.current = {
         dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
         scale: (cur && cur.scale) || baselineRef.current,
         cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
       };
     }
-  }, [isWall, cvToCanvas, movingPhoto]);
+  }, [isWall, cvToCanvas, targetFor]);
 
   const onPointerMove = useCallback((e) => {
     if (!isWall || !pointers.current.has(e.pointerId)) return;
@@ -255,6 +266,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     const cur = cvToCanvas(e);
     pointers.current.set(e.pointerId, cur);
 
+    const movingPhoto = gestureTargetRef.current === 'photo' && !!photo;
     const ref = movingPhoto ? photoTRef : transformRef;
     const t = ref.current;
     if (!t) return;
@@ -274,8 +286,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     }
 
     if (movingPhoto) {
-      const img = photo;
-      next = clampCover(next, { imgW: img.naturalWidth, imgH: img.naturalHeight, canvasW: dims.w, canvasH: dims.h });
+      next = clampCover(next, { imgW: photo.naturalWidth, imgH: photo.naturalHeight, canvasW: dims.w, canvasH: dims.h });
       photoTRef.current = next;
       setPhotoT(next);
     } else {
@@ -284,12 +295,11 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       const g = gridRef.current;
       setGuides(snapCenter({ transform: next, gridW: g.w, gridH: g.h, canvasW: dims.w, canvasH: dims.h }).guides);
     }
-  }, [isWall, cvToCanvas, dims, movingPhoto, photo]);
+  }, [isWall, cvToCanvas, dims, photo]);
 
   const settle = useCallback(() => {
-    if (movingPhoto) {
-      const img = photo;
-      const t = clampCover(photoTRef.current, { imgW: img.naturalWidth, imgH: img.naturalHeight, canvasW: dims.w, canvasH: dims.h });
+    if (gestureTargetRef.current === 'photo' && photo) {
+      const t = clampCover(photoTRef.current, { imgW: photo.naturalWidth, imgH: photo.naturalHeight, canvasW: dims.w, canvasH: dims.h });
       photoTRef.current = t;
       setPhotoT({ ...t });
       return;
@@ -306,7 +316,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     transformRef.current = nudged;
     setTransform({ ...nudged });
     LS.wp = toStored({ transform: nudged, canvasW: dims.w, canvasH: dims.h, gridW: g.w, gridH: g.h, baseline: baselineRef.current });
-  }, [movingPhoto, photo, dims]);
+  }, [photo, dims]);
 
   const onPointerUp = useCallback((e) => {
     if (!pointers.current.has(e.pointerId)) return;
@@ -319,6 +329,8 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     if (!isWall) return;
     e.preventDefault();
     const at = cvToCanvas(e);
+    gestureTargetRef.current = targetFor(at);
+    const movingPhoto = gestureTargetRef.current === 'photo' && !!photo;
     const ref = movingPhoto ? photoTRef : transformRef;
     const t = ref.current;
     if (!t) return;
@@ -329,8 +341,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     const gy = (at.y - t.y) / t.scale;
     let next = { x: at.x - gx * ns, y: at.y - gy * ns, scale: ns };
     if (movingPhoto) {
-      const img = photo;
-      next = clampCover(next, { imgW: img.naturalWidth, imgH: img.naturalHeight, canvasW: dims.w, canvasH: dims.h });
+      next = clampCover(next, { imgW: photo.naturalWidth, imgH: photo.naturalHeight, canvasW: dims.w, canvasH: dims.h });
       photoTRef.current = next;
       setPhotoT(next);
     } else {
@@ -339,7 +350,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     }
     if (wheelTimer.current) clearTimeout(wheelTimer.current);
     wheelTimer.current = setTimeout(settle, 200);
-  }, [isWall, cvToCanvas, movingPhoto, photo, settle]);
+  }, [isWall, cvToCanvas, targetFor, photo, settle]);
 
   // 휠은 passive 가 아니어야 preventDefault 가 먹는다 — 직접 등록.
   useEffect(() => {
@@ -354,7 +365,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   const pickMode = (m) => { setMode(m); LS.mode = m; };
   const pickBg = (c, isRec = false) => { autoBgRef.current = isRec; setBg(c); LS.bg = isRec ? null : c; };
   const pickSize = (s) => { setTextSize(s); LS.textsize = s; };
-  const pickGlass = (m) => { setGlassMode(m); LS.glass = m; };
+  const pickTitle = (v) => { setShowTitle(v); LS.showtitle = v; };
 
   // ── 저장 ─────────────────────────────────────────────────────────
   const onSave = useCallback(async () => {
@@ -419,46 +430,30 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
           </div>
           {isWall && hasGrid && (
             <p className="tti-hint">
-              드래그·핀치로 {movingPhoto ? '사진' : '시간표'} 배치{movingPhoto ? '' : ' · 가운데에서 살짝 붙어요'}
+              {photo
+                ? '시간표 영역을 드래그하면 시간표, 바깥을 드래그하면 사진이 움직여요'
+                : '드래그·핀치로 시간표 배치 · 가운데에서 살짝 붙어요'}
             </p>
           )}
 
           {isWall && (
-            <>
-              <div className="tti-row">
-                <span className="tti-label">배경 사진</span>
-                <div className="tti-photo">
-                  <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
-                  {photo ? (
-                    <>
-                      <div className="tti-seg" role="group" aria-label="배치 대상">
-                        <button type="button" aria-pressed={!movingPhoto}
-                          className={`tti-mode-btn${!movingPhoto ? ' is-on' : ''}`} onClick={() => setDragTarget('grid')}>시간표</button>
-                        <button type="button" aria-pressed={movingPhoto}
-                          className={`tti-mode-btn${movingPhoto ? ' is-on' : ''}`} onClick={() => setDragTarget('photo')}>사진</button>
-                      </div>
-                      <button type="button" className="link-btn tti-photo-rm" onClick={removePhoto}>제거</button>
-                    </>
-                  ) : (
-                    <button type="button" className="btn btn-ghost btn-sm tti-photo-btn" onClick={() => fileRef.current?.click()}>
-                      사진 선택
-                    </button>
-                  )}
-                </div>
+            <div className="tti-row">
+              <span className="tti-label">배경 사진</span>
+              <div className="tti-photo">
+                <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
+                {photo ? (
+                  <>
+                    <span className="tti-photo-on">사진 적용됨</span>
+                    <button type="button" className="link-btn" onClick={() => fileRef.current?.click()}>변경</button>
+                    <button type="button" className="link-btn tti-photo-rm" onClick={removePhoto}>제거</button>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-ghost btn-sm tti-photo-btn" onClick={() => fileRef.current?.click()}>
+                    사진 선택
+                  </button>
+                )}
               </div>
-
-              <div className="tti-row">
-                <span className="tti-label">글래스</span>
-                <div className="tti-modes tti-sizes" role="group" aria-label="글래스 톤">
-                  {GLASS_MODES.map(([v, label]) => (
-                    <button key={v} type="button" aria-pressed={glassMode === v}
-                      className={`tti-mode-btn${glassMode === v ? ' is-on' : ''}`} onClick={() => pickGlass(v)}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
+            </div>
           )}
 
           {!(isWall && photo) && (
@@ -495,6 +490,16 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
                   {label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="tti-row">
+            <span className="tti-label">제목</span>
+            <div className="tti-modes tti-sizes" role="group" aria-label="제목 표시">
+              <button type="button" aria-pressed={!showTitle}
+                className={`tti-mode-btn${!showTitle ? ' is-on' : ''}`} onClick={() => pickTitle(false)}>숨김</button>
+              <button type="button" aria-pressed={showTitle}
+                className={`tti-mode-btn${showTitle ? ' is-on' : ''}`} onClick={() => pickTitle(true)}>표시</button>
             </div>
           </div>
         </div>
