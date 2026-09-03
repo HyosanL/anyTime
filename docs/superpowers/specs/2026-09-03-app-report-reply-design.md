@@ -129,3 +129,9 @@ Firestore auto-ID는 20자(~119비트)라 열거 불가 — `getSharedPost`의 �
 - 사용자→관리자 답변에 재질문(스레드). 단방향 회신으로 충분.
 - 리포트별 알림 on/off. 스크린샷 첨부. 상태 세분화(3값이면 족함).
 - `getMyAppReports`의 rate-limit(요청 1회/앱진입, id ≤20 — 부하 무시 가능).
+
+## 구현
+
+2026-09-03 구현·배포 완료. 계획: `docs/superpowers/plans/2026-09-03-app-report-reply.md`.
+`listRepliedAppReports` 용 복합색인 `appReports (status ASC, repliedAt DESC)` 추가,
+`purgeAppReports` 는 전체 스캔(`purgePastMemos` 패턴)으로 색인 없이.
