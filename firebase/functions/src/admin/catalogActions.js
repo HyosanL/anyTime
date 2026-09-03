@@ -56,7 +56,9 @@ async function ensureSemester(year, term) {
   const ref = db.collection('semesters').doc(semesterKey(y, t));
   const snap = await ref.get();
   if (snap.exists) return;
-  await ref.set({ year: y, term: t, isCurrent: false });
+  // 새 학기는 숨김으로 시작 — 관리자가 편람을 다 넣고 '수강계획으로 공개'해야
+  // 생도 화면(마법사·강의검색·계산기)에 뜬다. 설계 §Ⅰ.
+  await ref.set({ year: y, term: t, isCurrent: false, hidden: true });
   await CONFIG_APP_REF().update({ catalogVersion: FieldValue.increment(1) });
 }
 
@@ -221,12 +223,23 @@ async function setSemester(uid, payload) {
     const currentSnap = await db.collection('semesters').where('isCurrent', '==', true).get();
     const batch = db.batch();
     for (const d of currentSnap.docs) batch.update(d.ref, { isCurrent: false });
-    batch.set(db.collection('semesters').doc(semesterKey(year, term)), { year, term, isCurrent: true }, { merge: true });
+    // 현재 학기는 절대 숨김일 수 없다 — hidden:false 를 함께 박는다.
+    batch.set(db.collection('semesters').doc(semesterKey(year, term)),
+      { year, term, isCurrent: true, hidden: false }, { merge: true });
+    batch.update(CONFIG_APP_REF(), { catalogVersion: FieldValue.increment(1) });
+    await batch.commit();
+  } else if (payload.hidden === false) {
+    // '수강계획으로 공개' — 숨김 해제. 생도가 이 학기 시간표를 짤 수 있게 된다.
+    const ref = db.collection('semesters').doc(semesterKey(year, term));
+    const snap = await ref.get();
+    if (!snap.exists) invalid('먼저 학기를 추가하세요.');
+    const batch = db.batch();
+    batch.update(ref, { hidden: false });
     batch.update(CONFIG_APP_REF(), { catalogVersion: FieldValue.increment(1) });
     await batch.commit();
   } else {
-    // '추가'(다음 학기 미리 열기) — 이미 있으면 손대지 않는다. upsert 로 isCurrent:false
-    // 를 덮어쓰면 현재 학기를 강등시켜 버리므로 ensureSemester(존재 체크 후 생성)로만.
+    // '추가'(다음 학기 미리 열기) — 이미 있으면 손대지 않는다. ensureSemester 가
+    // hidden:true 로 생성. upsert 로 덮어쓰면 현재 학기를 강등시키므로 존재 체크만.
     await ensureSemester(year, term);
   }
   return { status: 'OK' };
