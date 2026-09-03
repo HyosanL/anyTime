@@ -13,7 +13,18 @@ import { contrastText, overlayTint } from './imageColor';
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
 // 격자는 항상 이 픽셀 밀도로 그린다 — 배경화면 모드에서 확대해도 덜 흐리도록 넉넉히.
-const PIX = 3;
+const PIX = 3.5;
+
+// 배경화면 패널(iOS 폴더풍)이 시간표 밖으로 두는 여백 — 캔버스 짧은 변 기준 비율.
+// (시트 미리보기와 최종 합성이 같은 값을 써야 하므로 export.)
+export const PANEL_PAD_FRAC = 0.02;
+
+// 글자 크기 단계 — 시트 토글(작게/보통/크게)이 고른다. '보통'이 홈 화면 시간표와 같은 비율.
+export const TEXT_SCALES = { S: 0.82, M: 1, L: 1.18 };
+
+// 폰트 px(보통=1 기준). 화면(home.css)의 rem 값을 이미지 칸 크기에 맞춰 키운 값 —
+// 예전엔 화면과 거의 같은 절대 px 라, 칸이 1.6배 큰 이미지에서 글자가 작아 보였다.
+const F = { title: 22, day: 16, period: 12, hour: 15, course: 18, meta: 15, tag: 11 };
 
 // 텍스트를 maxWidth 안에서 최대 maxLines 줄로 접고, 넘치면 말줄임.
 function wrapText(ctx, text, maxWidth, maxLines) {
@@ -60,9 +71,10 @@ function tile(ctx, x, y, w, h, r, fill, stroke) {
 
 // 시간표 격자만 캔버스로. 바깥(paper)은 투명 — 배경 위에 얹는다.
 // background: 최종 배경색 — 빈 칸 틴트·글자 대비가 여기에 종속(밝으면 짙은 글자, 어두우면 밝은 글자).
+// textScale: 글자 크기 배율(TEXT_SCALES).
 // 반환: { canvas, w, h }  (w,h = 캔버스 실제 픽셀 크기)  또는 blocks 없으면 null.
 export function renderTimetableGrid({
-  mine, periods, customClasses, commonBlocks = [], title = '시간표', background = '#ffffff',
+  mine, periods, customClasses, commonBlocks = [], title = '시간표', background = '#ffffff', textScale = 1,
 }) {
   const pal = paletteByKey(getPaletteKey());
   const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg });
@@ -70,18 +82,29 @@ export function renderTimetableGrid({
   if (grid.empty) return null;
   const { days, hours, periodNoByHour, cells } = grid;
 
-  const PAD = 16, TITLE_H = 44, HEAD_H = 34, HOURCOL_W = 52, DAYCOL_W = 118, ROW_H = 58;
-  const RAD = 8;
+  const PAD = 18, TITLE_H = 48, HEAD_H = 32, HOURCOL_W = 46, DAYCOL_W = 126, ROW_H = 70;
+  const RAD = 9;
   const INSET = 1.5;
   const gridW = HOURCOL_W + days.length * DAYCOL_W;
   const gridH = hours.length * ROW_H;
   const W = PAD * 2 + gridW;
   const H = PAD * 2 + TITLE_H + HEAD_H + gridH;
 
+  const ts = textScale || 1;
+  const fpx = (base) => Math.round(base * ts * 10) / 10;
+  const step = Math.round(fpx(F.course) * 1.16);   // 제목 줄 간격(폰트 비례)
+
   const ink = contrastText(background);
   const emptyFill = overlayTint(background, 0.05);
   const emptyBorder = overlayTint(background, 0.16);
-  const blockFill = overlayTint(background, 0.11);
+
+  // 공통 공강도 다른 수업처럼 '테마 안 색상'으로 칠한다 — 예전엔 배경색 틴트라
+  // 배경색과 겹치면 묻혔다. 색은 팔레트 뒤쪽부터 배정(과목은 앞쪽부터라 충돌 최소).
+  const blockColorByTitle = {};
+  let bci = 0;
+  const blockColorFor = (t) => (
+    blockColorByTitle[t] ??= pal.colors[(pal.colors.length - 1 - (bci++)) % pal.colors.length] || pal.colors[0]
+  );
 
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(W * PIX);
@@ -93,17 +116,17 @@ export function renderTimetableGrid({
 
   // 제목
   ctx.fillStyle = ink.strong;
-  ctx.font = `700 20px ${FONT}`;
+  ctx.font = `700 ${fpx(F.title)}px ${FONT}`;
   ctx.textAlign = 'center';
-  ctx.fillText(title, W / 2, PAD + 8);
+  ctx.fillText(title, W / 2, PAD + 9);
 
   const gridTop = PAD + TITLE_H + HEAD_H;
   const gridLeft = PAD + HOURCOL_W;
 
   // 요일 헤더
-  ctx.font = `600 14px ${FONT}`;
+  ctx.font = `600 ${fpx(F.day)}px ${FONT}`;
   ctx.fillStyle = ink.mid;
-  days.forEach((d, i) => ctx.fillText(dayLabel(d), gridLeft + i * DAYCOL_W + DAYCOL_W / 2, PAD + TITLE_H + 9));
+  days.forEach((d, i) => ctx.fillText(dayLabel(d), gridLeft + i * DAYCOL_W + DAYCOL_W / 2, PAD + TITLE_H + 8));
 
   // 좌축(시각·교시) — 격자선은 그리지 않는다(화면처럼 분리 타일).
   hours.forEach((h, i) => {
@@ -111,12 +134,12 @@ export function renderTimetableGrid({
     ctx.textAlign = 'center';
     if (periodNoByHour[h] != null) {
       ctx.fillStyle = ink.soft;
-      ctx.font = `600 11px ${FONT}`;
-      ctx.fillText(String(periodNoByHour[h]), PAD + HOURCOL_W / 2, y + 6);
+      ctx.font = `600 ${fpx(F.period)}px ${FONT}`;
+      ctx.fillText(String(periodNoByHour[h]), PAD + HOURCOL_W / 2, y + 7);
     }
     ctx.fillStyle = ink.mid;
-    ctx.font = `600 13px ${FONT}`;
-    ctx.fillText(pad2(h), PAD + HOURCOL_W / 2, y + 22);
+    ctx.font = `700 ${fpx(F.hour)}px ${FONT}`;
+    ctx.fillText(pad2(h), PAD + HOURCOL_W / 2, y + 24);
   });
 
   // 칸: 화면과 같은 cells 모델을 그대로 그린다.
@@ -137,31 +160,23 @@ export function renderTimetableGrid({
       const tw = DAYCOL_W - 2 * INSET;
       const th = cell.span * ROW_H - 2 * INSET;
 
-      if (cell.block) {   // 공통 공강 — 틴트 타일 + 대비 글자(가운데)
-        tile(ctx, tx, ty, tw, th, RAD, blockFill, null);
-        ctx.fillStyle = ink.soft;
-        ctx.font = `600 11.5px ${FONT}`;
-        ctx.textAlign = 'center';
-        const lines = wrapText(ctx, cell.title, tw - 16, 2);
-        let yy = ty + (th - lines.length * 15) / 2;
-        lines.forEach((ln) => { ctx.fillText(ln, tx + tw / 2, yy); yy += 15; });
-        return;
-      }
+      // 색·글자색: 공통 공강은 팔레트 뒤쪽 색, 수업은 자기 색.
+      const fill = cell.block ? blockColorFor(cell.title) : cell.color;
+      const fg = cell.block ? pal.fg : cell.fg;
+      tile(ctx, tx, ty, tw, th, RAD, fill, null);
 
-      // 수업 칸 — 팔레트 색 타일 + 팔레트 글자색(가운데)
-      tile(ctx, tx, ty, tw, th, RAD, cell.color, null);
       ctx.textAlign = 'center';
-      ctx.fillStyle = cell.fg;
-      ctx.font = `700 12px ${FONT}`;
+      ctx.fillStyle = fg;
+      ctx.font = `700 ${fpx(F.course)}px ${FONT}`;
       const titleLines = wrapText(ctx, cell.title, tw - 16, 2);
-      const hasMeta = !!cell.meta;
-      const blockH = titleLines.length * 15 + (hasMeta ? 13 : 0);
-      let yy = ty + Math.max(6, (th - blockH) / 2);
-      titleLines.forEach((ln) => { ctx.fillText(ln, tx + tw / 2, yy); yy += 15; });
+      const hasMeta = !cell.block && !!cell.meta;
+      const contentH = titleLines.length * step + (hasMeta ? fpx(F.meta) + 3 : 0);
+      let yy = ty + Math.max(6, (th - contentH) / 2);
+      titleLines.forEach((ln) => { ctx.fillText(ln, tx + tw / 2, yy); yy += step; });
       if (hasMeta) {
         ctx.save();
         ctx.globalAlpha = 0.78;   // 화면 .tt-meta opacity
-        ctx.font = `600 10px ${FONT}`;
+        ctx.font = `600 ${fpx(F.meta)}px ${FONT}`;
         const metaLine = wrapText(ctx, cell.meta, tw - 14, 1)[0] || '';
         ctx.fillText(metaLine, tx + tw / 2, yy + 1);
         ctx.restore();
@@ -170,9 +185,9 @@ export function renderTimetableGrid({
         ctx.save();
         ctx.globalAlpha = 0.6;
         ctx.textAlign = 'right';
-        ctx.font = `800 8px ${FONT}`;
-        ctx.fillStyle = cell.fg;
-        ctx.fillText('직접', tx + tw - 4, ty + 3);
+        ctx.font = `800 ${fpx(F.tag)}px ${FONT}`;
+        ctx.fillStyle = fg;
+        ctx.fillText('직접', tx + tw - 5, ty + 4);
         ctx.restore();
       }
     });
@@ -199,8 +214,8 @@ export function composeTimetableImage({ grid, mode, background = '#ffffff', scre
     const dw = grid.w * t.scale;
     const dh = grid.h * t.scale;
     const shortSide = Math.min(out.width, out.height);
-    const padP = shortSide * 0.03;
-    const rad = shortSide * 0.055;
+    const padP = shortSide * PANEL_PAD_FRAC;
+    const rad = shortSide * 0.045;
 
     roundRect(ctx, t.x - padP, t.y - padP, dw + 2 * padP, dh + 2 * padP, rad);
     ctx.fillStyle = overlayTint(background, 0.12);
@@ -213,8 +228,8 @@ export function composeTimetableImage({ grid, mode, background = '#ffffff', scre
     return out;
   }
 
-  // plain — 내용맞춤 + 배경색 여백
-  const margin = Math.round(g.width * 0.05);
+  // plain — 내용맞춤 + 배경색 여백(예전의 절반)
+  const margin = Math.round(g.width * 0.025);
   out.width = g.width + margin * 2;
   out.height = g.height + margin * 2;
   const ctx = out.getContext('2d');

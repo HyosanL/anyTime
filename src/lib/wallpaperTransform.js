@@ -4,7 +4,8 @@
 //   scale = 그리드 원본 대비 배율
 
 // 그리드를 좌우 여백 marginFrac 만큼 두고 캔버스 폭에 맞추는 기준 배율.
-export function fitWidthBaseline({ gridW, canvasW, marginFrac = 0.06 }) {
+// 여백 3%(예전 6%의 절반) — 배경화면에서 시간표를 되도록 크게.
+export function fitWidthBaseline({ gridW, canvasW, marginFrac = 0.03 }) {
   if (!gridW || !canvasW) return 1;
   return (canvasW * (1 - 2 * marginFrac)) / gridW;
 }

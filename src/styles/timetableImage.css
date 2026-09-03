@@ -4,10 +4,15 @@
    - 색은 전부 토큰. 미리보기 캔버스에 그려지는 색은 데이터값이라 예외.
    ============================================================ */
 
+/* 이 시트는 미리보기가 커서 화면을 더 많이 쓴다 */
+.tti-sheet {
+  max-height: 94vh;
+}
+
 .tti-body {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.6rem;
   overflow-y: auto;
   min-height: 0;
   padding-top: 0.2rem;
@@ -15,7 +20,7 @@
   touch-action: pan-y;
 }
 
-/* 모드 토글 — 세그먼트 */
+/* 세그먼트 토글 (모드 / 글자 크기) */
 .tti-modes {
   display: flex;
   gap: 0.35rem;
@@ -23,6 +28,9 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
+}
+.tti-sizes {
+  flex: 1;
 }
 .tti-mode-btn {
   flex: 1;
@@ -46,7 +54,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.6rem;
+  padding: 0.4rem;
   border-radius: var(--r-md);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -55,12 +63,15 @@
 .tti-preview-canvas {
   display: block;
   max-width: 100%;
-  max-height: 46vh;
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-md);
+}
+.tti-preview-canvas.is-wall {
+  max-height: 62vh;
   touch-action: none;   /* 배경화면 모드 드래그/핀치가 페이지로 새지 않게 */
 }
 .tti-preview-canvas.is-plain {
+  max-height: 54vh;
   touch-action: auto;
   box-shadow: none;
 }
@@ -72,16 +83,31 @@
   text-align: center;
 }
 
-/* 배경색 줄 — 프리셋 스와치 + 스포이트 */
+/* 라벨 + 컨트롤 한 줄 */
+.tti-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.tti-label {
+  flex: none;
+  width: 3.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+/* 배경색 — 프리셋 스와치 + 추천 + 스포이트 */
 .tti-colors {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.35rem;
   align-items: center;
 }
 .tti-color {
-  width: 30px;
-  height: 30px;
+  width: 29px;
+  height: 29px;
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
@@ -92,10 +118,19 @@
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary);
 }
+/* 테마 추천색 스와치 — 별표 하나를 옅게 얹어 구분 */
+.tti-rec {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.45);
+}
 /* 스포이트 — .cte-swatch(palette.css) 를 재사용하되 크기만 맞춘다 */
 .tti-color-pick.cte-swatch {
-  width: 30px;
-  height: 30px;
+  width: 29px;
+  height: 29px;
   border-radius: var(--r-sm);
   border: 1px dashed var(--border-strong, var(--border));
 }

@@ -17,6 +17,18 @@ const clamp255 = (n) => Math.max(0, Math.min(255, Math.round(n)));
 const toHex = ({ r, g, b }) =>
   '#' + [r, g, b].map((n) => clamp255(n).toString(16).padStart(2, '0')).join('');
 
+// 두 색을 t(0~1) 비율로 섞은다(t=0 → a, t=1 → b).
+export function mixHex(a, b, t) {
+  const x = parseHex(a);
+  const y = parseHex(b);
+  const k = Math.max(0, Math.min(1, t));
+  return toHex({
+    r: x.r + (y.r - x.r) * k,
+    g: x.g + (y.g - x.g) * k,
+    b: x.b + (y.b - x.b) * k,
+  });
+}
+
 // sRGB 상대 휘도(WCAG). 0(검정)~1(흰색).
 export function luminance(hex) {
   const { r, g, b } = parseHex(hex);
@@ -51,4 +63,17 @@ export function contrastText(hex) {
   return isLight(hex)
     ? { strong: '#111827', mid: '#374151', soft: '#6b7280' }
     : { strong: '#f9fafb', mid: '#d1d5db', soft: '#9ca3af' };
+}
+
+// 시간표 색 테마( { colors, fg } )에 어울리는 배경색을 추천한다.
+// 팔레트의 색조는 살리되, 시간표 타일이 배경 위에서 도드라지도록
+// 라이트 테마는 아주 옅게(거의 흰색), 다크 테마는 깊게(거의 검정) 민다.
+export function recommendBackground(palette) {
+  const colors = (palette && palette.colors) || [];
+  const fg = (palette && palette.fg) || '#111827';
+  const seed = colors[0] || '#dbeafe';
+  // 밝은 글자색 = 다크 테마(팔레트 명도 일관 설계).
+  return isLight(fg)
+    ? mixHex(seed, '#0b0d10', 0.80)
+    : mixHex(seed, '#ffffff', 0.82);
 }
