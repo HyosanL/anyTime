@@ -1,8 +1,13 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { onCall } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { adminPush } from './lib/adminNotify.js';
+
+// push.js·appReport.js 와 동일: sha256(endpoint) hex. 관리자 검토 시 pushSubscriptions/{subId} 를 찾는다.
+function subscriptionId(endpoint) {
+  return createHash('sha256').update(endpoint).digest('hex');
+}
 
 // Port of submit_correction()/apply_correction_row() (db/schema.sql). The
 // `correction` table has NO RLS policy at all in the old schema — submission
@@ -341,6 +346,10 @@ export const submitCorrection = onCall({ secrets: [pushFanoutUrl, pushFanoutSecr
   }
 
   const sug = suggested || null;
+  const { endpoint } = request.data ?? {};
+  const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
+    ? subscriptionId(endpoint)
+    : null;
   const correctionRef = db.collection('corrections').doc();
   await correctionRef.set({
     target,
@@ -356,6 +365,9 @@ export const submitCorrection = onCall({ secrets: [pushFanoutUrl, pushFanoutSecr
     status: 'pending',
     autoApplied: false,
     prevValue: null,
+    subId,
+    reply: null,
+    repliedAt: null,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -457,5 +469,5 @@ export const submitCorrection = onCall({ secrets: [pushFanoutUrl, pushFanoutSecr
     });
   }
 
-  return { id: correctionRef.id };
+  return { status: 'OK', applied, id: correctionRef.id };
 });
