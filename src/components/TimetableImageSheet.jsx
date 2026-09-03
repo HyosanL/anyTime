@@ -1,6 +1,8 @@
-// 시간표 이미지 저장 시트 — 일반/배경화면 모드, 배경색·배경사진, iOS 글래스 패널, 글자 크기, 제목 표시.
+// 시간표 이미지 저장 시트 — 일반/배경화면 모드, 배경색·배경사진, iOS 글래스 패널, 글자 크기.
 // 배경화면: 시간표 영역을 드래그하면 시간표가, 그 바깥을 드래그하면 사진이 움직인다.
-// 격자 캔버스는 배경(글래스 베이스)·글자크기·제목이 바뀔 때만 다시 렌더하고, 드래그 프레임엔 미리보기만.
+// 배경화면 편집(모드·배경색·글자크기·시간표 배치·사진·사진 배치)은 기기에 기억한다.
+// 격자 캔버스는 배경(글래스 베이스)·글자크기가 바뀔 때만 다시 렌더하고, 드래그 프레임엔 미리보기만.
+// 제목은 저장 이미지에 넣지 않는다(항상 숨김).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   renderTimetableGrid, composeTimetableImage, saveComposedImage, paintWallpaper,
@@ -12,6 +14,7 @@ import {
 } from '../lib/wallpaperTransform';
 import { recommendBackground, luminance } from '../lib/imageColor';
 import { paletteByKey, getPaletteKey, usePalette } from '../lib/palettes';
+import { savePhotoBlob, loadPhotoBlob, clearPhotoBlob } from '../lib/ttImageStore';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 import '../styles/palette.css';
 import '../styles/timetableImage.css';
@@ -19,6 +22,7 @@ import '../styles/timetableImage.css';
 // 프리셋 배경색 — 화이트/오프화이트/라이트그레이/차콜/블랙/소프트 블루·그린·핑크.
 const PRESETS = ['#ffffff', '#f7f5f0', '#e8eaed', '#2b2f36', '#0b0d10', '#dbe8f7', '#dcefe0', '#f6e0e6'];
 const SIZES = [['S', '작게'], ['M', '보통'], ['L', '크게']];
+const PHOTO_MAX = 2200;   // 저장·표시용 사진 긴 변 상한(디코드 메모리·용량)
 
 const LS = {
   get mode() { try { return localStorage.getItem('ttimg:mode') || 'plain'; } catch { return 'plain'; } },
@@ -27,10 +31,10 @@ const LS = {
   set bg(v) { try { if (v) localStorage.setItem('ttimg:bg', v); else localStorage.removeItem('ttimg:bg'); } catch { /* ignore */ } },
   get textsize() { try { const v = localStorage.getItem('ttimg:textsize'); return TEXT_SCALES[v] ? v : 'M'; } catch { return 'M'; } },
   set textsize(v) { try { localStorage.setItem('ttimg:textsize', v); } catch { /* ignore */ } },
-  get showtitle() { try { return localStorage.getItem('ttimg:title') === '1'; } catch { return false; } },
-  set showtitle(v) { try { localStorage.setItem('ttimg:title', v ? '1' : '0'); } catch { /* ignore */ } },
   get wp() { try { return JSON.parse(localStorage.getItem('ttimg:wp') || 'null'); } catch { return null; } },
   set wp(v) { try { localStorage.setItem('ttimg:wp', JSON.stringify(v)); } catch { /* ignore */ } },
+  get photoT() { try { return JSON.parse(localStorage.getItem('ttimg:photoT') || 'null'); } catch { return null; } },
+  set photoT(v) { try { if (v) localStorage.setItem('ttimg:photoT', JSON.stringify(v)); else localStorage.removeItem('ttimg:photoT'); } catch { /* ignore */ } },
 };
 
 // 이 기기 화면의 실제 픽셀 크기(세로). 예전엔 CSS px × min(dpr,2) 라 실해상도보다
@@ -69,11 +73,11 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   const [mode, setMode] = useState(LS.mode);
   const [bg, setBg] = useState(() => LS.bg || recommendBackground(paletteByKey(getPaletteKey())));
   const [textSize, setTextSize] = useState(LS.textsize);
-  const [showTitle, setShowTitle] = useState(LS.showtitle);
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);          // 저장 직후 잠깐 표시(시트는 안 닫힘)
   const [transform, setTransform] = useState(null);   // 시간표 배치 { x, y, scale }
   const [guides, setGuides] = useState({ v: false, h: false });
-  const [photo, setPhoto] = useState(null);           // HTMLImageElement | null (기기 저장 안 함)
+  const [photo, setPhoto] = useState(null);           // HTMLImageElement | null
   const [photoLum, setPhotoLum] = useState(0.5);
   const [photoT, setPhotoT] = useState(null);         // 사진 배치 { x, y, scale }
 
@@ -112,17 +116,17 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   // 테마가 바뀌었고 사용자가 배경색을 직접 안 골랐으면 추천색을 새로 반영.
   useEffect(() => { if (autoBgRef.current) setBg(recBg); }, [recBg]);
 
-  // 격자 렌더 — 배경(글래스 베이스)·글자크기·제목·모드(또는 시간표 입력)가 바뀔 때만.
+  // 격자 렌더 — 배경(글래스 베이스)·글자크기·모드(또는 시간표 입력)가 바뀔 때만. 제목은 항상 숨김.
   useEffect(() => {
     gridRef.current = renderTimetableGrid({
       mine, periods, customClasses, commonBlocks, title,
       background: isWall ? glassBase : bg,
       glass: isWall,
       textScale: TEXT_SCALES[textSize] || 1,
-      showTitle,
+      showTitle: false,
     });
     setGridVer((v) => v + 1);
-  }, [isWall, glassBase, bg, textSize, showTitle, mine, periods, customClasses, commonBlocks, title]);
+  }, [isWall, glassBase, bg, textSize, mine, periods, customClasses, commonBlocks, title]);
 
   // 배경화면 모드로 들어오거나 격자가 바뀌면 시간표 transform 초기화(저장본 있으면 복원).
   useEffect(() => {
@@ -198,17 +202,16 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   useEffect(() => { paint(transform, guides); }, [transform, photoT, guides, bg, glassTone, paint]);
 
   // ── 사진 첨부 ────────────────────────────────────────────────────
-  const onPickPhoto = useCallback((e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
+  // blob(다운스케일된 JPEG)을 <img>로 만들어 상태에 얹는다. restoredT 있으면 그 배치를 복원.
+  const applyPhotoBlob = useCallback((blob, restoredT) => {
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(blob);
     urlRef.current = url;
     const img = new Image();
     img.onload = () => {
       setPhotoLum(photoLuminance(img));
-      const t = coverFitTransform({ imgW: img.naturalWidth, imgH: img.naturalHeight, canvasW: dims.w, canvasH: dims.h });
+      const box = { imgW: img.naturalWidth, imgH: img.naturalHeight, canvasW: dims.w, canvasH: dims.h };
+      const t = restoredT ? clampCover(restoredT, box) : coverFitTransform(box);
       photoTRef.current = t;
       setPhotoT(t);
       setPhoto(img);
@@ -217,10 +220,51 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     img.src = url;
   }, [dims]);
 
+  const onPickPhoto = useCallback((e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const purl = URL.createObjectURL(file);
+    const probe = new Image();
+    probe.onload = () => {
+      const s = Math.min(1, PHOTO_MAX / Math.max(probe.naturalWidth, probe.naturalHeight));
+      const w = Math.max(1, Math.round(probe.naturalWidth * s));
+      const h = Math.max(1, Math.round(probe.naturalHeight * s));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const cx = c.getContext('2d');
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+      cx.drawImage(probe, 0, 0, w, h);
+      URL.revokeObjectURL(purl);
+      c.toBlob((blob) => {
+        if (!blob) { alert('사진 처리에 실패했어요.'); return; }
+        savePhotoBlob(blob);
+        LS.photoT = null;
+        setSaved(false);
+        applyPhotoBlob(blob);
+      }, 'image/jpeg', 0.9);
+    };
+    probe.onerror = () => { URL.revokeObjectURL(purl); alert('사진을 불러오지 못했어요.'); };
+    probe.src = purl;
+  }, [applyPhotoBlob]);
+
   const removePhoto = useCallback(() => {
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
     setPhoto(null); setPhotoT(null); photoTRef.current = null;
+    clearPhotoBlob();
+    LS.photoT = null;
+    setSaved(false);
   }, []);
+
+  // 배경화면 모드에서 마지막에 쓰던 사진 복원(있으면, 아직 안 불렀으면).
+  useEffect(() => {
+    if (!isWall || photo) return undefined;
+    let cancelled = false;
+    loadPhotoBlob().then((blob) => {
+      if (!cancelled && blob) applyPhotoBlob(blob, LS.photoT);
+    });
+    return () => { cancelled = true; };
+  }, [isWall, photo, applyPhotoBlob]);
 
   // ── 포인터: 시간표 영역이면 시간표, 바깥이면 사진을 이동/확대 ──────
   const cvToCanvas = useCallback((e) => {
@@ -244,6 +288,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
 
   const onPointerDown = useCallback((e) => {
     if (!isWall) return;
+    setSaved(false);
     const pt = cvToCanvas(e);
     const first = pointers.current.size === 0;
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -302,6 +347,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       const t = clampCover(photoTRef.current, { imgW: photo.naturalWidth, imgH: photo.naturalHeight, canvasW: dims.w, canvasH: dims.h });
       photoTRef.current = t;
       setPhotoT({ ...t });
+      LS.photoT = t;
       return;
     }
     setGuides({ v: false, h: false });
@@ -362,16 +408,17 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
   }, [onWheel]);
 
   // ── 선택 영속 ────────────────────────────────────────────────────
-  const pickMode = (m) => { setMode(m); LS.mode = m; };
-  const pickBg = (c, isRec = false) => { autoBgRef.current = isRec; setBg(c); LS.bg = isRec ? null : c; };
-  const pickSize = (s) => { setTextSize(s); LS.textsize = s; };
-  const pickTitle = (v) => { setShowTitle(v); LS.showtitle = v; };
+  const pickMode = (m) => { setMode(m); LS.mode = m; setSaved(false); };
+  const pickBg = (c, isRec = false) => { autoBgRef.current = isRec; setBg(c); LS.bg = isRec ? null : c; setSaved(false); };
+  const pickSize = (s) => { setTextSize(s); LS.textsize = s; setSaved(false); };
 
   // ── 저장 ─────────────────────────────────────────────────────────
+  // 저장 후 시트를 닫지 않는다 — 결과를 확인하고 바로 다시 손볼 수 있게.
   const onSave = useCallback(async () => {
     const g = gridRef.current;
     if (!g) return;
     setBusy(true);
+    setSaved(false);
     try {
       const usePhoto = isWall && !!photo;
       const composed = isWall
@@ -384,11 +431,11 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       const ext = usePhoto ? 'jpg' : 'png';
       const fname = isWall ? `${base}_배경화면.${ext}` : `${base}.png`;
       const res = await saveComposedImage(composed, fname, usePhoto ? 'image/jpeg' : 'image/png');
-      if (res !== 'cancelled') onClose();
+      if (res !== 'cancelled') setSaved(true);
     } finally {
       setBusy(false);
     }
-  }, [isWall, bg, dims, title, photo, glassTone, onClose]);
+  }, [isWall, bg, dims, title, photo, glassTone]);
 
   const hasGrid = !!gridRef.current;
   const bgLower = bg.toLowerCase();
@@ -492,22 +539,13 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
               ))}
             </div>
           </div>
-
-          <div className="tti-row">
-            <span className="tti-label">제목</span>
-            <div className="tti-modes tti-sizes" role="group" aria-label="제목 표시">
-              <button type="button" aria-pressed={!showTitle}
-                className={`tti-mode-btn${!showTitle ? ' is-on' : ''}`} onClick={() => pickTitle(false)}>숨김</button>
-              <button type="button" aria-pressed={showTitle}
-                className={`tti-mode-btn${showTitle ? ' is-on' : ''}`} onClick={() => pickTitle(true)}>표시</button>
-            </div>
-          </div>
         </div>
 
         <div className="tti-actions">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>취소</button>
+          {saved && <span className="tti-saved" role="status">✓ 저장했어요</span>}
+          <button type="button" className="btn btn-ghost" onClick={onClose}>닫기</button>
           <button type="button" className="btn btn-primary" onClick={onSave} disabled={busy || !hasGrid}>
-            {busy ? '저장 중…' : '저장'}
+            {busy ? '저장 중…' : (saved ? '다시 저장' : '저장')}
           </button>
         </div>
       </div>

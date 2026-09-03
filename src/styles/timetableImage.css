@@ -161,10 +161,18 @@
 
 .tti-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   padding-top: 0.6rem;
   border-top: 1px solid var(--border);
 }
 .tti-actions .btn {
   flex: 1;
+}
+.tti-saved {
+  flex: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
 }
