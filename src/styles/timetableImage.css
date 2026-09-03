@@ -67,7 +67,7 @@
   box-shadow: var(--shadow-md);
 }
 .tti-preview-canvas.is-wall {
-  max-height: 62vh;
+  max-height: 56vh;
   touch-action: none;   /* 배경화면 모드 드래그/핀치가 페이지로 새지 않게 */
 }
 .tti-preview-canvas.is-plain {
@@ -91,10 +91,11 @@
 }
 .tti-label {
   flex: none;
-  width: 3.6rem;
+  width: 4rem;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
 /* 배경색 — 프리셋 스와치 + 추천 + 스포이트 */
@@ -135,10 +136,37 @@
   border: 1px dashed var(--border-strong, var(--border));
 }
 
+/* 배경 사진 줄 */
+.tti-photo {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.tti-photo-btn {
+  flex: none;
+}
+.tti-seg {
+  display: flex;
+  flex: 1;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.tti-photo-rm {
+  flex: none;
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
 .tti-actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.15rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
 }
 .tti-actions .btn {
   flex: 1;

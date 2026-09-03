@@ -70,11 +70,12 @@ function tile(ctx, x, y, w, h, r, fill, stroke) {
 }
 
 // 시간표 격자만 캔버스로. 바깥(paper)은 투명 — 배경 위에 얹는다.
-// background: 최종 배경색 — 빈 칸 틴트·글자 대비가 여기에 종속(밝으면 짙은 글자, 어두우면 밝은 글자).
+// background: 최종 배경색(글래스면 글래스 베이스색) — 빈 칸 틴트·글자 대비가 여기에 종속.
 // textScale: 글자 크기 배율(TEXT_SCALES).
+// glass: 배경화면 모드 — 빈 칸을 채우지 않고(뒤 글래스가 비침) 테두리만 그린다.
 // 반환: { canvas, w, h }  (w,h = 캔버스 실제 픽셀 크기)  또는 blocks 없으면 null.
 export function renderTimetableGrid({
-  mine, periods, customClasses, commonBlocks = [], title = '시간표', background = '#ffffff', textScale = 1,
+  mine, periods, customClasses, commonBlocks = [], title = '시간표', background = '#ffffff', textScale = 1, glass = false,
 }) {
   const pal = paletteByKey(getPaletteKey());
   const classBlocks = buildClassBlocks({ mine, periods, customClasses, colors: pal.colors, fg: pal.fg });
@@ -149,8 +150,8 @@ export function renderTimetableGrid({
       const cy = gridTop + hi * ROW_H;
       const cell = cells[`${d}-${h}`];
 
-      if (!cell) {   // 빈 칸 — 배경색 위 옅은 틴트 박스
-        tile(ctx, cx + INSET, cy + INSET, DAYCOL_W - 2 * INSET, ROW_H - 2 * INSET, RAD, emptyFill, emptyBorder);
+      if (!cell) {   // 빈 칸 — 글래스면 테두리만(뒤 비침), 아니면 옅은 틴트 박스
+        tile(ctx, cx + INSET, cy + INSET, DAYCOL_W - 2 * INSET, ROW_H - 2 * INSET, RAD, glass ? null : emptyFill, emptyBorder);
         return;
       }
       if (cell.skip) return;   // 위 칸의 rowSpan 이 덮음
@@ -200,10 +201,114 @@ export function renderTimetableGrid({
   return { canvas, w: canvas.width, h: canvas.height };
 }
 
+// 사진(또는 단색)을 캔버스에 덮도록(cover) 맞추는 기본 transform.
+export function coverFitTransform({ imgW, imgH, canvasW, canvasH }) {
+  const scale = Math.max(canvasW / imgW, canvasH / imgH) || 1;
+  return { x: (canvasW - imgW * scale) / 2, y: (canvasH - imgH * scale) / 2, scale };
+}
+
+// 사진이 캔버스를 항상 덮도록 transform 클램프(빈 가장자리 금지). 확대 상한 = cover의 5배.
+export function clampCover(t, { imgW, imgH, canvasW, canvasH }) {
+  const minScale = Math.max(canvasW / imgW, canvasH / imgH) || 1;
+  const scale = Math.min(minScale * 5, Math.max(minScale, t.scale || minScale));
+  const w = imgW * scale;
+  const h = imgH * scale;
+  const x = Math.min(0, Math.max(canvasW - w, t.x));
+  const y = Math.min(0, Math.max(canvasH - h, t.y));
+  return { x, y, scale };
+}
+
+// 다운스케일 방식 블러(캔버스 filter 미지원 환경도 커버). 반투명 오버레이 뒤라 거칠어도 안 보인다.
+// 스크래치 캔버스를 재사용한다 — 드래그 프레임마다 호출되므로 GC 부담을 줄인다.
+let _blurSmall = null;
+let _blurOut = null;
+function blurredCopy(src, refW) {
+  const factor = Math.max(6, Math.round(refW / 110));
+  const w = Math.max(1, Math.round(src.width / factor));
+  const h = Math.max(1, Math.round(src.height / factor));
+  if (!_blurSmall) _blurSmall = document.createElement('canvas');
+  if (!_blurOut) _blurOut = document.createElement('canvas');
+  _blurSmall.width = w; _blurSmall.height = h;
+  const sctx = _blurSmall.getContext('2d');
+  sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = 'high';
+  sctx.drawImage(src, 0, 0, w, h);
+  _blurOut.width = src.width; _blurOut.height = src.height;
+  const octx = _blurOut.getContext('2d');
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+  octx.drawImage(_blurSmall, 0, 0, _blurOut.width, _blurOut.height);
+  return _blurOut;
+}
+
+// 배경화면 합성 — 미리보기(S<1)와 최종 저장(S=1)이 같은 그림이 되도록 한 곳에 둔다.
+// 좌표(gridT·photoT·canvasW/H)는 전부 '최종 캔버스 px'. ctx.canvas 는 이미 목표 크기(px×S).
+export function paintWallpaper(ctx, S, o) {
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+
+  // 1. 단색 배경(사진 로딩 전·여백 안전망)
+  ctx.fillStyle = o.bgColor || '#000000';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // 2. 사진
+  if (o.photo && o.photoT) {
+    const p = o.photoT;
+    const iw = o.photo.naturalWidth || o.photo.width;
+    const ih = o.photo.naturalHeight || o.photo.height;
+    ctx.drawImage(o.photo, p.x * S, p.y * S, iw * p.scale * S, ih * p.scale * S);
+  }
+
+  // 3. 글래스 패널
+  const t = o.gridT;
+  const dw = o.gridW * t.scale;
+  const dh = o.gridH * t.scale;
+  const short = Math.min(o.canvasW, o.canvasH);
+  const padP = short * PANEL_PAD_FRAC;
+  const rad = short * 0.05 * S;
+  const px = (t.x - padP) * S;
+  const py = (t.y - padP) * S;
+  const pw = (dw + 2 * padP) * S;
+  const ph = (dh + 2 * padP) * S;
+  const dark = o.glassTone === 'dark';
+
+  const blur = blurredCopy(ctx.canvas, cw);
+  ctx.save();
+  roundRect(ctx, px, py, pw, ph, rad);
+  ctx.clip();
+  ctx.drawImage(blur, px, py, pw, ph, px, py, pw, ph);
+  ctx.fillStyle = dark ? 'rgba(18,20,26,0.44)' : 'rgba(241,243,246,0.52)';
+  ctx.fillRect(px, py, pw, ph);
+  const grad = ctx.createLinearGradient(0, py, 0, py + ph);
+  grad.addColorStop(0, `rgba(255,255,255,${dark ? 0.10 : 0.24})`);
+  grad.addColorStop(0.4, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(px, py, pw, ph);
+  ctx.restore();
+
+  roundRect(ctx, px, py, pw, ph, rad);
+  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = Math.max(1, short * 0.0016 * S);
+  ctx.stroke();
+
+  // 4. 시간표
+  ctx.drawImage(o.gridCanvas, t.x * S, t.y * S, dw * S, dh * S);
+
+  // 5. 스냅 가이드선(미리보기 전용)
+  if (o.guides && (o.guides.v || o.guides.h)) {
+    ctx.strokeStyle = dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1;
+    if (o.guides.v) { ctx.beginPath(); ctx.moveTo(cw / 2, 0); ctx.lineTo(cw / 2, ch); ctx.stroke(); }
+    if (o.guides.h) { ctx.beginPath(); ctx.moveTo(0, ch / 2); ctx.lineTo(cw, ch / 2); ctx.stroke(); }
+  }
+}
+
 // 격자 캔버스를 배경색·모드로 최종 이미지에 합성한다.
 // mode 'plain'    : 내용맞춤 + 배경색 여백.
-// mode 'wallpaper': screen={w,h} 캔버스 + iOS 폴더풍 반투명 패널 + transform 배치.
-export function composeTimetableImage({ grid, mode, background = '#ffffff', screen, transform }) {
+// mode 'wallpaper': screen={w,h} 캔버스 + 사진/단색 + iOS 폴더풍 글래스 패널 + transform 배치.
+export function composeTimetableImage({
+  grid, mode, background = '#ffffff', screen, transform,
+  photo = null, photoT = null, glassTone = 'light',
+}) {
   const g = grid.canvas;
   const out = document.createElement('canvas');
 
@@ -211,24 +316,11 @@ export function composeTimetableImage({ grid, mode, background = '#ffffff', scre
     out.width = screen.w;
     out.height = screen.h;
     const ctx = out.getContext('2d');
-    ctx.fillStyle = background;
-    ctx.fillRect(0, 0, out.width, out.height);
-
-    const t = transform;
-    const dw = grid.w * t.scale;
-    const dh = grid.h * t.scale;
-    const shortSide = Math.min(out.width, out.height);
-    const padP = shortSide * PANEL_PAD_FRAC;
-    const rad = shortSide * 0.045;
-
-    roundRect(ctx, t.x - padP, t.y - padP, dw + 2 * padP, dh + 2 * padP, rad);
-    ctx.fillStyle = overlayTint(background, 0.12);
-    ctx.fill();
-    ctx.strokeStyle = overlayTint(background, 0.20);
-    ctx.lineWidth = Math.max(1, shortSide * 0.002);
-    ctx.stroke();
-
-    ctx.drawImage(g, t.x, t.y, dw, dh);
+    paintWallpaper(ctx, 1, {
+      canvasW: screen.w, canvasH: screen.h, bgColor: background,
+      photo, photoT, glassTone,
+      gridCanvas: g, gridW: grid.w, gridH: grid.h, gridT: transform, guides: null,
+    });
     return out;
   }
 
@@ -255,9 +347,12 @@ function dataURLtoBlob(dataUrl) {
 // 최종 캔버스를 공유/다운로드. 반환: 'shared' | 'cancelled' | 'downloaded'
 // 사용자 제스처(클릭) 안에서 동기적으로 호출해야 iOS 공유가 뜬다 —
 // 첫 await 가 곧 navigator.share 그 자체가 되도록 그 앞은 전부 동기.
-export async function saveComposedImage(canvas, filename) {
-  const blob = dataURLtoBlob(canvas.toDataURL('image/png'));
-  const file = new File([blob], filename, { type: 'image/png' });
+export async function saveComposedImage(canvas, filename, mime = 'image/png') {
+  const dataUrl = mime === 'image/jpeg'
+    ? canvas.toDataURL('image/jpeg', 0.92)
+    : canvas.toDataURL('image/png');
+  const blob = dataURLtoBlob(dataUrl);
+  const file = new File([blob], filename, { type: blob.type });
 
   // 모바일: 파일 공유 시트(아이폰=사진에 저장, 안드=이미지 공유/저장)
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
