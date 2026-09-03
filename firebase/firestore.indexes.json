@@ -103,6 +103,14 @@
       ]
     },
     {
+      "collectionGroup": "appReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "repliedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "corrections",
       "queryScope": "COLLECTION",
       "fields": [

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
+import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { adminPush } from './lib/adminNotify.js';
 
@@ -83,22 +83,26 @@ export const getMyAppReports = onCall(async (request) => {
 });
 
 // 앱 리포트 정리(월간) — 답변 후 30일, 방치된 pending 90일 경과분 삭제. 다른 월간 purge 와
-// 같은 크론('0 18 1 * *' UTC = 매월 2일 03:00 KST).
+// 같은 크론('0 18 1 * *' UTC = 매월 2일 03:00 KST). 컬렉션이 작아(버그 신고) 전체 스캔 +
+// 메모리 필터 — purgePastMemos 와 같은 패턴(복합색인 불필요).
 export const purgeAppReports = onSchedule({ schedule: '0 18 1 * *', timeZone: 'UTC' }, async () => {
   const now = Date.now();
-  const repliedCutoff = Timestamp.fromMillis(now - 30 * 24 * 60 * 60 * 1000);
-  const pendingCutoff = Timestamp.fromMillis(now - 90 * 24 * 60 * 60 * 1000);
+  const repliedCutoff = now - 30 * 24 * 60 * 60 * 1000;
+  const pendingCutoff = now - 90 * 24 * 60 * 60 * 1000;
+  const ms = (ts) => (typeof ts?.toMillis === 'function' ? ts.toMillis() : 0);
 
-  const [repliedSnap, pendingSnap] = await Promise.all([
-    db.collection('appReports').where('status', '==', 'replied').where('repliedAt', '<', repliedCutoff).get(),
-    db.collection('appReports').where('status', '==', 'pending').where('createdAt', '<', pendingCutoff).get(),
-  ]);
-  const docs = [...repliedSnap.docs, ...pendingSnap.docs];
-  if (!docs.length) return;
+  const snap = await db.collection('appReports').get();
+  const stale = snap.docs.filter((d) => {
+    const x = d.data();
+    if (x.status === 'replied') return ms(x.repliedAt) > 0 && ms(x.repliedAt) < repliedCutoff;
+    if (x.status === 'pending') return ms(x.createdAt) > 0 && ms(x.createdAt) < pendingCutoff;
+    return false;
+  });
+  if (!stale.length) return;
 
-  for (let i = 0; i < docs.length; i += 400) {
+  for (let i = 0; i < stale.length; i += 400) {
     const batch = db.batch();
-    for (const d of docs.slice(i, i + 400)) batch.delete(d.ref);
+    for (const d of stale.slice(i, i + 400)) batch.delete(d.ref);
     await batch.commit();
   }
 });
