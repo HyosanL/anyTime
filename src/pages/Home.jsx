@@ -14,7 +14,7 @@ import { buildCommonBlocks, blockKey, readHidden, hideBlock, unhideAll } from '.
 import {
   listTimetables, readTimetablesCache, listEntries, readEntriesCache,
   createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
-  readSelectedId, writeSelectedId, pickTimetable, isOverlapError,
+  readSelectedId, writeSelectedId, selectTimetable, readSelectedAt, pickTimetable, isOverlapError,
 } from '../lib/timetable';
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 import { detectConflicts } from '../lib/conflict';
@@ -167,7 +167,7 @@ export default function Home() {
     const list = await listTimetables();
     setTimetables(list);
     const cur = catalog ? currentSemester(catalog) : null;
-    const pick = pickTimetable(list, cur, preferId ?? readSelectedId());
+    const pick = pickTimetable(list, cur, preferId ?? readSelectedId(), readSelectedAt());
     setSelectedId(pick?.id ?? null);
     return list;
   }, [catalog]);
@@ -187,7 +187,7 @@ export default function Home() {
       const cur = cat ? currentSemester(cat) : null;
       setCatalog(cat);
 
-      const cachedPick = pickTimetable(cachedList, cur, readSelectedId());
+      const cachedPick = pickTimetable(cachedList, cur, readSelectedId(), readSelectedAt());
       if (cachedPick) {
         setTimetables(cachedList);
         setSelectedId(cachedPick.id);
@@ -207,7 +207,7 @@ export default function Home() {
         }
         setOffline(false);
         setTimetables(list);
-        setSelectedId(pickTimetable(list, cur, readSelectedId())?.id ?? null);
+        setSelectedId(pickTimetable(list, cur, readSelectedId(), readSelectedAt())?.id ?? null);
       } catch {
         setOffline(true);   // 오프라인 → 캐시 스냅샷 유지
       }
@@ -252,7 +252,7 @@ export default function Home() {
       setCatalog(cat);
       const list = await listTimetables();
       setTimetables(list);
-      const pick = pickTimetable(list, currentSemester(cat), readSelectedId());
+      const pick = pickTimetable(list, currentSemester(cat), readSelectedId(), readSelectedAt());
       setSelectedId(pick?.id ?? null);
       if (pick) {
         const [fresh, customs] = await Promise.all([
@@ -289,11 +289,11 @@ export default function Home() {
   }, [selectedId, reloadCustom]);
 
   // ── 시간표 관리(드롭다운에서 호출) ───────────────────────────────────
-  const handleSelect = useCallback((id) => { writeSelectedId(id); setSelectedId(id); }, []);
+  const handleSelect = useCallback((id) => { selectTimetable(id); setSelectedId(id); }, []);
 
   const handleCreate = useCallback(async ({ year, term, name }) => {
     const made = await createTimetable({ uid, year, term, name });
-    writeSelectedId(made.id);
+    selectTimetable(made.id);
     await refreshList(made.id);
   }, [uid, refreshList]);
 

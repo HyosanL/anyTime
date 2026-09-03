@@ -7,7 +7,7 @@ import { correctionMeta, sectionCorrectionOptions, sectionSubject } from '../lib
 import { getCatalog, buildSections, currentSemester, semesterList, formatTimes, dayLabel } from '../lib/cache';
 import {
   listTimetables, createTimetable, renameTimetable, setPrimaryTimetable, deleteTimetable,
-  addSections, findEmptyTimetables, writeSelectedId, isOverlapError,
+  addSections, findEmptyTimetables, selectTimetable, isOverlapError,
 } from '../lib/timetable';
 import { generateCombos, pickDiverse, groupByTime, deriveNoClass, timeKey, SORTS, DEFAULT_SORT } from '../lib/wizard';
 import { readDraft, writeDraft, clearDraft } from '../lib/wizardDraft';
@@ -604,7 +604,7 @@ export default function Wizard() {
     try {
       if (primaryId) {
         await setPrimaryTimetable(primaryId);
-        writeSelectedId(primaryId);
+        selectTimetable(primaryId);   // 방금 마법사로 짠 학기로 이동(명시적)
       }
       // primaryId 가 없으면 기존 확정을 그대로 둔다(아무것도 건드리지 않는다).
       navigate('/');

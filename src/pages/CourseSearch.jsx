@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
-import { getCatalog, subscribeCatalog, buildSections, formatTimes } from '../lib/cache';
+import { getCatalog, subscribeCatalog, buildSections, formatTimes, currentSemester, semesterPhase } from '../lib/cache';
 import {
   listTimetables, listEntries, addSection, removeSection,
-  readSelectedId, writeSelectedId, pickTimetable, isOverlapError,
+  readSelectedId, selectTimetable, readSelectedAt, pickTimetable, isOverlapError,
 } from '../lib/timetable';
 import CorrectionModal from '../components/CorrectionModal';
 import { correctionMeta, sectionCorrectionOptions, sectionSubject } from '../lib/correction';
@@ -50,27 +50,29 @@ export default function CourseSearch() {
       const cat = await getCatalog({ force });
       setCatalog(cat);
       setMeta(correctionMeta(cat));
+      return cat;
     } catch {
       setError('카탈로그를 불러오지 못했습니다. (오프라인이고 캐시도 없음)');
+      return null;
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadTimetables() {
+  async function loadTimetables(cat = catalog) {
     if (!uid) return;
     try {
       const list = await listTimetables();
       setTimetables(list);
-      // 홈에서 고른 시간표가 사라졌으면 확정으로 되돌린다.
-      const pick = pickTimetable(list, null, readSelectedId());
+      // 홈에서 고른 시간표가 사라졌거나 지난 학기면 현재 학기 확정본으로 되돌린다.
+      const cur = cat ? currentSemester(cat) : null;
+      const pick = pickTimetable(list, cur, readSelectedId(), readSelectedAt());
       setTargetId(pick?.id ?? null);
     } catch { /* 오프라인 → 빈 목록 */ }
   }
 
   useEffect(() => {
-    loadCatalog();
-    loadTimetables();
+    loadCatalog().then((cat) => loadTimetables(cat));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
@@ -106,7 +108,7 @@ export default function CourseSearch() {
   }, [sections, q]);
 
   function changeTarget(id) {
-    writeSelectedId(id);      // 홈과 선택을 공유한다
+    selectTimetable(id);      // 홈과 선택을 공유한다(명시적 전환 — 타임스탬프 기록)
     setTargetId(id);
   }
 
@@ -190,7 +192,7 @@ export default function CourseSearch() {
   };
 
   return (
-    <PullToRefresh className="page" onRefresh={() => Promise.all([loadCatalog(true), loadTimetables()])}>
+    <PullToRefresh className="page" onRefresh={() => loadCatalog(true).then((cat) => loadTimetables(cat))}>
       <header className="page-header row">
         <BackButton />
         <h2>강의 검색</h2>
