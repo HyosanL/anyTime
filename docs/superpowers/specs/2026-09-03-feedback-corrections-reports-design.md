@@ -154,3 +154,11 @@ exports:
 - 신고별 1:1 관리자 답변(개별 문서 필요 → 익명 설계 위배).
 - 댓글 신고 결과 통보(댓글은 개별 신고 UI 자체가 제한적).
 - 제안·신고 결과에 사용자 재질문.
+
+## 구현
+
+2026-09-03 구현·배포 완료. 계획: `docs/superpowers/plans/2026-09-03-feedback-corrections-reports.md`.
+- `src/lib/appReport.js` → `src/lib/feedback.js`, `AppReportReplyPopup` → `FeedbackPopup` (3종 통합).
+- 수정 제안: 반려/적용/처리가 삭제 대신 `status` 전환 + 보존, `purgeCorrections`(월간) 정리.
+- 신고: `dismissReport` 가 `reportDismissReason`/`reportDismissedAt` 브레드크럼, 결과는 `getMyFeedback` 이 `deletedContent`/문서 존재로 판정.
+- 색인 추가 없음 (전부 `db.getAll`·단일필드·스캔).
