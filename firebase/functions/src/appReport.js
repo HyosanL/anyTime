@@ -1,7 +1,15 @@
+import { createHash } from 'node:crypto';
 import { onCall } from 'firebase-functions/v2/https';
-import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { adminPush } from './lib/adminNotify.js';
+
+// push.js 와 동일한 문서ID 규칙(sha256(endpoint) hex). endpoint 자체가 추측 불가능한
+// capability URL 이라 salt 불필요. 답변 시 pushSubscriptions/{subId} 를 그대로 찾는다.
+function subscriptionId(endpoint) {
+  return createHash('sha256').update(endpoint).digest('hex');
+}
 
 // 앱 문제 리포트 — 정보 수정 제안(corrections.js, 강의 데이터 오류용)과는 별개 채널.
 // 앱 자체의 버그·오류를 익명으로 접수한다(작성자 정보 미저장, corrections.js 와 동일한
@@ -16,12 +24,21 @@ export const submitAppReport = onCall({ secrets: [pushFanoutUrl, pushFanoutSecre
   const p = path != null ? String(path).slice(0, 200) : null;
   const u = ua != null ? String(ua).slice(0, 300) : null;
 
-  await db.collection('appReports').add({
+  const { endpoint } = request.data ?? {};
+  const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
+    ? subscriptionId(endpoint)
+    : null;
+
+  const ref = await db.collection('appReports').add({
     text: t,
     path: p,
     ua: u,
     standalone: !!standalone,
     status: 'pending',
+    subId,
+    reply: null,
+    replyStatus: null,
+    repliedAt: null,
     createdAt: FieldValue.serverTimestamp(),
   });
 
@@ -32,5 +49,56 @@ export const submitAppReport = onCall({ secrets: [pushFanoutUrl, pushFanoutSecre
     body: t.length > 80 ? `${t.slice(0, 80)}…` : t,
   });
 
-  return { status: 'OK' };
+  return { status: 'OK', id: ref.id };
+});
+
+// 내가 낸 리포트의 답변 조회 — 기기가 localStorage 에 적어 둔 자기 리포트 ID 로만 조회한다.
+// uid 검증 없음: ID 를 안다는 것이 곧 소유 증명이다(Firestore auto-ID 20자 ≈ 119비트,
+// 열거 불가 — getSharedPost 공유 토큰·푸시 endpoint 와 같은 위협 모델). subId·ua·path 는
+// 돌려주지 않는다(기기엔 불필요).
+export const getMyAppReports = onCall(async (request) => {
+  requireAuth(request);
+  const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
+  const clean = [...new Set(ids)]
+    .filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 64)
+    .slice(0, 20);
+  if (!clean.length) return { status: 'OK', items: [] };
+
+  const refs = clean.map((id) => db.collection('appReports').doc(id));
+  const snaps = await db.getAll(...refs);
+  const items = snaps
+    .filter((s) => s.exists)
+    .map((s) => {
+      const d = s.data();
+      return {
+        id: s.id,
+        text: d.text ?? '',
+        status: d.status ?? 'pending',
+        reply: d.reply ?? null,
+        replyStatus: d.replyStatus ?? null,
+        repliedAt: d.repliedAt ?? null,
+      };
+    });
+  return { status: 'OK', items };
+});
+
+// 앱 리포트 정리(월간) — 답변 후 30일, 방치된 pending 90일 경과분 삭제. 다른 월간 purge 와
+// 같은 크론('0 18 1 * *' UTC = 매월 2일 03:00 KST).
+export const purgeAppReports = onSchedule({ schedule: '0 18 1 * *', timeZone: 'UTC' }, async () => {
+  const now = Date.now();
+  const repliedCutoff = Timestamp.fromMillis(now - 30 * 24 * 60 * 60 * 1000);
+  const pendingCutoff = Timestamp.fromMillis(now - 90 * 24 * 60 * 60 * 1000);
+
+  const [repliedSnap, pendingSnap] = await Promise.all([
+    db.collection('appReports').where('status', '==', 'replied').where('repliedAt', '<', repliedCutoff).get(),
+    db.collection('appReports').where('status', '==', 'pending').where('createdAt', '<', pendingCutoff).get(),
+  ]);
+  const docs = [...repliedSnap.docs, ...pendingSnap.docs];
+  if (!docs.length) return;
+
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = db.batch();
+    for (const d of docs.slice(i, i + 400)) batch.delete(d.ref);
+    await batch.commit();
+  }
 });
