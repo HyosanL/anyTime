@@ -171,3 +171,15 @@ else if (reportDismissedAt)     → { type, id, outcome: 'kept',    note: report
 ## 구현
 
 계획: `docs/superpowers/plans/2026-09-03-feedback-notes-on-all-outcomes.md`.
+
+2026-09-03 구현·배포 완료.
+- `archiveDeleted` 에 `adminNote`. `applyCorrection`/`resolveCorrection` 가 `reply` 저장,
+  `pushCorrectionOutcome` 상태별 문구. `editPost`/`deletePost` 가 신고 맥락이면
+  `reportEditNote`/`reportEditedAt` 브레드크럼 + 삭제는 `archiveDeleted(reason:'admin')`.
+- `getMyFeedback` `contentReports` 결과 필드 `reason`→`note` 통일, `edited` 결과 추가.
+- `FeedbackPopup` 메모 줄(`.ar-pop-note`) + `edited` 문구.
+- `Moderation.jsx` `ModMemo`(접이식) + `CorrectionCard`/`ReportCard` 서브컴포넌트,
+  반려·무시 prompt() → 인라인 메모 + confirm(). 검열 탭 편집·AdminCourse 배너에 메모.
+- 참고: 프론트 변경분(FeedbackPopup/AdminCourse/Moderation/correction.css/home.css)이
+  다른 세션의 `git add -A` 로 커밋 `6a4cf65`("docs: plan — timetable image save options")
+  에 함께 담겼다. 코드는 정상, 커밋 메시지만 부정확.
