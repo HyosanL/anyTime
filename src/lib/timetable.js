@@ -15,6 +15,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { callFn } from './functions';
 import { kvGet, kvSet, kvDel } from './cache';
+import { honorsPreferred } from './semesterPhase';
 
 const LIST_KEY = 'timetables';
 const entryKey = (id) => `tt-entries:${id}`;
@@ -47,18 +48,31 @@ export function isOverlapError(e) {
 
 // ── 마지막으로 본 시간표(기기 기억) ──────────────────────────────────
 // 옛 시간표 id 는 BIGINT 라 숫자로 저장했지만 Firestore 문서ID 는 문자열이다 — 그대로 저장·비교.
+const SELECTED_AT_KEY = 'anytime:selectedTimetableAt';
+
 export function readSelectedId() {
   try { return localStorage.getItem(SELECTED_KEY) || null; } catch { return null; }
 }
+// 수동 복원(홈 이펙트) 등에서 부르는 조용한 미러 — 타임스탬프를 남기지 않는다.
 export function writeSelectedId(id) {
   try { localStorage.setItem(SELECTED_KEY, String(id)); } catch { /* ignore */ }
 }
+// 사용자가 스위처·검색에서 직접 고른 전환 — 타임스탬프를 남겨 지난 학기 유예 창의 기준으로 쓴다.
+export function selectTimetable(id) {
+  writeSelectedId(id);
+  try { localStorage.setItem(SELECTED_AT_KEY, String(Date.now())); } catch { /* ignore */ }
+}
+export function readSelectedAt() {
+  try { return Number(localStorage.getItem(SELECTED_AT_KEY)) || 0; } catch { return 0; }
+}
 
 // 기억해 둔 시간표가 목록에 없으면(삭제됨·다른 기기) 현재 학기 확정 → 아무거나로 되돌린다.
-export function pickTimetable(list, current, preferredId = null) {
+// 지난 학기를 가리키는 포인터는 '명시적 전환 후 14일'(honorsPreferred) 안에서만 존중한다 —
+// 그 밖에는 현재 학기 확정본으로. 작년에 만든 지난 학기 시간표에 갇히지 않게.
+export function pickTimetable(list, current, preferredId = null, preferredAt = 0) {
   if (!list?.length) return null;
   const byId = preferredId && list.find((t) => t.id === preferredId);
-  if (byId) return byId;
+  if (byId && honorsPreferred(byId, current, preferredAt, Date.now())) return byId;
   const cur = current && list.find((t) => t.year === current.year && t.term === current.term && t.isPrimary);
   return cur ?? list.find((t) => t.isPrimary) ?? list[0];
 }
