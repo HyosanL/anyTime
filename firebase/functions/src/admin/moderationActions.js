@@ -158,10 +158,14 @@ async function listCorrections(uid, payload) {
 }
 
 async function rejectCorrection(uid, payload) {
-  // 반려는 기록 불필요 → 즉시 삭제(익명이라 이력 가치도 없음).
   const id = String(payload.id ?? '');
   if (!id) invalid('id가 필요합니다.');
-  await db.collection('corrections').doc(id).delete();
+  const reason = payload.reason != null ? String(payload.reason).trim().slice(0, 300) : null;
+  const ref = db.collection('corrections').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { status: 'OK' };
+  await ref.update({ status: 'rejected', reply: reason || null, repliedAt: FieldValue.serverTimestamp() });
+  await pushCorrectionOutcome(snap);
   return { status: 'OK' };
 }
 
@@ -174,10 +178,17 @@ async function applyCorrection(uid, payload) {
   // 처리한다(확인됨) — 이 함수는 반영 후 큐(correction 문서) 정리만 담당한다.
   const status = await db.runTransaction(async (tx) => {
     const st = await applyCorrectionRowInternal(tx, db, id);
-    // 반영 성공(OK) 또는 '이미 있음'(ALREADY_DONE)은 큐에 남길 이유가 없어 삭제한다.
-    if (st === 'OK' || st === 'ALREADY_DONE') tx.delete(db.collection('corrections').doc(id));
+    // 삭제 대신 'applied' 로 남겨 제출자에게 결과를 보여준다(purgeCorrections 가 30일 후 정리).
+    if (st === 'OK' || st === 'ALREADY_DONE') {
+      tx.update(db.collection('corrections').doc(id),
+        { status: 'applied', repliedAt: FieldValue.serverTimestamp() });
+    }
     return st;
   });
+  if (status === 'OK' || status === 'ALREADY_DONE') {
+    const snap = await db.collection('corrections').doc(id).get();
+    if (snap.exists) await pushCorrectionOutcome(snap);
+  }
   return { status };
 }
 
@@ -186,9 +197,14 @@ async function applyCorrection(uid, payload) {
 async function resolveCorrection(uid, payload) {
   const ids = Array.isArray(payload.ids) ? payload.ids : (payload.id != null ? [payload.id] : []);
   if (!ids.length) return { status: 'OK' };
+  const refs = ids.map((id) => db.collection('corrections').doc(String(id)));
+  const snaps = await db.getAll(...refs);
   const batch = db.batch();
-  for (const id of ids) batch.delete(db.collection('corrections').doc(String(id)));
+  for (const s of snaps) {
+    if (s.exists) batch.update(s.ref, { status: 'resolved', repliedAt: FieldValue.serverTimestamp() });
+  }
   await batch.commit();
+  for (const s of snaps) if (s.exists) await pushCorrectionOutcome(s);
   return { status: 'OK' };
 }
 
@@ -270,6 +286,21 @@ async function replyAppReport(uid, payload) {
   return { status: 'OK' };
 }
 
+// 수정 제안 결과를 제출 기기에 알린다(subId 있을 때). 실패는 삼킨다.
+async function pushCorrectionOutcome(snap) {
+  const subId = snap.get('subId');
+  if (!subId) return;
+  try {
+    const subSnap = await db.collection('pushSubscriptions').doc(subId).get();
+    if (!subSnap.exists) return;
+    await pushFanout(pushFanoutUrl.value(), pushFanoutSecret.value(),
+      { kind: 'feedback_reply', title: '📬 제안 결과', body: '보내주신 수정 제안이 검토됐어요.', path: '/' },
+      [{ endpoint: subSnap.get('endpoint'), p256dh: subSnap.get('p256dh'), auth: subSnap.get('auth') }]);
+  } catch (e) {
+    console.error('[pushCorrectionOutcome] push failed', e);
+  }
+}
+
 async function listRepliedAppReports() {
   const snap = await db.collection('appReports')
     .where('status', '==', 'replied')
@@ -342,6 +373,10 @@ async function dismissReport(uid, payload) {
   const id = String(payload.id ?? '');
   if (!id) invalid('id가 필요합니다.');
   const ref = db.collection(collectionName).doc(id);
+  // reportCount 는 0으로 돌아가도 이 두 필드는 브레드크럼으로 남긴다 — 신고자 기기가
+  // getMyFeedback 으로 '검토 결과 유지'와 그 사유를 조회한다.
+  const reason = payload.reason != null ? String(payload.reason).trim().slice(0, 300) : null;
+  const dismissMark = { reportDismissReason: reason || null, reportDismissedAt: FieldValue.serverTimestamp() };
 
   if (table === 'board_post') {
     // board_post 의 reactions 는 like/dislike/report 가 한 서브컬렉션에 섞여 있다
@@ -355,14 +390,14 @@ async function dismissReport(uid, payload) {
     const batch = db.batch();
     for (const d of reportReactions.docs) batch.delete(d.ref);
     for (const d of reportEvents.docs) batch.delete(d.ref);
-    batch.update(ref, { reportCount: 0, reportReviewedCount: 0 });
+    batch.update(ref, { reportCount: 0, reportReviewedCount: 0, ...dismissMark });
     await batch.commit();
   } else {
     // review/class_memo: 이 대상들엔 좋아요 중복방지가 없어 reactions/events 서브
     // 컬렉션이 애초에 report 전용이다 — 통째로 지워도 안전하다.
     await db.recursiveDelete(ref.collection('reactions'));
     await db.recursiveDelete(ref.collection('events'));
-    await ref.update({ reportCount: 0, reportReviewedCount: 0 });
+    await ref.update({ reportCount: 0, reportReviewedCount: 0, ...dismissMark });
   }
   return { status: 'OK' };
 }
