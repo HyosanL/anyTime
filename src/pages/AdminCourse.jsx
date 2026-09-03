@@ -101,6 +101,7 @@ export default function AdminCourse() {
   const [gone, setGone] = useState(false); // 과목을 지운 뒤
   // 수정 제안에서 딥링크로 넘어온 경우: 배너로 제안값을 보여 주고, 한 번에 적용/정리한다.
   const [corr, setCorr] = useState(location.state?.corr ?? null);
+  const [note, setNote] = useState(''); // 제안 처리 시 제출자에게 표시될 메모(선택)
   const corrId = sp.get('corr');
   const secParam = sp.get('sec');
   const addParam = sp.get('add');
@@ -174,10 +175,11 @@ export default function AdminCourse() {
   async function applyProposal() {
     if (!corr) return;
     setMsg('');
-    const r = await callAdmin('apply_correction', { id: corr.id });
+    const reason = note.trim() || undefined;
+    const r = await callAdmin('apply_correction', { id: corr.id, reason });
     if (!r.ok && r.status !== 'ALREADY_DONE') { setMsg(`⚠️ 적용 실패: ${r.status ?? '오류'}`); return; }
     const others = (corr.ids || []).filter((id) => id !== corr.id);
-    if (others.length) await callAdmin('resolve_correction', { ids: others });
+    if (others.length) await callAdmin('resolve_correction', { ids: others, reason });
     setCat(await getCatalog({ force: true }).catch(() => cat));
     setMsg(r.status === 'ALREADY_DONE' ? '✅ 이미 반영돼 있어 제안만 정리했습니다.' : '✅ 제안을 반영했습니다.');
     setCorr(null);
@@ -185,7 +187,7 @@ export default function AdminCourse() {
   // 제안 정리: 반영 없이 큐에서 삭제(직접 고친 뒤 처리완료).
   async function dismissProposal() {
     if (!corr) return;
-    await callAdmin('resolve_correction', { ids: corr.ids || [corr.id] });
+    await callAdmin('resolve_correction', { ids: corr.ids || [corr.id], reason: note.trim() || undefined });
     setMsg('✅ 제안을 정리했습니다.');
     setCorr(null);
   }
@@ -235,6 +237,9 @@ export default function AdminCourse() {
                 ? '아래 «새 분반 추가»에 값이 채워져 있습니다. 그대로 만들거나 고쳐서 추가한 뒤, 또는 아래 버튼으로 한 번에 반영하세요.'
                 : '해당 분반이 아래에 펼쳐져 있습니다. 값을 확인하고 직접 고치거나, 아래 버튼으로 제안값을 그대로 반영하세요.'}
             </p>
+            <textarea className="ar-reply-ta" rows={2} value={note} maxLength={300}
+              placeholder="제출자에게 표시될 메모 (선택 — 예: '요일만 반영, 강의실은 확인 후 별도 수정')"
+              onChange={(e) => setNote(e.target.value)} />
             <div className="adm-corr-banner-acts">
               <button className="btn-add btn-sm" onClick={applyProposal}>
                 {corr.target === 'section_add' ? '제안대로 분반 생성' : '제안대로 적용'}

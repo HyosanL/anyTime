@@ -853,3 +853,5 @@
 }
 /* 앱 리포트 답변 팝업: 원래 질문 인용 */
 .ar-pop-q { color: var(--text-3); font-size: 0.78rem; font-style: italic; }
+/* 관리자가 결과에 덧붙인 메모 */
+.ar-pop-note { color: var(--text-2); font-size: 0.82rem; padding-left: 0.5rem; border-left: 2px solid var(--border); }

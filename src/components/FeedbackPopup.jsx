@@ -6,21 +6,22 @@ const APP_STATUS = { reviewing: '검토중', resolved: '해결됨', planned: '�
 
 function appReportLine(it) {
   return { key: `appReport:${it.id}`, badge: APP_STATUS[it.replyStatus] || '답변',
-    q: it.summary, a: it.reply };
+    q: it.summary, a: it.reply, note: null };
 }
 function correctionLine(it) {
   const a = it.status === 'applied' && it.autoApplied ? '📌 여러 명이 같은 제안을 해서 자동 반영됐어요.'
     : it.status === 'applied' ? '✅ 제안이 반영됐어요.'
-    : it.status === 'rejected' ? (it.reply ? `❌ 반려됐어요: ${it.reply}` : '❌ 이번엔 반영하지 않았어요.')
-    : it.status === 'resolved' ? '✅ 확인 후 직접 수정했어요.'
+    : it.status === 'rejected' ? '🔎 검토했지만 이번엔 반영하지 않았어요.'
+    : it.status === 'resolved' ? '✅ 확인 후 처리했어요.'
     : null;
-  return a ? { key: `correction:${it.id}`, badge: '수정 제안', q: it.summary, a } : null;
+  return a ? { key: `correction:${it.id}`, badge: '수정 제안', q: it.summary, a, note: it.reply || null } : null;
 }
 function contentLine(it) {
   const a = it.outcome === 'removed' ? '🗑️ 신고하신 내용이 삭제 조치됐어요.'
-    : it.outcome === 'kept' ? (it.reason ? `검토 결과 유지됩니다: ${it.reason}` : '검토 결과 규정 위반이 아니라 유지됩니다.')
+    : it.outcome === 'edited' ? '✏️ 신고하신 내용이 수정 조치됐어요.'
+    : it.outcome === 'kept' ? (it.note ? '검토 결과 유지됩니다.' : '검토 결과 규정 위반이 아니라 유지됩니다.')
     : null;
-  return a ? { key: `content:${it.type}_${it.id}`, badge: '신고', q: '', a } : null;
+  return a ? { key: `content:${it.type}_${it.id}`, badge: '신고', q: '', a, note: it.note || null } : null;
 }
 
 export default function FeedbackPopup() {
@@ -66,6 +67,7 @@ export default function FeedbackPopup() {
               </div>
               {l.q && <p className="ntc-content ar-pop-q">“{l.q}”</p>}
               <p className="ntc-content">{l.a}</p>
+              {l.note && <p className="ntc-content ar-pop-note">↳ {l.note}</p>}
             </article>
           ))}
         </div>

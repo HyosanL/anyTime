@@ -284,10 +284,12 @@ export default function Moderation() {
   // ── 게시글·댓글 / 신고 공통: 삭제 ──
   // board_comment 는 boardPosts/{postId}/comments/{id} 서브컬렉션이라 postId 가 있어야
   // 위치를 특정할 수 있다(옛 낱개 테이블 삭감이 아니라 Firestore 구조 차이에서 온 계약 확장).
-  async function remove(it) {
+  // note = 신고자에게 표시될 메모(선택). 신고 맥락 삭제는 서버가 복구 가능하게 아카이브한다.
+  async function remove(it, note) {
     if (!confirm(`이 ${TYPE_LABEL[it.type]}을(를) 삭제할까요?`)) return;
     const payload = { table: it.type, id: it.id };
     if (it.type === 'board_comment') payload.postId = it.meta?.postId;
+    if (note && note.trim()) payload.reason = note.trim();
     const r = await call('delete_post', payload);
     if (r.ok) {
       setItems((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
@@ -303,15 +305,21 @@ export default function Moderation() {
         : { courseComment: edit.text };
     const payload = { table: edit.type, id: edit.id, fields };
     if (edit.type === 'board_comment') payload.postId = edit.postId;
+    if (edit.note && edit.note.trim()) payload.reason = edit.note.trim();
     const r = await call('edit_post', payload);
-    if (r.ok) { setEdit(null); load(); }
+    if (r.ok) {
+      setEdit(null);
+      setReported((prev) => prev.filter((x) => !(x.type === edit.type && x.id === edit.id)));
+      load();
+    }
   }
 
   // ── 신고: 무시(정상 처리) — 신고 수 초기화(담합·오신고 폭주 리셋용) ──
-  async function dismissReport(it) {
-    const reason = prompt('이 신고를 무시(정상 처리)합니다. 유지 사유 (선택 — 신고자에게 표시됩니다):');
-    if (reason === null) return;   // 취소
-    const r = await call('dismiss_report', { table: it.type, id: it.id, reason: reason.trim() });
+  async function dismissReport(it, note) {
+    if (!confirm('이 신고를 무시(정상 처리)할까요? 신고 수가 0으로 초기화됩니다.')) return;
+    const payload = { table: it.type, id: it.id };
+    if (note && note.trim()) payload.reason = note.trim();
+    const r = await call('dismiss_report', payload);
     if (r.ok) setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
   }
 
@@ -321,6 +329,18 @@ export default function Moderation() {
     const r = await call('ack_report', { table: it.type, id: it.id });
     if (r.ok) setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
     else alert('확인 처리 실패: ' + (r.status ?? '오류'));
+  }
+
+  // 신고 카드에서 바로 내용 수정 → 서버가 '수정 조치' 로 신고자에게 통보하고 큐에서 뺀다.
+  async function saveEditFrom(it, text, note) {
+    const fields = (it.type === 'class_memo' || it.type === 'board_post') ? { content: text } : { courseComment: text };
+    const payload = { table: it.type, id: it.id, fields };
+    if (note && note.trim()) payload.reason = note.trim();
+    const r = await call('edit_post', payload);
+    if (r.ok) {
+      setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
+      setItems((prev) => prev.map((x) => (x.type === it.type && x.id === it.id ? { ...x, text } : x)));
+    } else alert('수정 실패: ' + (r.status ?? '오류'));
   }
   async function ackAllReports() {
     if (!reported.length) return;
@@ -360,10 +380,10 @@ export default function Moderation() {
     return r;
   }
 
-  // ── 수정 제안: 그룹 단위 적용/반려 ──
-  async function applyGroup(g) {
+  // ── 수정 제안: 그룹 단위 적용/반려 (note = 제출자에게 표시될 관리자 메모, 선택) ──
+  async function applyGroup(g, note) {
     for (const id of g.ids) {
-      const r = await call('apply_correction', { id });
+      const r = await call('apply_correction', { id, reason: note });
       // ALREADY_DONE(예: 분반추가인데 그 사이 이미 생성됨)은 정리된 것으로 보고 넘어간다.
       if (!r.ok && r.status !== 'ALREADY_DONE') { alert('적용 실패: ' + (r.status ?? '오류') + (r.status === 'BAD_TIME' ? ' (시간 형식 오류)' : '')); return; }
     }
@@ -376,10 +396,9 @@ export default function Moderation() {
     const path = editPath(g);
     if (path) navigate(path, { state: { corr: { ...g } } });
   }
-  async function rejectGroup(g) {
-    const reason = prompt('반려 사유 (선택 — 제안자에게 그대로 표시됩니다. 비워도 반려됩니다)');
-    if (reason === null) return;   // 취소
-    for (const id of g.ids) await call('reject_correction', { id, reason: reason.trim() });
+  async function rejectGroup(g, note) {
+    if (!confirm('이 제안을 반려할까요?')) return;
+    for (const id of g.ids) await call('reject_correction', { id, reason: note });
     setCorrs((prev) => prev.filter((c) => !g.ids.includes(c.id)));
   }
   // 자동반영 알림 확인 처리
@@ -471,6 +490,9 @@ export default function Moderation() {
                 {edit && edit.type === it.type && edit.id === it.id ? (
                   <div className="mod-edit">
                     <textarea value={edit.text} onChange={(e) => setEdit({ ...edit, text: e.target.value })} rows={3} />
+                    <textarea className="ar-reply-ta" rows={2} value={edit.note ?? ''} maxLength={300}
+                      placeholder="신고자에게 표시될 메모 (선택 — 신고 누적 중인 글에만 전달됩니다)"
+                      onChange={(e) => setEdit({ ...edit, note: e.target.value })} />
                     <div className="mod-edit-actions">
                       <button className="btn-add btn-sm" onClick={saveEdit}>저장</button>
                       <button className="rev-del-btn" onClick={() => setEdit(null)}>취소</button>
@@ -487,7 +509,7 @@ export default function Moderation() {
 
                 <div className="mod-actions">
                   {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
-                  <button className="rev-del-btn" onClick={() => setEdit({ type: it.type, id: it.id, text: editableText(it), postId: it.meta?.postId })}>수정</button>
+                  <button className="rev-del-btn" onClick={() => setEdit({ type: it.type, id: it.id, text: editableText(it), postId: it.meta?.postId, note: '' })}>수정</button>
                   <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
                 </div>
               </li>
@@ -508,26 +530,9 @@ export default function Moderation() {
             <li className="empty"><span className="empty-emoji">🚨</span><p>신고 누적 중인 글이 없습니다.</p></li>
           )}
           {reported.map((it) => (
-            <li key={`rep-${it.type}-${it.id}`} className="card mod-card flagged">
-              <div className="mod-card-top">
-                <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
-                <span className="mod-course">{it.courseCode}{it.meta?.sectionNo ? `·${it.meta.sectionNo}분반` : ''}</span>
-                <span className="tag tag-warn mod-badge">🚨 신고 {it.reportCount}건</span>
-                <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
-              </div>
-              <p
-                className={`mod-text${contentPath(it) ? ' mod-text-link' : ''}`}
-                onClick={() => { const p = contentPath(it); if (p) navigate(p); }}
-              >
-                <Highlighted text={it.text || '(내용 없음)'} />
-              </p>
-              <div className="mod-actions">
-                {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
-                <button className="btn-add btn-sm" onClick={() => ackReport(it)}>확인</button>
-                <button className="btn-remove btn-sm" onClick={() => remove(it)}>삭제</button>
-                <button className="rev-del-btn" onClick={() => dismissReport(it)}>무시(정상)</button>
-              </div>
-            </li>
+            <ReportCard key={`rep-${it.type}-${it.id}`} it={it} fmtDateTime={fmtDateTime} navigate={navigate}
+              onAck={ackReport} onDismiss={dismissReport} onDelete={remove}
+              onEdit={(t, note) => saveEditFrom(it, t, note)} />
           ))}
           </ul>
         </>
@@ -569,35 +574,10 @@ export default function Moderation() {
             {corrGroups.length === 0 && (
               <li className="empty"><span className="empty-emoji">🚩</span><p>대기 중인 수정 제안이 없습니다.</p></li>
             )}
-            {corrGroups.map((g) => {
-              const highRisk = HIGH_RISK.has(`${g.target}:${g.field}`) && g.count >= 3;
-              return (
-                <li key={`corr-${g.id}`} className={`card mod-card ${highRisk ? 'flagged' : ''}`}>
-                  <div className="mod-card-top">
-                    <span className="tag tag-primary mod-type">{g.target === 'section_add' ? '분반추가' : '수정제안'}</span>
-                    <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
-                    {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
-                    {highRisk && <span className="tag tag-warn mod-badge">⚠ 검토 필요</span>}
-                    <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
-                  </div>
-                  <div className="mod-text">
-                    <p className="mod-corr-diff">
-                      <span className="mod-diff-label">현재</span>
-                      <span className="mod-diff-before">{currentValue(cat, g) ?? '—'}</span>
-                      <span className="mod-diff-arrow">→</span>
-                      <span className="mod-diff-label">제안</span>
-                      <b className="mod-diff-after">{g.suggested ? fmtCorrAfter(g) : '(제안값 없음)'}</b>
-                    </p>
-                    {g.note ? <p className="mod-corr-note">설명: {g.note}</p> : null}
-                  </div>
-                  <div className="mod-actions">
-                    <button className="btn-add btn-sm" onClick={() => applyGroup(g)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
-                    {editPath(g) && <button className="link-btn" onClick={() => openEdit(g)}>✏️ 편집에서 열기</button>}
-                    <button className="rev-del-btn" onClick={() => rejectGroup(g)}>반려</button>
-                  </div>
-                </li>
-              );
-            })}
+            {corrGroups.map((g) => (
+              <CorrectionCard key={`corr-${g.id}`} g={g} cat={cat} fmtDateTime={fmtDateTime}
+                onApply={applyGroup} onReject={rejectGroup} onEdit={openEdit} />
+            ))}
           </ul>
         </>
       )}
@@ -672,6 +652,99 @@ export default function Moderation() {
 }
 
 const REPLY_STATUS_LABEL = { reviewing: '검토중', resolved: '해결됨', planned: '반영예정' };
+
+// 제출자에게 그대로 전달되는 선택 메모. 적용/반려/삭제 어느 버튼을 눌러도 이 값이 실린다.
+function ModMemo({ value, onChange }) {
+  const [open, setOpen] = useState(!!value);
+  if (!open) {
+    return <button type="button" className="link-btn mod-memo-toggle" onClick={() => setOpen(true)}>↳ 제출자에게 메모</button>;
+  }
+  return (
+    <textarea className="ar-reply-ta" rows={2} value={value} maxLength={300}
+      placeholder="제출자에게 표시될 메모 (선택 — 예: '요일만 수정, 강의실은 그대로 두었어요')"
+      onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
+function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit }) {
+  const [note, setNote] = useState('');
+  const highRisk = HIGH_RISK.has(`${g.target}:${g.field}`) && g.count >= 3;
+  const memo = note.trim() || undefined;
+  return (
+    <li className={`card mod-card ${highRisk ? 'flagged' : ''}`}>
+      <div className="mod-card-top">
+        <span className="tag tag-primary mod-type">{g.target === 'section_add' ? '분반추가' : '수정제안'}</span>
+        <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
+        {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
+        {highRisk && <span className="tag tag-warn mod-badge">⚠ 검토 필요</span>}
+        <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
+      </div>
+      <div className="mod-text">
+        <p className="mod-corr-diff">
+          <span className="mod-diff-label">현재</span>
+          <span className="mod-diff-before">{currentValue(cat, g) ?? '—'}</span>
+          <span className="mod-diff-arrow">→</span>
+          <span className="mod-diff-label">제안</span>
+          <b className="mod-diff-after">{g.suggested ? fmtCorrAfter(g) : '(제안값 없음)'}</b>
+        </p>
+        {g.note ? <p className="mod-corr-note">설명: {g.note}</p> : null}
+      </div>
+      <ModMemo value={note} onChange={setNote} />
+      <div className="mod-actions">
+        <button className="btn-add btn-sm" onClick={() => onApply(g, memo)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
+        {editPath(g) && <button className="link-btn" onClick={() => onEdit(g)}>✏️ 편집에서 열기</button>}
+        <button className="rev-del-btn" onClick={() => onReject(g, memo)}>반려</button>
+      </div>
+    </li>
+  );
+}
+
+function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onEdit }) {
+  const [note, setNote] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(it.text || '');
+  const memo = note.trim() || undefined;
+  const canEdit = it.type === 'review' || it.type === 'class_memo' || it.type === 'board_post';
+
+  return (
+    <li className="card mod-card flagged">
+      <div className="mod-card-top">
+        <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
+        <span className="mod-course">{it.courseCode}{it.meta?.sectionNo ? `·${it.meta.sectionNo}분반` : ''}</span>
+        <span className="tag tag-warn mod-badge">🚨 신고 {it.reportCount}건</span>
+        <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
+      </div>
+
+      {editing ? (
+        <textarea className="ar-reply-ta" rows={3} value={text} onChange={(e) => setText(e.target.value)} />
+      ) : (
+        <p className={`mod-text${contentPath(it) ? ' mod-text-link' : ''}`}
+          onClick={() => { const p = contentPath(it); if (p) navigate(p); }}>
+          <Highlighted text={it.text || '(내용 없음)'} />
+        </p>
+      )}
+
+      <ModMemo value={note} onChange={setNote} />
+
+      <div className="mod-actions">
+        {editing ? (
+          <>
+            <button className="btn-add btn-sm" onClick={() => { onEdit(text, memo); setEditing(false); }}>저장(수정 조치)</button>
+            <button className="rev-del-btn" onClick={() => { setText(it.text || ''); setEditing(false); }}>취소</button>
+          </>
+        ) : (
+          <>
+            {contentPath(it) && <button className="link-btn" onClick={() => navigate(contentPath(it))}>원문 보기</button>}
+            <button className="btn-add btn-sm" onClick={() => onAck(it)}>확인</button>
+            {canEdit && <button className="link-btn" onClick={() => setEditing(true)}>수정</button>}
+            <button className="btn-remove btn-sm" onClick={() => onDelete(it, memo)}>삭제</button>
+            <button className="rev-del-btn" onClick={() => onDismiss(it, memo)}>무시(정상)</button>
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
 
 function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
   const [reply, setReply] = useState('');

@@ -54,6 +54,9 @@
 .mod-diff-after { color: var(--primary); }
 .mod-corr-note { margin: 0.3rem 0 0; font-size: 0.82rem; color: var(--text-2); }
 
+/* 모더레이션 카드: 제출자에게 남길 메모 토글 */
+.mod-memo-toggle { align-self: flex-start; margin: 0.2rem 0; font-size: 0.82rem; }
+
 /* ── 요일·교시 빌더 ── */
 .cor-time-builder { display: flex; flex-direction: column; gap: 0.45rem; }
 .cor-time-row { display: flex; align-items: center; gap: 0.35rem; }
