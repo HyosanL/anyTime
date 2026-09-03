@@ -1,6 +1,7 @@
 import { FieldPath } from 'firebase-admin/firestore';
 import { db, FieldValue, invalid } from '../lib/context.js';
 import { applyCorrectionRowInternal } from '../corrections.js';
+import { archiveDeleted } from '../lib/archive.js';
 import { pushFanout } from '../lib/pushFanout.js';
 import { pushFanoutUrl, pushFanoutSecret } from '../lib/secrets.js';
 
@@ -20,6 +21,11 @@ import { pushFanoutUrl, pushFanoutSecret } from '../lib/secrets.js';
 
 function millis(ts) {
   return typeof ts?.toMillis === 'function' ? ts.toMillis() : 0;
+}
+
+// 제출자에게 그대로 표시되는 관리자 메모: 트림, 300자 상한, 빈 값은 null.
+function noteOf(payload) {
+  return payload.reason != null ? (String(payload.reason).trim().slice(0, 300) || null) : null;
 }
 
 // =====================================================================
@@ -160,18 +166,18 @@ async function listCorrections(uid, payload) {
 async function rejectCorrection(uid, payload) {
   const id = String(payload.id ?? '');
   if (!id) invalid('id가 필요합니다.');
-  const reason = payload.reason != null ? String(payload.reason).trim().slice(0, 300) : null;
   const ref = db.collection('corrections').doc(id);
   const snap = await ref.get();
   if (!snap.exists) return { status: 'OK' };
-  await ref.update({ status: 'rejected', reply: reason || null, repliedAt: FieldValue.serverTimestamp() });
-  await pushCorrectionOutcome(snap);
+  await ref.update({ status: 'rejected', reply: noteOf(payload), repliedAt: FieldValue.serverTimestamp() });
+  await pushCorrectionOutcome(await ref.get());
   return { status: 'OK' };
 }
 
 async function applyCorrection(uid, payload) {
   const id = String(payload.id ?? '');
   if (!id) invalid('id가 필요합니다.');
+  const note = noteOf(payload);
   // 실제 반영 로직은 corrections.js(applyCorrectionRowInternal) 에 단일화 —
   // 관리자 수동적용과 자동반영(submitCorrection 경로)이 같은 코드를 쓴다.
   // catalogVersion 증가는 applyCorrectionRowInternal 내부 markApplied() 가 이미
@@ -181,7 +187,7 @@ async function applyCorrection(uid, payload) {
     // 삭제 대신 'applied' 로 남겨 제출자에게 결과를 보여준다(purgeCorrections 가 30일 후 정리).
     if (st === 'OK' || st === 'ALREADY_DONE') {
       tx.update(db.collection('corrections').doc(id),
-        { status: 'applied', repliedAt: FieldValue.serverTimestamp() });
+        { status: 'applied', reply: note, repliedAt: FieldValue.serverTimestamp() });
     }
     return st;
   });
@@ -197,14 +203,20 @@ async function applyCorrection(uid, payload) {
 async function resolveCorrection(uid, payload) {
   const ids = Array.isArray(payload.ids) ? payload.ids : (payload.id != null ? [payload.id] : []);
   if (!ids.length) return { status: 'OK' };
+  const note = noteOf(payload);
   const refs = ids.map((id) => db.collection('corrections').doc(String(id)));
   const snaps = await db.getAll(...refs);
   const batch = db.batch();
   for (const s of snaps) {
-    if (s.exists) batch.update(s.ref, { status: 'resolved', repliedAt: FieldValue.serverTimestamp() });
+    if (s.exists) batch.update(s.ref, { status: 'resolved', reply: note, repliedAt: FieldValue.serverTimestamp() });
   }
   await batch.commit();
-  for (const s of snaps) if (s.exists) await pushCorrectionOutcome(s);
+  // reply 를 갓 쓴 최신본으로 푸시 문구를 만든다.
+  const liveRefs = snaps.filter((s) => s.exists).map((s) => s.ref);
+  if (liveRefs.length) {
+    const fresh = await db.getAll(...liveRefs);
+    for (const s of fresh) await pushCorrectionOutcome(s);
+  }
   return { status: 'OK' };
 }
 
@@ -290,11 +302,22 @@ async function replyAppReport(uid, payload) {
 async function pushCorrectionOutcome(snap) {
   const subId = snap.get('subId');
   if (!subId) return;
+  const status = snap.get('status');
+  const autoApplied = snap.get('autoApplied') === true;
+  const reply = (snap.get('reply') || '').trim();
+  const title = status === 'rejected' ? '🔎 제안 검토 결과'
+    : (status === 'applied' && autoApplied) ? '📌 제안이 자동 반영됐어요'
+    : status === 'applied' ? '✅ 제안이 반영됐어요'
+    : '✅ 제안 처리 완료'; // resolved
+  const fallback = status === 'rejected' ? '보내주신 수정 제안을 검토했어요.'
+    : status === 'applied' ? '보내주신 수정 제안이 반영됐어요.'
+    : '보내주신 수정 제안을 확인하고 처리했어요.';
+  const body = reply ? (reply.length > 80 ? `${reply.slice(0, 80)}…` : reply) : fallback;
   try {
     const subSnap = await db.collection('pushSubscriptions').doc(subId).get();
     if (!subSnap.exists) return;
     await pushFanout(pushFanoutUrl.value(), pushFanoutSecret.value(),
-      { kind: 'feedback_reply', title: '📬 제안 결과', body: '보내주신 수정 제안이 검토됐어요.', path: '/' },
+      { kind: 'feedback_reply', title, body, path: '/' },
       [{ endpoint: subSnap.get('endpoint'), p256dh: subSnap.get('p256dh'), auth: subSnap.get('auth') }]);
   } catch (e) {
     console.error('[pushCorrectionOutcome] push failed', e);
@@ -702,10 +725,21 @@ async function deleteCommentTree(postRef, commentId) {
 // 없으면 전체 컬렉션을 훑어야 하는데(비용·확장성 문제, capacity-cost 메모 참고)
 // 그건 이 앱의 egress 절약 원칙에 어긋난다 — payload 에 postId 를 추가로 요구한다
 // (Firestore 구조 차이에서 오는 불가피한 계약 확장, 옛 낱개 필드 삭감이 아님).
+// 관리자 메모가 붙거나 신고 누적分을 지우는 삭제는 복구 가능하게 아카이브한다.
+// (exam_archive·board_comment 는 신고 대상이 아니라 제외 — 항상 맨 삭제.)
+const ARCHIVE_ON_DELETE = new Set(['review', 'class_memo', 'board_post']);
+
+function archiveTextOf(table, data) {
+  if (table === 'board_post') return [data.title, data.content].filter(Boolean).join(' — ') || null;
+  if (table === 'review') return [data.profComment, data.courseComment].filter(Boolean).join(' / ') || null;
+  return data.content ?? null; // class_memo
+}
+
 async function deletePost(uid, payload) {
   const table = String(payload.table ?? '');
   const id = String(payload.id ?? '');
   if (!id) invalid('id가 필요합니다.');
+  const note = noteOf(payload);
 
   if (table === 'board_comment') {
     const postId = String(payload.postId ?? '');
@@ -719,9 +753,38 @@ async function deletePost(uid, payload) {
 
   const collectionName = POST_COLLECTIONS[table];
   if (!collectionName) invalid('알 수 없는 게시물 종류입니다.');
+  const ref = db.collection(collectionName).doc(id);
+
+  if (ARCHIVE_ON_DELETE.has(table)) {
+    const snap = await ref.get();
+    if (snap.exists && (note || (snap.get('reportCount') ?? 0) > 0)) {
+      const data = snap.data();
+      let label = data.courseCode ?? '';
+      if (table === 'board_post') {
+        const bs = await db.collection('boards').doc(String(data.boardId ?? '')).get();
+        label = bs.exists ? bs.get('name') : '게시판';
+      }
+      await db.runTransaction(async (tx) => {
+        archiveDeleted(tx, db, {
+          type: table,
+          origId: id,
+          label,
+          text: archiveTextOf(table, data),
+          reportCount: data.reportCount ?? 0,
+          reason: 'admin',
+          adminNote: note,
+          snapshot: { id, ...data },
+        });
+        tx.delete(ref);
+      });
+      await db.recursiveDelete(ref); // tx 밖 서브컬렉션 잔여분
+      return { status: 'OK' };
+    }
+  }
+
   // board_post/review/exam_archive 삭제는 recursiveDelete 한 번으로 _private·
   // comments·events·reactions·watchers 서브컬렉션까지 함께 제거된다.
-  await db.recursiveDelete(db.collection(collectionName).doc(id));
+  await db.recursiveDelete(ref);
   return { status: 'OK' };
 }
 
@@ -745,7 +808,21 @@ async function editPost(uid, payload) {
 
   const collectionName = POST_COLLECTIONS[table];
   if (!collectionName) invalid('알 수 없는 게시물 종류입니다.');
-  await db.collection(collectionName).doc(id).update(patch);
+  const ref = db.collection(collectionName).doc(id);
+
+  // 신고 누적 중인 글을 관리자가 직접 고쳤다면: 그 신고의 결과를 '수정 조치' 로 남기고
+  // (신고자가 getMyFeedback 으로 조회) 신고 큐에서 뺀다. reportDismissedAt 과 같은 패턴.
+  if (ARCHIVE_ON_DELETE.has(table)) {
+    const snap = await ref.get();
+    if (snap.exists && (snap.get('reportCount') ?? 0) > 0) {
+      patch.reportEditNote = noteOf(payload);
+      patch.reportEditedAt = FieldValue.serverTimestamp();
+      patch.reportCount = 0;
+      patch.reportReviewedCount = 0;
+    }
+  }
+
+  await ref.update(patch);
   return { status: 'OK' };
 }
 
