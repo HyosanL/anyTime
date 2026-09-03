@@ -156,7 +156,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       const S = cv.width / dims.w;
       paintWallpaper(ctx, S, {
         canvasW: dims.w, canvasH: dims.h, bgColor: bg,
-        photo, photoT: photoTRef.current, glassTone,
+        photo, photoT: photoTRef.current, glassTone, backdropLum: photo ? photoLum : luminance(bg),
         gridCanvas: g.canvas, gridW: g.w, gridH: g.h,
         gridT: t || centeredTransform({ gridW: g.w, gridH: g.h, canvasW: dims.w, canvasH: dims.h, scale: baselineRef.current }),
         guides: gd,
@@ -174,7 +174,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.drawImage(g.canvas, margin * S, margin * S, g.w * S, g.h * S);
-  }, [isWall, bg, dims, photo, glassTone]);
+  }, [isWall, bg, dims, photo, photoLum, glassTone]);
 
   // 미리보기 캔버스 백킹 해상도 설정 + 첫 그림 (모드/격자/화면 바뀔 때만)
   useEffect(() => {
@@ -424,7 +424,8 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
       const composed = isWall
         ? composeTimetableImage({
             grid: g, mode: 'wallpaper', background: bg, screen: dims,
-            transform: transformRef.current, photo, photoT: photoTRef.current, glassTone,
+            transform: transformRef.current, photo, photoT: photoTRef.current,
+            glassTone, backdropLum: photo ? photoLum : luminance(bg),
           })
         : composeTimetableImage({ grid: g, mode: 'plain', background: bg });
       const base = String(title || '시간표').replace(/\s+/g, '');
@@ -435,7 +436,7 @@ export default function TimetableImageSheet({ mine, periods, customClasses, comm
     } finally {
       setBusy(false);
     }
-  }, [isWall, bg, dims, title, photo, glassTone]);
+  }, [isWall, bg, dims, title, photo, photoLum, glassTone]);
 
   const hasGrid = !!gridRef.current;
   const bgLower = bg.toLowerCase();
