@@ -309,8 +309,9 @@ export default function Moderation() {
 
   // ── 신고: 무시(정상 처리) — 신고 수 초기화(담합·오신고 폭주 리셋용) ──
   async function dismissReport(it) {
-    if (!confirm('이 신고를 무시(정상 처리)할까요? 신고 수가 초기화됩니다.')) return;
-    const r = await call('dismiss_report', { table: it.type, id: it.id });
+    const reason = prompt('이 신고를 무시(정상 처리)합니다. 유지 사유 (선택 — 신고자에게 표시됩니다):');
+    if (reason === null) return;   // 취소
+    const r = await call('dismiss_report', { table: it.type, id: it.id, reason: reason.trim() });
     if (r.ok) setReported((prev) => prev.filter((x) => !(x.type === it.type && x.id === it.id)));
   }
 
@@ -376,8 +377,9 @@ export default function Moderation() {
     if (path) navigate(path, { state: { corr: { ...g } } });
   }
   async function rejectGroup(g) {
-    if (!confirm('이 수정 제안을 반려할까요?')) return;
-    for (const id of g.ids) await call('reject_correction', { id });
+    const reason = prompt('반려 사유 (선택 — 제안자에게 그대로 표시됩니다. 비워도 반려됩니다)');
+    if (reason === null) return;   // 취소
+    for (const id of g.ids) await call('reject_correction', { id, reason: reason.trim() });
     setCorrs((prev) => prev.filter((c) => !g.ids.includes(c.id)));
   }
   // 자동반영 알림 확인 처리
