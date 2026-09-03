@@ -165,31 +165,35 @@ export function renderTimetableGrid({
       const fg = cell.block ? pal.fg : cell.fg;
       tile(ctx, tx, ty, tw, th, RAD, fill, null);
 
+      // 글자는 칸 안으로 자른다 — 화면(.tt-cell 은 overflow:hidden + line-clamp:2)과 같게.
+      // 안 그러면 '크게' + 1교시짜리 긴 과목명에서 아래 칸으로 삐져나온다.
+      ctx.save();
+      roundRect(ctx, tx, ty, tw, th, RAD);
+      ctx.clip();
+
       ctx.textAlign = 'center';
       ctx.fillStyle = fg;
       ctx.font = `700 ${fpx(F.course)}px ${FONT}`;
       const titleLines = wrapText(ctx, cell.title, tw - 16, 2);
       const hasMeta = !cell.block && !!cell.meta;
-      const contentH = titleLines.length * step + (hasMeta ? fpx(F.meta) + 3 : 0);
-      let yy = ty + Math.max(6, (th - contentH) / 2);
+      const contentH = titleLines.length * step + (hasMeta ? fpx(F.meta) + 4 : 0);
+      let yy = ty + (th - contentH) / 2;   // 진짜 중앙(넘치면 위아래로 잘림 — 화면과 동일)
       titleLines.forEach((ln) => { ctx.fillText(ln, tx + tw / 2, yy); yy += step; });
       if (hasMeta) {
-        ctx.save();
         ctx.globalAlpha = 0.78;   // 화면 .tt-meta opacity
         ctx.font = `600 ${fpx(F.meta)}px ${FONT}`;
         const metaLine = wrapText(ctx, cell.meta, tw - 14, 1)[0] || '';
-        ctx.fillText(metaLine, tx + tw / 2, yy + 1);
-        ctx.restore();
+        ctx.fillText(metaLine, tx + tw / 2, yy + 2);
+        ctx.globalAlpha = 1;
       }
       if (cell.custom) {   // '직접' 태그 — 우상단(화면 .tt-custom-tag)
-        ctx.save();
         ctx.globalAlpha = 0.6;
         ctx.textAlign = 'right';
         ctx.font = `800 ${fpx(F.tag)}px ${FONT}`;
-        ctx.fillStyle = fg;
         ctx.fillText('직접', tx + tw - 5, ty + 4);
-        ctx.restore();
+        ctx.globalAlpha = 1;
       }
+      ctx.restore();
     });
   });
 
