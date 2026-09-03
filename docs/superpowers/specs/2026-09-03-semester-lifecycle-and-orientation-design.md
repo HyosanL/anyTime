@@ -320,3 +320,8 @@ const semesters = useMemo(() => {
 - 서버에 신원 0 — 기기가 기억하는 리포트 ID + 이미 준 푸시 핸들로만 연결.
 
 이 스펙(Ⅰ~Ⅲ) 구현·배포 후 착수. 지금 갇힌 사용자부터 푼다.
+
+## 구현
+
+2026-09-03 구현·배포 완료. 계획: `docs/superpowers/plans/2026-09-03-semester-lifecycle-and-orientation.md`.
+후속 Ⅶ(앱 리포트 회신)은 별도 스펙으로.
