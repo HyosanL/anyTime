@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { isIos } from '../components/InstallGate';
@@ -21,6 +21,9 @@ import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, 
 import { detectConflicts } from '../lib/conflict';
 import { buildSeed, seedDraft, readDraft, clearDraft } from '../lib/wizardDraft';
 import AppReportModal from '../components/AppReportModal';
+
+// 캔버스 렌더러(lib/timetableImage)는 버튼을 누른 사람만 쓴다 → 첫 화면 번들에서 빼고 그때 받는다.
+const TimetableImageSheet = lazy(() => import('../components/TimetableImageSheet'));
 
 const DAYS = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
 
@@ -90,6 +93,7 @@ export default function Home() {
   const [customClasses, setCustomClasses] = useState([]);
   const [adding, setAdding] = useState(false);
   const [palOpen, setPalOpen] = useState(false);   // 시간표 색상 테마 시트(⚙️)
+  const [imgSheetOpen, setImgSheetOpen] = useState(false);   // 시간표 이미지 저장 시트(🖼️)
   const [appReportOpen, setAppReportOpen] = useState(false);   // 앱 문제 리포트 모달(🚩)
   // 수강신청용 요약표(어느 시간표든 목록에서 바로) — { tt, entries, customs, loading }
   const [summary, setSummary] = useState(null);
@@ -167,15 +171,6 @@ export default function Home() {
     [allBlocks, hiddenBlocks]
   );
   const hiddenCount = allBlocks.length - commonBlocks.length;
-
-  // 캔버스 렌더러(lib/timetableImage)는 버튼을 누른 사람만 쓴다 → 첫 화면 번들에서 빼고 그때 받는다.
-  const handleSaveImage = useCallback(async () => {
-    const { saveTimetableImage } = await import('../lib/timetableImage');
-    saveTimetableImage({
-      mine, periods, customClasses, commonBlocks,
-      title: selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표',
-    });
-  }, [mine, periods, customClasses, commonBlocks, selected]);
 
   const handleHideBlock = useCallback((b) => {
     if (!selected) return;
@@ -433,7 +428,7 @@ export default function Home() {
               {offline && <span className="cache-tag">오프라인</span>}
               {(mine.length > 0 || customClasses.length > 0) && (
                 <button className="btn-ghost btn-sm tt-icon-btn" title="시간표를 이미지로 저장" aria-label="시간표를 이미지로 저장"
-                  onClick={handleSaveImage}>🖼️</button>
+                  onClick={() => setImgSheetOpen(true)}>🖼️</button>
               )}
               <button className="btn-ghost btn-sm tt-icon-btn" title="친구 시간표 공유" aria-label="친구 시간표 공유"
                 onClick={() => navigate('/friends')}>👥</button>
@@ -576,6 +571,18 @@ export default function Home() {
       )}
 
       {palOpen && <PaletteSheet onClose={() => setPalOpen(false)} />}
+      {imgSheetOpen && (
+        <Suspense fallback={null}>
+          <TimetableImageSheet
+            mine={mine}
+            periods={periods}
+            customClasses={customClasses}
+            commonBlocks={commonBlocks}
+            title={selected ? `${selected.year}-${selected.term} ${selected.name}` : '시간표'}
+            onClose={() => setImgSheetOpen(false)}
+          />
+        </Suspense>
+      )}
       {appReportOpen && <AppReportModal onClose={() => setAppReportOpen(false)} />}
     </PullToRefresh>
   );
