@@ -34,7 +34,8 @@ export async function onRequestPost(context) {
   return json({ status: 'ACCEPTED', targets: slice.length });
 }
 
-// 반환: [{ endpoint, status }] — status 는 푸시서비스 HTTP 상태(201 등) 또는 0(fetch 예외).
+// 반환: [{ endpoint, status, detail? }] — status 는 푸시서비스 HTTP 상태(201 등) 또는
+// 0(fetch 예외); detail 은 실패 시 푸시서비스 응답 본문 일부(있을 때만).
 async function fanout(env, { kind, post_id, title, board, path, body: msgBody, mow, quiet, test }, targets) {
   const vapid = {
     subject: env.VAPID_SUBJECT || 'mailto:hyosanl0211@gmail.com',
@@ -52,7 +53,9 @@ async function fanout(env, { kind, post_id, title, board, path, body: msgBody, m
   // "다음 수업"은 늦게 오면 무의미 → TTL 5분. "오늘 수업 요약"은 조금 늦어도 유효 →
   //   TTL 1시간(잠긴 아이폰이 5분 안에 못 받아 APNs 가 버리는 문제 대응).
   const opts = kind === 'hot'
-    ? { ttl: 43200, urgency: 'normal', topic: `hot-${post_id}` }
+    // post_id 없는 발송(🔔 테스트 알림 버튼)에서 topic 이 문자 그대로 "hot-undefined" 가
+    // 되는 걸 막는다 — 실서비스 HOT 발송은 항상 post_id 를 넘기므로 여기서만 해당.
+    ? { ttl: 43200, urgency: 'normal', ...(post_id != null ? { topic: `hot-${post_id}` } : {}) }
     : kind === 'next_class'
       ? { ttl: 300, urgency: 'high', topic: 'next-class' }
       : kind === 'today_summary'
@@ -66,9 +69,9 @@ async function fanout(env, { kind, post_id, title, board, path, body: msgBody, m
   // 404/410 = 만료·해지된 구독 → DB 에서 제거(다음 앱 실행 때 클라이언트가 재등록)
   const dead = [];
   const results = settled.map((r, i) => {
-    const status = r.status === 'fulfilled' ? r.value : 0;
+    const { status, detail } = r.status === 'fulfilled' ? r.value : { status: 0 };
     if (status === 404 || status === 410) dead.push(targets[i].endpoint);
-    return { endpoint: targets[i].endpoint, status };
+    return { endpoint: targets[i].endpoint, status, ...(detail ? { detail } : {}) };
   });
   if (dead.length && env.PUSH_SECRET) {
     await fetch('https://asia-northeast3-anytime-rokafa.cloudfunctions.net/pushPrune', {
