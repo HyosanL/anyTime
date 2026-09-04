@@ -20,7 +20,16 @@ function statusBadge(item) {
   if (t?.status === 'closed') return '완료';
   if (item.kind === 'correction' && ['applied', 'rejected', 'resolved'].includes(item.status)) return OUTCOME_LABEL[item.status];
   if (item.kind === 'content' && item.outcome) return OUTCOME_LABEL[item.outcome];
+  if (item.kind === 'appReport' && item.reply) return OUTCOME_LABEL[item.replyStatus] || '답변';
   return '검토 대기';
+}
+// 접힌 행 요약 한 줄.
+function rowSummary(item) {
+  if (item.thread) return `대화 ${item.thread.messages.length}개`;
+  if (item.kind === 'correction' && ['applied', 'rejected', 'resolved'].includes(item.status)) return '처리 완료 · 눌러서 보기';
+  if (item.kind === 'content' && item.outcome) return '처리 완료 · 눌러서 보기';
+  if (item.kind === 'appReport' && item.reply) return '답변 도착 · 눌러서 보기';
+  return '검토 대기 중';
 }
 
 export default function Feedback() {
@@ -67,7 +76,7 @@ export default function Feedback() {
                 <span className="fb-row-badge">{statusBadge(item)}</span>
                 {hasUnread(item) && <span className="fb-row-dot" />}
               </div>
-              {!isOpen && <p className="fb-row-sum">{item.thread ? `대화 ${item.thread.messages.length}개` : '검토 대기 중'}</p>}
+              {!isOpen && <p className="fb-row-sum">{rowSummary(item)}</p>}
               {isOpen && <div onClick={(e) => e.stopPropagation()}><FeedbackThread item={item} onReplied={load} /></div>}
             </li>
           );

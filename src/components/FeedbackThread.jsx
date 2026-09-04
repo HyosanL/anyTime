@@ -15,6 +15,24 @@ function fmtAt(at) {
   return ms ? new Date(ms).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 }
 
+// 스레드 없는 옛 경로(배포 이전에 처리된 건) 한 줄 표시.
+function legacyLine(item) {
+  if (item.kind === 'correction') {
+    if (item.status === 'applied') return item.autoApplied ? '📌 여러 명이 같은 제안을 해서 자동 반영됐어요.' : '✅ 제안이 반영됐어요.';
+    if (item.status === 'rejected') return item.reply ? `🔎 ${item.reply}` : '🔎 검토했지만 이번엔 반영하지 않았어요.';
+    if (item.status === 'resolved') return '✅ 확인 후 처리했어요.';
+    return null;
+  }
+  if (item.kind === 'content') {
+    if (item.outcome === 'removed') return '🗑️ 신고하신 내용이 삭제 조치됐어요.';
+    if (item.outcome === 'edited') return '✏️ 신고하신 내용이 수정 조치됐어요.';
+    if (item.outcome === 'kept') return item.note ? `검토 결과 유지됩니다: ${item.note}` : '검토 결과 유지됩니다.';
+    return null;
+  }
+  if (item.kind === 'appReport') return item.reply || null;
+  return null;
+}
+
 export default function FeedbackThread({ item, onReplied }) {
   const t = item.thread;
   const [text, setText] = useState('');
@@ -27,7 +45,10 @@ export default function FeedbackThread({ item, onReplied }) {
     endRef.current?.scrollIntoView({ block: 'nearest' });
   }, [item, t]);
 
-  if (!t) return <p className="fb-thread-empty">검토 대기 중이에요. 관리자가 확인하면 여기에 표시됩니다.</p>;
+  if (!t) {
+    const legacy = legacyLine(item);
+    return <p className="fb-thread-empty">{legacy || '검토 대기 중이에요. 관리자가 확인하면 여기에 표시됩니다.'}</p>;
+  }
 
   async function send() {
     const v = text.trim();

@@ -23,10 +23,12 @@ export default function FeedbackPopup() {
       ...(f.appReports || []).map((a) => ({ ...a, kind: 'appReport', title: a.summary || a.text || '앱 문제' })),
     ].filter((item) => {
       if (hasNewAdmin(item, seenT)) return true;
-      // 스레드 없는 옛 경로: 결과를 아직 안 봤을 때
+      // 스레드 없는 옛 경로(배포 시점에 이미 처리된 건): 결과를 아직 안 봤을 때
       const key = threadKeyOf(item);
-      if (item.kind === 'correction' && !item.thread && ['applied', 'rejected', 'resolved'].includes(item.status)) return !seen.has(key);
-      if (item.kind === 'content' && !item.thread && item.outcome) return !seen.has(key);
+      if (item.thread) return false;
+      if (item.kind === 'correction') return ['applied', 'rejected', 'resolved'].includes(item.status) && !seen.has(key);
+      if (item.kind === 'content') return !!item.outcome && !seen.has(key);
+      if (item.kind === 'appReport') return !!item.reply && !seen.has(key);
       return false;
     });
     setItems(all);
