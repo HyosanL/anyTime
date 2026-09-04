@@ -1,5 +1,6 @@
-/* 내 피드백 허브(/feedback) + 스레드 뷰. 토큰: src/styles/tokens.css */
+/* 내 피드백 허브(/feedback) + 대화 스레드 + 홈 대화 팝업. 토큰: src/styles/tokens.css */
 
+/* ── 허브 페이지 ── */
 .fb-page { padding: var(--pad); }
 .fb-new-btn { margin-bottom: 1rem; }
 
@@ -16,16 +17,132 @@
 }
 .fb-row-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--danger); flex: none; }
 .fb-row-sum { margin: 0.25rem 0 0; font-size: 0.82rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-empty { font-size: 0.86rem; color: var(--text-3); padding: 1.5rem 0.2rem; }
 
-.fb-thread { margin-top: 0.6rem; }
-.fb-thread-empty, .fb-thread-status { font-size: 0.82rem; color: var(--text-3); margin: 0.5rem 0 0; }
-.fb-msgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 52vh; overflow-y: auto; }
-.fb-msg { display: flex; flex-direction: column; max-width: 84%; padding: 0.4rem 0.6rem; border-radius: var(--r-md); }
-.fb-msg-admin { align-self: flex-start; background: var(--chip-bg); color: var(--text); }
-.fb-msg-me { align-self: flex-end; background: var(--primary-weak); color: var(--text); }
-.fb-msg-other { align-self: flex-start; background: var(--card-active); color: var(--text); }
-.fb-msg-who { font-size: 0.68rem; color: var(--text-3); }
-.fb-msg-text { margin: 0.1rem 0; font-size: 0.88rem; white-space: pre-wrap; word-break: break-word; }
-.fb-msg-at { font-size: 0.64rem; color: var(--text-3); align-self: flex-end; }
-.fb-reply { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
-.fb-reply textarea { flex: 1; resize: none; }
+/* ── 대화 스레드 (FeedbackThread) — 팝업/페이지 공용 ── */
+.fbt { display: flex; flex-direction: column; min-height: 0; }
+.fbt-sheet { flex: 1; }                       /* 팝업: 시트 높이를 채움 */
+.fbt-inline { max-height: 62vh; }             /* 페이지 아코디언: 상한만 */
+
+.fbt-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 0.55rem;
+  padding: 0.9rem 0.15rem 0.4rem;
+  overscroll-behavior: contain;
+}
+.fbt-inline .fbt-scroll { padding-top: 0.4rem; }
+
+/* 한 발신자의 연속 메시지 묶음 */
+.fbt-run { display: flex; flex-direction: column; gap: 0.18rem; max-width: 78%; }
+.fbt-run-me { align-self: flex-end; align-items: flex-end; }
+.fbt-run-admin, .fbt-run-other { align-self: flex-start; align-items: flex-start; }
+
+.fbt-name { font-size: 0.7rem; color: var(--text-3); margin: 0 0.35rem 0.1rem; }
+
+.fbt-bubble {
+  margin: 0; padding: 0.48rem 0.7rem; border-radius: 16px;
+  font-size: 0.9rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+}
+.fbt-run-me .fbt-bubble {
+  background: var(--primary); color: var(--on-primary);
+  border-bottom-right-radius: 5px;
+}
+.fbt-run-me .fbt-bubble:not(:last-of-type) { border-bottom-right-radius: 16px; }
+.fbt-run-admin .fbt-bubble {
+  background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-bottom-left-radius: 5px;
+}
+.fbt-run-admin .fbt-bubble:not(:last-of-type) { border-bottom-left-radius: 16px; }
+.fbt-run-other .fbt-bubble {
+  background: var(--chip-bg); color: var(--text);
+  border-bottom-left-radius: 5px;
+}
+
+.fbt-time { font-size: 0.66rem; color: var(--text-3); margin: 0.12rem 0.35rem 0; }
+.fbt-note, .fbt-foot { font-size: 0.82rem; color: var(--text-3); text-align: center; margin: 0.6rem 0; }
+.fbt-err { font-size: 0.8rem; color: var(--danger); text-align: center; margin: 0 0 0.5rem; }
+
+/* 하단 고정 입력바 */
+.fbt-bar {
+  flex: none; display: flex; align-items: flex-end; gap: 0.5rem;
+  padding: 0.6rem 0.1rem 0.1rem; border-top: 1px solid var(--border);
+}
+.fbt-input {
+  flex: 1; resize: none; border: 1px solid var(--border); border-radius: 18px;
+  background: var(--input-bg); color: var(--text);
+  padding: 0.5rem 0.85rem; font: inherit; font-size: 0.9rem; line-height: 1.4;
+  max-height: 120px;
+}
+.fbt-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--ring); }
+.fbt-send {
+  flex: none; width: 36px; height: 36px; border: none; border-radius: var(--r-full);
+  background: var(--primary); color: var(--on-primary);
+  font-size: 1.1rem; line-height: 1; cursor: pointer;
+  display: grid; place-items: center;
+}
+.fbt-send:disabled { opacity: 0.4; cursor: default; }
+
+/* ── 홈 대화 팝업 (FeedbackPopup) ── */
+.fbp-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 0;
+}
+.fbp-sheet {
+  width: 100%; max-width: 460px; height: min(82vh, 620px);
+  background: var(--surface);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--shadow-pop);
+  display: flex; flex-direction: column;
+  padding: 0 1rem calc(0.9rem + env(safe-area-inset-bottom));
+  animation: fbp-rise 0.22s ease-out;
+}
+@keyframes fbp-rise { from { transform: translateY(14px); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }
+@media (min-width: 520px) {
+  .fbp-overlay { align-items: center; }
+  .fbp-sheet { border-radius: var(--r-lg); }
+}
+@media (prefers-reduced-motion: reduce) { .fbp-sheet { animation: none; } }
+
+.fbp-head {
+  flex: none; display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.85rem 0 0.7rem; border-bottom: 1px solid var(--border);
+}
+.fbp-head-icon { font-size: 1rem; }
+.fbp-title {
+  margin: 0; flex: 1; font-size: 0.98rem; font-weight: 650;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fbp-back, .fbp-close {
+  flex: none; background: none; border: none; cursor: pointer;
+  color: var(--text-2); padding: 0.2rem 0.35rem;
+}
+.fbp-back { font-size: 1.4rem; line-height: 1; }
+.fbp-close { font-size: 0.95rem; }
+
+.fbp-list {
+  list-style: none; margin: 0; padding: 0.6rem 0;
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.fbp-row {
+  width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+  padding: 0.7rem 0.3rem; border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 0.2rem;
+}
+.fbp-row:last-child { border-bottom: none; }
+.fbp-row-top { display: flex; align-items: center; gap: 0.4rem; }
+.fbp-row-kind {
+  font-size: 0.68rem; color: var(--chip-fg); background: var(--chip-bg);
+  padding: 0.08rem 0.4rem; border-radius: var(--r-sm); flex: none;
+}
+.fbp-row-name {
+  font-size: 0.9rem; font-weight: 600; color: var(--text);
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fbp-row-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--primary); flex: none; }
+.fbp-row-prev {
+  font-size: 0.8rem; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

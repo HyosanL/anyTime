@@ -63,7 +63,7 @@ export default function Feedback() {
       <header className="page-header"><BackButton /><h2>내 피드백</h2></header>
       <button className="btn-add fb-new-btn" onClick={() => setModal(true)}>🐞 앱 문제 신고</button>
 
-      {rows.length === 0 && <p className="fb-thread-empty">보낸 제안·신고가 없어요.</p>}
+      {rows.length === 0 && <p className="fb-empty">보낸 제안·신고가 없어요.</p>}
       <ul className="fb-list">
         {rows.map((item) => {
           const key = threadKeyOf(item);
