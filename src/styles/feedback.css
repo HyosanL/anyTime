@@ -10,8 +10,13 @@
   padding: 0.75rem 0.9rem; cursor: pointer;
 }
 .fb-row-head { display: flex; align-items: center; gap: 0.5rem; }
-.fb-row-title { font-weight: 600; font-size: 0.92rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-row-title {
+  flex: 1 1 auto; min-width: 0;
+  font-weight: 600; font-size: 0.92rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .fb-row-badge {
+  flex: none;
   font-size: 0.72rem; padding: 0.1rem 0.4rem; border-radius: var(--r-sm);
   background: var(--chip-bg); color: var(--chip-fg); white-space: nowrap;
 }
@@ -20,28 +25,29 @@
 .fb-empty { font-size: 0.86rem; color: var(--text-3); padding: 1.5rem 0.2rem; }
 
 /* ── 대화 스레드 (FeedbackThread) — 팝업/페이지 공용 ── */
-.fbt { display: flex; flex-direction: column; min-height: 0; }
+.fbt { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .fbt-sheet { flex: 1; }                       /* 팝업: 시트 높이를 채움 */
 .fbt-inline { max-height: 62vh; }             /* 페이지 아코디언: 상한만 */
 
 .fbt-scroll {
-  flex: 1; min-height: 0; overflow-y: auto;
+  flex: 1; min-height: 0; min-width: 0; overflow-y: auto;
   display: flex; flex-direction: column; gap: 0.55rem;
-  padding: 0.9rem 0.15rem 0.4rem;
+  padding: 0.9rem 0.1rem 0.4rem;
   overscroll-behavior: contain;
 }
 .fbt-inline .fbt-scroll { padding-top: 0.4rem; }
 
 /* 한 발신자의 연속 메시지 묶음 */
-.fbt-run { display: flex; flex-direction: column; gap: 0.18rem; max-width: 78%; }
+.fbt-run { display: flex; flex-direction: column; gap: 0.18rem; max-width: 82%; min-width: 0; }
 .fbt-run-me { align-self: flex-end; align-items: flex-end; }
 .fbt-run-admin, .fbt-run-other { align-self: flex-start; align-items: flex-start; }
 
 .fbt-name { font-size: 0.7rem; color: var(--text-3); margin: 0 0.35rem 0.1rem; }
 
 .fbt-bubble {
-  margin: 0; padding: 0.48rem 0.7rem; border-radius: 16px;
-  font-size: 0.9rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+  margin: 0; max-width: 100%; padding: 0.48rem 0.7rem; border-radius: 16px;
+  font-size: 0.9rem; line-height: 1.45;
+  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
 }
 .fbt-run-me .fbt-bubble {
   background: var(--primary); color: var(--on-primary);
@@ -65,10 +71,11 @@
 /* 하단 고정 입력바 */
 .fbt-bar {
   flex: none; display: flex; align-items: flex-end; gap: 0.5rem;
-  padding: 0.6rem 0.1rem 0.1rem; border-top: 1px solid var(--border);
+  padding: 0.55rem 0 0.1rem; border-top: 1px solid var(--border);
 }
 .fbt-input {
-  flex: 1; resize: none; border: 1px solid var(--border-strong); border-radius: 18px;
+  flex: 1 1 0; width: auto; min-width: 0;   /* flex-basis 0 + min-width 0 — textarea 가 화면 밖으로 안 나가게 */
+  resize: none; border: 1px solid var(--border-strong); border-radius: 18px;
   background: var(--input-bg); color: var(--text);
   padding: 0.5rem 0.85rem; font: inherit; font-size: 0.9rem; line-height: 1.4;
   min-height: 0; height: 38px; max-height: 120px;
@@ -109,9 +116,10 @@
   flex: none; display: flex; align-items: center; gap: 0.5rem;
   padding: 0.85rem 0 0.7rem; border-bottom: 1px solid var(--border);
 }
-.fbp-head-icon { font-size: 1rem; }
+.fbp-head-icon { flex: none; font-size: 1rem; }
 .fbp-title {
-  margin: 0; flex: 1; font-size: 0.98rem; font-weight: 650;
+  margin: 0; flex: 1 1 auto; min-width: 0;
+  font-size: 0.98rem; font-weight: 650;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .fbp-back, .fbp-close {
@@ -123,23 +131,25 @@
 
 .fbp-list {
   list-style: none; margin: 0; padding: 0.6rem 0;
-  flex: 1; overflow-y: auto;
+  flex: 1; min-width: 0; overflow-y: auto;
   display: flex; flex-direction: column;
 }
 .fbp-row {
   width: 100%; text-align: left; background: none; border: none; cursor: pointer;
   padding: 0.7rem 0.3rem; border-bottom: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 0.2rem;
+  display: flex; flex-direction: column; gap: 0.2rem; font: inherit;
 }
 .fbp-row:last-child { border-bottom: none; }
-.fbp-row-top { display: flex; align-items: center; gap: 0.4rem; }
+.fbp-row-top { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 .fbp-row-kind {
+  flex: none;
   font-size: 0.68rem; color: var(--chip-fg); background: var(--chip-bg);
-  padding: 0.08rem 0.4rem; border-radius: var(--r-sm); flex: none;
+  padding: 0.08rem 0.4rem; border-radius: var(--r-sm);
 }
 .fbp-row-name {
+  flex: 1 1 auto; min-width: 0;
   font-size: 0.9rem; font-weight: 600; color: var(--text);
-  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .fbp-row-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--primary); flex: none; }
 .fbp-row-prev {
