@@ -373,3 +373,12 @@ payload: { channel, text,
 - 프론트: `/feedback` 허브 페이지(홈 🚩 + 안읽음 배지), `FeedbackThread` 컴포넌트(Feedback 페이지·`FeedbackPopup` 공용), `Moderation` 3탭에 질문 입력 + 스레드 렌더 + 처리함/답변함 요약→펼침. 배포 이전 처리분은 legacy 한 줄로 표시.
 - SW: `feedback_question` kind + `?v=15`.
 - 색인 추가 없음. Rules: `feedbackThreads` `if false` 한 줄.
+
+### 2026-09-04 후속 조정
+
+- **제출자 왕복**: `FeedbackThread` 는 `status !== 'closed'` 면 입력창 노출(종료 전까진 아무 때나). `answered` 상태면 placeholder 로 "관리자 답변 대기 중" 안내. 백엔드는 원래 연속 user 메시지 허용 — `replyFeedbackThread` 가 burst 연속분은 `adminPush` 1회만.
+- **대화 UI**: `FeedbackPopup` 을 공지형 → 하단 시트 채팅으로 재작성(스크롤 1개, 발신자 바뀔 때만 라벨, 하단 고정 입력바, 답장해도 목록 안 흔들림, 새 소식 여러 건이면 목록→탭). `FeedbackThread` `variant='sheet'|'inline'`. 텍스트 입력창 전역 스타일 누락 수정(`base.css` bare `<textarea>`). flex 오버플로(`min-width:0`) 수정.
+- **`/feedback` 페이지**: full-bleed sticky 헤더(패딩이 밀던 것), 행은 접이식 카드, 앱문제 신고는 하단 점선 버튼.
+- **관리자 Moderation**: 수정제안·신고·앱문제 카드 **기본 접힘**(요약 1줄), 헤더 탭 → diff·대화·컨트롤 펼침. `● 새 답변`(answered)·`⚠ 검토 필요`(highRisk) 는 기본 펼침.
+- **보존 15일**: `purgeContentThreads` → `purgeFeedbackThreads`(매일) — `lastMessageAt` 15일 경과 스레드를 종료 여부와 무관하게 삭제 + 연결된 correction/appReport 소스 문서도 함께. `purgeCorrections`(매일)·`purgeAppReports` 30→15일 + `threadId` 있는 건은 스레드 purge 담당.
+- 삭제용 비밀번호(글·댓글·강의평·족보·메모)는 상시 입력칸 → `DeletePasswordField` 체크박스(켤 때만 노출).
