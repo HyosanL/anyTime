@@ -17,10 +17,14 @@ async function askFeedbackQuestion(uid, payload) {
   return askFeedbackQuestionInternal({ uid, adminName, ...payload });
 }
 
-// 처리 결과를 correction 스레드에 마감 메시지로 남기고 status='closed' + outcome. 스레드 없으면 무시.
+// 처리 결과를 correction 스레드에 마감 메시지로 남기고 status='closed' + outcome. 스레드 없으면
+// 무시. 묶음 적용은 id 마다 apply_correction 을 도므로, 이미 닫힌 스레드엔 재실행하지 않는다(멱등).
 async function closeCorrectionThread(uid, ids, outcome, text) {
   const first = await db.collection('corrections').doc(String(ids[0])).get();
-  if (!first.exists || !first.get('threadId')) return;
+  const threadId = first.exists && first.get('threadId');
+  if (!threadId) return;
+  const tSnap = await db.collection('feedbackThreads').doc(threadId).get();
+  if (!tSnap.exists || tSnap.get('status') === 'closed') return;
   const adminName = await adminNameOf(uid);
   await askFeedbackQuestionInternal({
     uid, adminName, channel: 'correction', ids: ids.map(String),
@@ -38,7 +42,7 @@ function outcomeDefaultMsg(outcome) {
 async function closeContentThread(uid, type, id, outcome, text) {
   const tRef = db.collection('feedbackThreads').doc(`content_${type}_${id}`);
   const tSnap = await tRef.get();
-  if (!tSnap.exists) return;
+  if (!tSnap.exists || tSnap.get('status') === 'closed') return;
   const adminName = await adminNameOf(uid);
   await askFeedbackQuestionInternal({
     uid, adminName, channel: 'content_report', contentRef: { type, id },
