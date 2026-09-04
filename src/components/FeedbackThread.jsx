@@ -110,10 +110,8 @@ export default function FeedbackThread({ item, onReplied, variant = 'inline' }) 
   }
 
   const runs = toRuns(msgs);
-  const canReply = t.status === 'open';
-  const footNote = t.status === 'answered' ? '관리자가 확인하고 있어요'
-    : t.status === 'closed' ? '처리 완료된 대화예요'
-    : null;
+  const canReply = t.status !== 'closed';   // 종료(closed) 전까진 제출자도 언제든 보낼 수 있다
+  const waiting = t.status === 'answered';  // 내가 마지막으로 보냄 — 관리자 답변 대기 중
 
   return (
     <div className={`fbt fbt-${variant}`}>
@@ -142,13 +140,13 @@ export default function FeedbackThread({ item, onReplied, variant = 'inline' }) 
             rows={1}
             value={text}
             maxLength={1000}
-            placeholder="답장 쓰기…"
+            placeholder={waiting ? '관리자 답변 대기 중 · 더 남길 수 있어요' : '답장 쓰기…'}
             onChange={grow}
           />
           <button type="submit" className="fbt-send" disabled={busy || !text.trim()} aria-label="보내기">↑</button>
         </form>
       ) : (
-        footNote && <p className="fbt-foot">{footNote}</p>
+        <p className="fbt-foot">처리 완료된 대화예요</p>
       )}
       {err && <p className="fbt-err">{err}</p>}
     </div>

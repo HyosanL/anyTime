@@ -1,28 +1,47 @@
 /* 내 피드백 허브(/feedback) + 대화 스레드 + 홈 대화 팝업. 토큰: src/styles/tokens.css */
 
 /* ── 허브 페이지 ── */
-.fb-page { padding: var(--pad); }
-.fb-new-btn { margin-bottom: 1rem; }
+.fb-body { padding: var(--pad); }
+.fb-lead { margin: 0 0 0.9rem; font-size: 0.84rem; color: var(--text-3); }
+.fb-empty { font-size: 0.86rem; color: var(--text-3); padding: 1.5rem 0.2rem; line-height: 1.6; }
 
 .fb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .fb-row {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--r-md);
-  padding: 0.75rem 0.9rem; cursor: pointer;
+  overflow: hidden;
 }
-.fb-row-head { display: flex; align-items: center; gap: 0.5rem; }
+.fb-row.is-open { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.fb-row-head {
+  width: 100%; background: none; border: none; cursor: pointer; font: inherit; text-align: left;
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+}
+.fb-row-icon { flex: none; font-size: 0.95rem; }
 .fb-row-title {
   flex: 1 1 auto; min-width: 0;
-  font-weight: 600; font-size: 0.92rem;
+  font-weight: 600; font-size: 0.9rem; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .fb-row-badge {
   flex: none;
-  font-size: 0.72rem; padding: 0.1rem 0.4rem; border-radius: var(--r-sm);
+  font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: var(--r-full);
   background: var(--chip-bg); color: var(--chip-fg); white-space: nowrap;
 }
-.fb-row-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--danger); flex: none; }
-.fb-row-sum { margin: 0.25rem 0 0; font-size: 0.82rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fb-empty { font-size: 0.86rem; color: var(--text-3); padding: 1.5rem 0.2rem; }
+.fb-row-dot { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--primary); flex: none; }
+.fb-row-sum {
+  margin: 0; padding: 0 0.85rem 0.7rem 2.3rem;
+  font-size: 0.8rem; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fb-row.is-open .fbt { padding: 0 0.6rem 0.6rem; }
+
+.fb-report-btn {
+  width: 100%; margin-top: 1.1rem;
+  background: none; border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+  color: var(--text-2); font: inherit; font-size: 0.84rem;
+  padding: 0.75rem; cursor: pointer;
+}
+.fb-report-btn:hover { color: var(--text); border-color: var(--text-3); }
 
 /* ── 대화 스레드 (FeedbackThread) — 팝업/페이지 공용 ── */
 .fbt { display: flex; flex-direction: column; min-height: 0; min-width: 0; }

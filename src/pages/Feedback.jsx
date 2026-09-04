@@ -59,29 +59,38 @@ export default function Feedback() {
   };
 
   return (
-    <div className="page fb-page">
-      <header className="page-header"><BackButton /><h2>내 피드백</h2></header>
-      <button className="btn-add fb-new-btn" onClick={() => setModal(true)}>🐞 앱 문제 신고</button>
+    <div className="page">
+      <header className="page-header">
+        <BackButton />
+        <h2>내 피드백</h2>
+      </header>
 
-      {rows.length === 0 && <p className="fb-empty">보낸 제안·신고가 없어요.</p>}
-      <ul className="fb-list">
-        {rows.map((item) => {
-          const key = threadKeyOf(item);
-          const isOpen = open === key;
-          return (
-            <li key={key} className="fb-row" onClick={() => setOpen(isOpen ? null : key)}>
-              <div className="fb-row-head">
-                <span>{CH_ICON[item.kind]}</span>
-                <span className="fb-row-title">{item.title}</span>
-                <span className="fb-row-badge">{statusBadge(item)}</span>
-                {hasUnread(item) && <span className="fb-row-dot" />}
-              </div>
-              {!isOpen && <p className="fb-row-sum">{rowSummary(item)}</p>}
-              {isOpen && <div onClick={(e) => e.stopPropagation()}><FeedbackThread item={item} onReplied={load} /></div>}
-            </li>
-          );
-        })}
-      </ul>
+      <div className="fb-body">
+        <p className="fb-lead">보낸 강의 수정 제안·신고·앱 문제와 그 답변이에요.</p>
+        {rows.length === 0 && <p className="fb-empty">아직 보낸 게 없어요.</p>}
+        <ul className="fb-list">
+          {rows.map((item) => {
+            const key = threadKeyOf(item);
+            const isOpen = open === key;
+            return (
+              <li key={key} className={`fb-row ${isOpen ? 'is-open' : ''}`}>
+                <button type="button" className="fb-row-head" onClick={() => setOpen(isOpen ? null : key)}>
+                  <span className="fb-row-icon" aria-hidden="true">{CH_ICON[item.kind]}</span>
+                  <span className="fb-row-title">{item.title}</span>
+                  {hasUnread(item) && <span className="fb-row-dot" aria-label="새 메시지" />}
+                  <span className="fb-row-badge">{statusBadge(item)}</span>
+                </button>
+                {!isOpen && <p className="fb-row-sum">{rowSummary(item)}</p>}
+                {isOpen && <FeedbackThread item={item} onReplied={load} />}
+              </li>
+            );
+          })}
+        </ul>
+
+        <button type="button" className="fb-report-btn" onClick={() => setModal(true)}>
+          🐞 앱에 문제가 있나요? 신고하기
+        </button>
+      </div>
 
       {modal && <AppReportModal onClose={() => { setModal(false); load(); }} />}
     </div>

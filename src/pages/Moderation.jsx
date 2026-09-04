@@ -728,24 +728,34 @@ function ModMemo({ value, onChange }) {
   );
 }
 
+// 스레드 마지막 메시지 한 줄(접힌 카드용).
+function threadPeek(thread) {
+  const m = thread?.messages?.[thread.messages.length - 1];
+  if (!m) return null;
+  return `${m.from === 'admin' ? (m.name || '관리자') : '제출자'}: ${m.text}`;
+}
+
 function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit, onAsk }) {
   const [note, setNote] = useState('');
   const [q, setQ] = useState('');
   const highRisk = HIGH_RISK.has(`${g.target}:${g.field}`) && g.count >= 3;
+  const [open, setOpen] = useState(g.thread?.status === 'answered' || highRisk);
   const memo = note.trim() || undefined;
   const thread = g.thread;
   const isRoom = g.target === 'section_time' && g.field === 'room';
+  const peek = threadPeek(thread);
   return (
-    <li className={`card mod-card ${highRisk ? 'flagged' : ''}`}>
-      <div className="mod-card-top">
+    <li className={`card mod-card ${highRisk ? 'flagged' : ''} ${open ? 'is-open' : ''}`}>
+      <button type="button" className="mod-card-top" onClick={() => setOpen((v) => !v)}>
         <span className="tag tag-primary mod-type">{g.target === 'section_add' ? '분반추가' : '수정제안'}</span>
         <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
         {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
         {highRisk && <span className="tag tag-warn mod-badge">⚠ 검토 필요</span>}
         {thread?.status === 'open' && <span className="tag mod-badge">⏳ 답변 대기</span>}
         {thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
-        <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
-      </div>
+        <span className="mod-toggle" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
+
       <div className="mod-text">
         <p className="mod-corr-diff">
           <span className="mod-diff-label">현재</span>
@@ -754,29 +764,35 @@ function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit, onAsk 
           <span className="mod-diff-label">제안</span>
           <b className="mod-diff-after">{g.suggested ? fmtCorrAfter(g) : '(제안값 없음)'}</b>
         </p>
-        {g.note ? <p className="mod-corr-note">설명: {g.note}</p> : null}
+        {!open && peek && <p className="mod-corr-note mod-peek">↳ {peek}</p>}
+        {open && g.note ? <p className="mod-corr-note">설명: {g.note}</p> : null}
+        <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
       </div>
 
-      <ThreadMsgs thread={thread} />
+      {open && (
+        <>
+          <ThreadMsgs thread={thread} />
 
-      <div className="mod-ask">
-        {isRoom && !thread && (
-          <button type="button" className="link-btn" onClick={() => onAsk(g, ROOM_QUESTION)}>💬 강의실 변동 확인</button>
-        )}
-        <textarea className="ar-reply-ta" rows={2} value={q} maxLength={1000}
-          placeholder={thread ? '제출자에게 메시지…' : '제출자에게 질문 (보내면 답을 기다립니다)'}
-          onChange={(e) => setQ(e.target.value)} />
-        <button type="button" className="btn-ghost btn-sm" disabled={!q.trim()} onClick={() => { onAsk(g, q); setQ(''); }}>
-          {thread ? '메시지 보내기' : '질문 보내기'}
-        </button>
-      </div>
+          <div className="mod-ask">
+            {isRoom && !thread && (
+              <button type="button" className="link-btn" onClick={() => onAsk(g, ROOM_QUESTION)}>💬 강의실 변동 확인</button>
+            )}
+            <textarea className="ar-reply-ta" rows={2} value={q} maxLength={1000}
+              placeholder={thread ? '제출자에게 메시지…' : '제출자에게 질문 (보내면 답을 기다립니다)'}
+              onChange={(e) => setQ(e.target.value)} />
+            <button type="button" className="btn-ghost btn-sm" disabled={!q.trim()} onClick={() => { onAsk(g, q); setQ(''); }}>
+              {thread ? '메시지 보내기' : '질문 보내기'}
+            </button>
+          </div>
 
-      <ModMemo value={note} onChange={setNote} />
-      <div className="mod-actions">
-        <button className="btn-add btn-sm" onClick={() => onApply(g, memo)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
-        {editPath(g) && <button className="link-btn" onClick={() => onEdit(g)}>✏️ 편집에서 열기</button>}
-        <button className="rev-del-btn" onClick={() => onReject(g, memo)}>반려</button>
-      </div>
+          <ModMemo value={note} onChange={setNote} />
+          <div className="mod-actions">
+            <button className="btn-add btn-sm" onClick={() => onApply(g, memo)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
+            {editPath(g) && <button className="link-btn" onClick={() => onEdit(g)}>✏️ 편집에서 열기</button>}
+            <button className="rev-del-btn" onClick={() => onReject(g, memo)}>반려</button>
+          </div>
+        </>
+      )}
     </li>
   );
 }
@@ -837,30 +853,35 @@ function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onE
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(it.text || '');
+  const [open, setOpen] = useState(it.thread?.status === 'answered');
   const memo = note.trim() || undefined;
   const canEdit = it.type === 'review' || it.type === 'class_memo' || it.type === 'board_post';
   const thread = it.thread;
+  const peek = threadPeek(thread);
 
   return (
-    <li className="card mod-card flagged">
-      <div className="mod-card-top">
+    <li className={`card mod-card flagged ${open ? 'is-open' : ''}`}>
+      <button type="button" className="mod-card-top" onClick={() => setOpen((v) => !v)}>
         <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
         <span className="mod-course">{it.courseCode}{it.meta?.sectionNo ? `·${it.meta.sectionNo}분반` : ''}</span>
-        <span className="tag tag-warn mod-badge">🚨 신고 {it.reportCount}건</span>
+        <span className="tag tag-warn mod-badge">🚨 {it.reportCount}</span>
         {thread?.status === 'open' && <span className="tag mod-badge">⏳ 답변 대기</span>}
         {thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
-        <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
-      </div>
+        <span className="mod-toggle" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
 
       {editing ? (
         <textarea className="ar-reply-ta" rows={3} value={text} onChange={(e) => setText(e.target.value)} />
       ) : (
-        <p className={`mod-text${contentPath(it) ? ' mod-text-link' : ''}`}
+        <p className={`mod-text${contentPath(it) ? ' mod-text-link' : ''} ${open ? '' : 'mod-text-clip'}`}
           onClick={() => { const p = contentPath(it); if (p) navigate(p); }}>
           <Highlighted text={it.text || '(내용 없음)'} />
         </p>
       )}
+      {!open && peek && <p className="mod-corr-note mod-peek">↳ {peek}</p>}
+      {!open && <p className="mod-time">{fmtDateTime(it.createdAt)}</p>}
 
+      {open && <>
       <ThreadMsgs thread={thread} />
       <div className="mod-ask">
         <textarea className="ar-reply-ta" rows={2} value={q} maxLength={1000}
@@ -888,6 +909,7 @@ function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onE
           </>
         )}
       </div>
+      </>}
     </li>
   );
 }
@@ -897,6 +919,8 @@ function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
   const [status, setStatus] = useState('resolved');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [open, setOpen] = useState(it.thread?.status === 'answered');
+  const peek = threadPeek(it.thread);
 
   async function send() {
     const t = reply.trim();
@@ -908,14 +932,18 @@ function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
   }
 
   return (
-    <li className="card mod-card flagged">
-      <div className="mod-card-top">
+    <li className={`card mod-card flagged ${open ? 'is-open' : ''}`}>
+      <button type="button" className="mod-card-top" onClick={() => setOpen((v) => !v)}>
         <span className="tag tag-primary mod-type">앱 문제</span>
         <span className="mod-course">{it.path || '경로 없음'}</span>
         {it.thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
-        <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
-      </div>
-      <p className="mod-text">{it.text}</p>
+        <span className="mod-toggle" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
+      <p className={`mod-text ${open ? '' : 'mod-text-clip'}`}>{it.text}</p>
+      {!open && peek && <p className="mod-corr-note mod-peek">↳ {peek}</p>}
+      {!open && <p className="mod-time">{fmtDateTime(it.createdAt)}</p>}
+
+      {open && <>
       <p className="mod-corr-note">
         {it.standalone ? '설치된 앱' : '브라우저'} · {it.ua || 'UA 없음'}
         {it.subId ? ' · 푸시 가능' : ' · 푸시 없음'}
@@ -934,6 +962,7 @@ function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
         <button className="btn-add btn-sm" disabled={busy} onClick={send}>답변 보내기</button>
         <button className="btn-ghost btn-sm" disabled={busy} onClick={() => onAck(it)}>확인(삭제)</button>
       </div>
+      </>}
     </li>
   );
 }
