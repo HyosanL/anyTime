@@ -30,12 +30,14 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-# 서비스워커 스크립트는 캐시하지 않는다. 기본값(Cloudflare 존)은 4시간인데, iOS PWA 는
-# 그 Cache-Control 을 그대로 따라 registration.update() 가 최대 4시간 옛 sw.js 를 받는다
-# → "새 버전이 나왔어요" 배너가 안 뜨고 갱신이 멈춘다. no-cache = 매번 재검증(변경 없으면 304).
+# 서비스워커 스크립트는 캐시하지 않는다. Cloudflare 는 .js 를 엣지에 담으면서 존
+# Browser Cache TTL(4시간)을 Cache-Control 에 덮어씌운다 — 'no-cache'·'max-age=0' 도
+# max-age=14400 으로 바뀐다. 'no-store' 는 엣지 캐시 자체를 막아 그 덮어쓰기를 피한다.
+# 그래야 registration.update() 가 매번 최신 sw.js 를 받아 갱신 배너가 제때 뜬다.
+# (설치된 SW 는 HTTP 캐시가 아니라 브라우저 SW 저장소에서 도므로 오프라인에도 영향 없음.)
 # push-sw.js 는 ?v=N 쿼리로 임포트되지만 _headers 는 경로만 보므로 이 규칙이 그대로 적용된다.
 /sw.js
-  Cache-Control: no-cache
+  Cache-Control: no-store
 
 /push-sw.js
-  Cache-Control: no-cache
+  Cache-Control: no-store
