@@ -360,3 +360,16 @@ payload: { channel, text,
 - 신고자 차단·계정 추적(익명 설계 유지 — `board-full-anonymity`).
 - 스레드 첨부 이미지.
 - 관리자 간 스레드 내부 메모(제출자 비공개) — 필요해지면 별도.
+
+## 구현
+
+2026-09-04 구현·배포 완료. 계획: `docs/superpowers/plans/2026-09-04-feedback-two-way-threads.md`.
+
+- 통합 컬렉션 `feedbackThreads/{threadId}`(결정적 ID) + `lib/feedbackThread.js`(groupKey·append 트랜잭션·표시 변환).
+- CF: `askFeedbackQuestionInternal`(adminAction `ask_feedback_question`), `replyFeedbackThread`(생도 onCall), `purgeContentThreads`(월간). `getMyFeedback` 이 3채널 스레드 동봉(콘텐츠는 actorHash 재계산 검증).
+- 수정 제안: `submitCorrection` 이 열린 스레드에 자동반영 보류 + 새 dupe 링크. apply/reject/resolve 가 스레드 close+outcome(묶음 적용 멱등). `annotate_correction` 은 스레드 후속 메시지로 재구현.
+- 앱 문제: `reply_app_report` 가 스레드에도 append(resolved 면 close).
+- 콘텐츠 신고: `reportReview`/`reportMemo`/`boardReact(report)` 가 선택 `endpoint`→`subId` 를 report reaction 에 저장. delete/dismiss/edit 이 스레드 close.
+- 프론트: `/feedback` 허브 페이지(홈 🚩 + 안읽음 배지), `FeedbackThread` 컴포넌트(Feedback 페이지·`FeedbackPopup` 공용), `Moderation` 3탭에 질문 입력 + 스레드 렌더 + 처리함/답변함 요약→펼침. 배포 이전 처리분은 legacy 한 줄로 표시.
+- SW: `feedback_question` kind + `?v=15`.
+- 색인 추가 없음. Rules: `feedbackThreads` `if false` 한 줄.
