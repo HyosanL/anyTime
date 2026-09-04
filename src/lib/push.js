@@ -204,12 +204,18 @@ export async function setDnd(patch) {
   return next;
 }
 
-// 실기기 테스트: 실제 서버 발송 없이 SW 의 showPush 를 그대로 태워 알림을 띄운다.
-// 방해금지 무음 판정과 클릭 딥링크(data.path)가 실제 푸시와 동일하게 검증된다.
-// msg 예: { kind:'hot', title:'…', board:'…', path:'/board/hot' }
-export async function sendTestPush(msg) {
-  const reg = await navigator.serviceWorker.ready;
-  const sw = reg.active || navigator.serviceWorker.controller;
-  if (!sw) throw new Error('SW_NOT_READY');
-  sw.postMessage({ type: 'TEST_PUSH', msg });
+// 실기기 푸시 테스트 — 실제 푸시와 100% 같은 경로(sendSelfTestPush CF → /api/push-fanout
+// → 푸시서비스 → SW)로 한 건 발송하고, 발송 결과를 돌려받는다. 성공이면 { status:'OK' },
+// 실패면 구독 만료/거부/네트워크 등을 그대로 실어 준다(호출부가 문구로 변환).
+// kind: 'plain' | 'quiet' | 'next_class' | 'today_summary'
+export async function sendServerTestPush(kind) {
+  let sub;
+  try {
+    sub = await getSubscription();
+  } catch { /* 아래에서 NO_SUB 처리 */ }
+  if (!sub) return { status: 'NO_SUB' };
+  const res = await callFn('sendSelfTestPush', { endpoint: sub.endpoint, kind });
+  if (res.ok) return res.data || { status: 'OK' };
+  // callFn 이 HttpsError('invalid-argument') 등을 { ok:false, status:<code>, message } 로 감싼다.
+  return { status: 'FAIL', code: res.status, message: res.message };
 }

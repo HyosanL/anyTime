@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { changePassword, deleteAccount } from '../lib/auth';
-import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendTestPush } from '../lib/push';
+import { pushSupported, pushEnabled, enablePush, disablePush, hotAlertsOn, setHotAlerts, getDnd, setDnd, sendServerTestPush } from '../lib/push';
 import { NEXT_CLASS_LEADS, getLead, setLeadPref, syncNextClassAlerts } from '../lib/nextClass';
 import { briefOn, setBriefOn, getBriefTime, setBriefTime, syncDailyBrief } from '../lib/dailyBrief';
 import Badge, { badgeOf } from '../components/Badge';
@@ -29,6 +29,7 @@ function PushSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
 
   // 다음 수업 알림 리드타임 변경 — 로컬 저장 후 스케줄을 재계산해 서버(발동 시각만)·
   // 기기 Cache(내용)에 반영한다. 실패는 다음 앱 실행 때 App.jsx PushSync 가 재시도.
@@ -58,85 +59,33 @@ function PushSettings() {
     setDnd(next).catch(() => {});
   }
 
-  // 분(0~1439, 음수/초과 자동 순환) → 'HH:MM'
-  function hhmmFromMin(m) {
-    const x = ((m % 1440) + 1440) % 1440;
-    return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+  // 실기기 푸시 테스트 4종 — 모두 실제 푸시와 같은 경로(서버 발송 → 푸시서비스 → SW)를 탄다.
+  // 성공이면 예전처럼 담백한 문구, 실패면 구독 만료/거부/네트워크를 그대로 안내한다.
+  const TEST_LABEL = {
+    plain: '테스트 알림을 보냈어요.',
+    quiet: '무음 테스트를 보냈어요. 소리·진동 없이 오면 정상이에요.',
+    next_class: '“⏰ 다음 수업” 형식으로 알림이 오면 정상이에요. (실제 알림은 수업 시작 전에 옵니다.)',
+    today_summary: '“🌅 오늘 수업” 형식으로 알림이 오면 정상이에요. (실제 알림은 설정한 시각에 그날 수업으로 옵니다.)',
+  };
+
+  function testResultMessage(kind, r) {
+    if (r.status === 'OK') return TEST_LABEL[kind];
+    if (r.status === 'NO_SUB') return '이 기기의 푸시 구독을 찾을 수 없어요. 푸시를 껐다 켜 주세요.';
+    if (r.status === 'GONE') return '푸시 구독이 만료됐어요. 푸시를 껐다 켠 뒤 다시 시도해 주세요.';
+    if (r.status === 'REJECTED') return `푸시 서비스가 요청을 거부했어요 (코드 ${r.code}).`;
+    if (r.status === 'NETWORK') return '푸시 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    if (r.status === 'FAIL' && r.message) return r.message;
+    return `테스트 알림을 보내지 못했어요${r.code ? ` (코드 ${r.code})` : ''}.`;
   }
 
-  // 실기기 테스트: 지금 시각을 포함하도록 방해금지 창을 임시 조정한 뒤(입력칸도 즉시 반영),
-  // 실제 푸시와 같은 SW 경로로 테스트 알림을 띄운다 → 무음으로 와야 정상.
-  // setDnd 를 await 해 Cache 미러 완료 후 발송(레이스 없음). 창은 눈에 보이니 뒤에 직접 되돌리면 된다.
-  async function testQuietNow() {
+  async function runTest(kind) {
     setTestMsg('');
-    const now = new Date();
-    const cur = now.getHours() * 60 + now.getMinutes();
-    const win = { on: true, start: hhmmFromMin(cur - 1), end: hhmmFromMin(cur + 60) };
-    setDndState(win);
+    setTestBusy(true);
     try {
-      await setDnd(win);   // 로컬+Cache 미러 완료 보장
-      await sendTestPush({ kind: 'hot', title: '방해금지 조용히 테스트', board: '테스트', path: '/board/hot' });
-      setTestMsg(`방해금지 창을 ${win.start}~${win.end} 로 임시 조정하고 무음 테스트 알림을 보냈어요. 소리·진동 없이 오면 정상이고, 알림을 탭하면 HOT 게시판으로 이동합니다. (테스트 후 위 시간은 원하는 값으로 되돌려 주세요.)`);
-    } catch {
-      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
-    }
-  }
-
-  // 로컬 테스트 알림 — 알림이 실제로 도착하는지(권한·구독·전송) 확인용.
-  // 헤드업(팝업)으로 뜨는지는 기기 설정 소관이라 코드로 못 바꾸므로 판단하지 않는다.
-  async function sendTest() {
-    setTestMsg('');
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification('🔔 테스트 알림', {
-        body: '테스트 알림이 도착했어요.',
-        tag: 'push-test',
-        renotify: true,
-        vibrate: [180, 80, 180],
-        icon: '/icons/icon.svg',
-      });
-      setTestMsg('테스트 알림을 보냈어요.');
-    } catch {
-      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
-    }
-  }
-
-  // "다음 수업" 알림 미리보기 — SW 버전(업데이트 지연)에 안 기대도록, 실제 서버 핑 경로
-  // (sendTestPush→SW showNextClass) 대신 페이지에서 직접 같은 형식으로 알림을 띄운다.
-  // 실제 알림은 push-sw.js 의 showNextClass 가 그리며 문구는 여기와 동일하다.
-  async function testNextClass() {
-    setTestMsg('');
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification('⏰ 다음 수업', {
-        body: '선형대수학 · 202 · 08:00',
-        tag: 'next-class-preview',
-        renotify: true,
-        vibrate: [180, 80, 180],
-        icon: '/icons/icon.svg',
-      });
-      setTestMsg('“⏰ 다음 수업 / 선형대수학 · 202 · 08:00” 형식으로 알림이 오면 정상입니다. (실제 알림은 수업 시작 전에 이 형식으로 옵니다.)');
-    } catch {
-      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
-    }
-  }
-
-  // "오늘 수업 요약" 미리보기 — 실제 알림은 push-sw.js 의 showTodaySummary 가 그날 실제
-  // 수업으로 그리며 문구 형식은 여기와 동일하다.
-  async function testDailyBrief() {
-    setTestMsg('');
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification('🌅 오늘 수업', {
-        body: '09:00 경제원론 · 302\n11:00 물리학 · 401',
-        tag: 'daily-brief-preview',
-        renotify: true,
-        vibrate: [180, 80, 180],
-        icon: '/icons/icon.svg',
-      });
-      setTestMsg('“🌅 오늘 수업” 형식으로 알림이 오면 정상입니다. (실제 알림은 설정한 시각에 그날 수업으로 옵니다.)');
-    } catch {
-      setTestMsg('테스트 알림을 보내지 못했어요. 알림이 켜져 있는지 확인해주세요.');
+      const r = await sendServerTestPush(kind);
+      setTestMsg(testResultMessage(kind, r));
+    } finally {
+      setTestBusy(false);
     }
   }
 
@@ -239,10 +188,10 @@ function PushSettings() {
               <details className="account-test">
                 <summary>알림 테스트</summary>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  <button className="btn-ghost btn-sm" onClick={sendTest}>🔔 테스트 알림</button>
-                  <button className="btn-ghost btn-sm" onClick={testQuietNow}>🌙 무음 테스트</button>
-                  <button className="btn-ghost btn-sm" onClick={testNextClass}>⏰ 다음 수업</button>
-                  <button className="btn-ghost btn-sm" onClick={testDailyBrief}>🌅 오늘 수업</button>
+                  <button className="btn-ghost btn-sm" disabled={testBusy} onClick={() => runTest('plain')}>🔔 테스트 알림</button>
+                  <button className="btn-ghost btn-sm" disabled={testBusy} onClick={() => runTest('quiet')}>🌙 무음 테스트</button>
+                  <button className="btn-ghost btn-sm" disabled={testBusy} onClick={() => runTest('next_class')}>⏰ 다음 수업</button>
+                  <button className="btn-ghost btn-sm" disabled={testBusy} onClick={() => runTest('today_summary')}>🌅 오늘 수업</button>
                 </div>
                 {testMsg && <p className="account-note" style={{ marginTop: 6 }}>{testMsg}</p>}
               </details>
