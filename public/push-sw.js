@@ -19,7 +19,7 @@ const META_CACHE = 'push-meta';
 // 이 파일의 버전. vite.config.js 의 importScripts `?v=N` 과 함께 올릴 것.
 // 앱 문제 리포트(AppReportModal)가 GET_SW_INFO 로 물어봐 진단에 첨부한다 —
 // "기기에서 실제로 도는 SW 가 몇 버전인지"가 알림 안 오는 문제의 첫 단서다.
-const PUSH_SW_VERSION = 15;
+const PUSH_SW_VERSION = 16;
 
 // 방해금지 기본값 — 설정 전 기기도 기본 켬(22:30~08:00). src/lib/push.js 의 DND_DEFAULT 와 일치.
 const DND_DEFAULT = { on: true, start: '22:30', end: '08:00' };
@@ -93,8 +93,11 @@ async function nextClassSchedule() {
 // 방해금지 창이어도 소리·진동을 유지하고(설계: 방해금지 무시), 홈을 보고 있어도 띄운다
 // (댓글 알림과 달리 '시각 알람'이라 항상 울려야 한다).
 async function showNextClass(msg) {
-  const sched = await nextClassSchedule();
-  const slot = sched && sched.slots ? sched.slots[String(msg.mow)] : null;
+  const sched = msg.test ? null : await nextClassSchedule();
+  // 테스트 푸시(test:true)는 실제 시간표 대신 고정 샘플로 형식만 보여준다.
+  const slot = msg.test
+    ? { subject: '선형대수학', room: '202', start: '08:00' }
+    : (sched && sched.slots ? sched.slots[String(msg.mow)] : null);
   // 내용(과목·강의실·시각)은 기기 Cache 에만 있다 — 서버 핑엔 mow 뿐. 슬롯이 없으면
   // (캐시 증발·낡음) 일반 문구로라도 띄운다.
   const body = slot
@@ -123,9 +126,14 @@ async function todaySummarySchedule() {
 // "🌅 오늘 수업 / 09:00 경제원론 · 302\n11:00 물리학 · 401". 다음 수업 알림과 같은 이유로
 // 방해금지를 무시한다(사용자가 직접 정한 시각 알람).
 async function showTodaySummary(msg) {
-  const sched = await todaySummarySchedule();
-  const day = String(Math.floor(msg.mow / 1440) + 1);   // 1=월…7=일
-  const body = (sched && sched.byDay && sched.byDay[day]) || '오늘 수업 정보를 불러오지 못했어요.';
+  // 테스트 푸시(test:true)는 실제 그날 수업 대신 고정 샘플로 형식만 보여준다.
+  const body = msg.test
+    ? '09:00 경제원론 · 302\n11:00 물리학 · 401'
+    : await (async () => {
+        const sched = await todaySummarySchedule();
+        const day = String(Math.floor(msg.mow / 1440) + 1);   // 1=월…7=일
+        return (sched && sched.byDay && sched.byDay[day]) || '오늘 수업 정보를 불러오지 못했어요.';
+      })();
   await self.registration.showNotification('🌅 오늘 수업', {
     body,
     tag: `today-summary-${msg.mow}`,
@@ -135,11 +143,30 @@ async function showTodaySummary(msg) {
   });
 }
 
+// 실기기 테스트 알림(sendSelfTestPush 의 kind:'test'). "지금 이 경로를 보고 있으면 생략"
+// 검사를 건너뛰고 항상 띄운다(테스트니까). msg.quiet 면 /dnd-config 와 무관하게 강제 무음.
+async function showTestPush(msg) {
+  const opts = {
+    body: msg.body || '',
+    tag: 'push-self-test',
+    icon: '/icons/icon.svg',
+    data: { path: (typeof msg.path === 'string' && msg.path.startsWith('/')) ? msg.path : '/' },
+  };
+  if (msg.quiet === true) {
+    opts.silent = true;   // silent 와 vibrate 를 함께 주면 TypeError → vibrate 생략
+  } else {
+    opts.renotify = true;
+    opts.vibrate = [180, 80, 180];
+  }
+  await self.registration.showNotification(msg.title || '🔔 테스트 알림', opts);
+}
+
 // 알림 표시 본체 — 실제 push 와 테스트 메시지(TEST_PUSH)가 같은 경로를 타게 분리했다.
 // 방해금지 silent 판정과 클릭 딥링크(data.path)가 어느 쪽이든 동일하게 적용된다.
 async function showPush(msg) {
   if (msg.kind === 'next_class') return showNextClass(msg);
   if (msg.kind === 'today_summary') return showTodaySummary(msg);
+  if (msg.kind === 'test') return showTestPush(msg);
   // 목적지: msg.path(테스트에서 명시) 우선, 없으면 post_id 로 유도.
   const path = (typeof msg.path === 'string' && msg.path.startsWith('/'))
     ? msg.path
