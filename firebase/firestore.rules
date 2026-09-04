@@ -140,6 +140,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- feedback threads (correction / app_report / content_report):
+    // server-only, same anonymity model. Reads go through getMyFeedback CF. ----
+    match /feedbackThreads/{id} {
+      allow read, write: if false;
+    }
+
     // ---- board & anonymity ----
     match /boards/{id} {
       allow read: if isSignedIn();
