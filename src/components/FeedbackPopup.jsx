@@ -1,77 +1,64 @@
 import { useEffect, useState } from 'react';
-import { fetchFeedback, readSeen, markSeen } from '../lib/feedback';
+import { fetchFeedback, readSeen, markSeen, readThreadSeen, markThreadSeen, threadKeyOf } from '../lib/feedback';
+import FeedbackThread from './FeedbackThread';
 
-// ntc-* 클래스는 home.css(전역). 앱 접속 시, 안 본 제안·신고 결과를 공지처럼 한 번 띄운다.
-const APP_STATUS = { reviewing: '검토중', resolved: '해결됨', planned: '반영예정' };
+// 앱 접속 시, 안 본 관리자 메시지·결과를 공지처럼 한 번 띄운다. ntc-* 클래스는 home.css(전역).
 
-function appReportLine(it) {
-  return { key: `appReport:${it.id}`, badge: APP_STATUS[it.replyStatus] || '답변',
-    q: it.summary, a: it.reply, note: null };
-}
-function correctionLine(it) {
-  const a = it.status === 'applied' && it.autoApplied ? '📌 여러 명이 같은 제안을 해서 자동 반영됐어요.'
-    : it.status === 'applied' ? '✅ 제안이 반영됐어요.'
-    : it.status === 'rejected' ? '🔎 검토했지만 이번엔 반영하지 않았어요.'
-    : it.status === 'resolved' ? '✅ 확인 후 처리했어요.'
-    : null;
-  // 키에 repliedAt 을 넣어, 관리자가 사후 메모를 남기면(repliedAt 갱신) 팝업이 다시 뜨게 한다.
-  return a ? { key: `correction:${it.id}:${it.repliedAt || 0}`, badge: '수정 제안', q: it.summary, a, note: it.reply || null } : null;
-}
-function contentLine(it) {
-  // '유지' 사유는 신 getMyFeedback 에선 it.note, 구버전에선 it.reason 으로 온다(배포 시차 흡수).
-  const keptNote = it.outcome === 'kept' ? (it.note || it.reason || null) : null;
-  const note = it.outcome === 'kept' ? keptNote : (it.note || null);
-  const a = it.outcome === 'removed' ? '🗑️ 신고하신 내용이 삭제 조치됐어요.'
-    : it.outcome === 'edited' ? '✏️ 신고하신 내용이 수정 조치됐어요.'
-    : it.outcome === 'kept' ? (keptNote ? '검토 결과 유지됩니다.' : '검토 결과 규정 위반이 아니라 유지됩니다.')
-    : null;
-  return a ? { key: `content:${it.type}_${it.id}`, badge: '신고', q: '', a, note } : null;
+function hasNewAdmin(item, seenT) {
+  const t = item.thread;
+  if (!t) return false;
+  const lastAdmin = [...t.messages].reverse().find((m) => m.who === 'admin');
+  return lastAdmin && lastAdmin.seq > (seenT[threadKeyOf(item)] ?? 0);
 }
 
 export default function FeedbackPopup() {
-  const [lines, setLines] = useState([]);
+  const [items, setItems] = useState([]);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const f = await fetchFeedback();
-        if (!active) return;
-        const seen = new Set(readSeen());
-        const all = [
-          ...f.appReports.filter((i) => i.reply).map(appReportLine),
-          ...f.corrections.map(correctionLine).filter(Boolean),
-          ...f.contentReports.map(contentLine).filter(Boolean),
-        ].filter((l) => l && !seen.has(l.key));
-        setLines(all);
-      } catch { /* 오프라인 등 */ }
-    })();
-    return () => { active = false; };
-  }, []);
+  const load = () => fetchFeedback().then((f) => {
+    const seen = new Set(readSeen());
+    const seenT = readThreadSeen();
+    const all = [
+      ...(f.corrections || []).map((c) => ({ ...c, kind: 'correction', title: c.summary || c.label || '수정 제안' })),
+      ...(f.contentReports || []).map((c) => ({ ...c, kind: 'content', title: '신고' })),
+      ...(f.appReports || []).map((a) => ({ ...a, kind: 'appReport', title: a.summary || a.text || '앱 문제' })),
+    ].filter((item) => {
+      if (hasNewAdmin(item, seenT)) return true;
+      // 스레드 없는 옛 경로: 결과를 아직 안 봤을 때
+      const key = threadKeyOf(item);
+      if (item.kind === 'correction' && !item.thread && ['applied', 'rejected', 'resolved'].includes(item.status)) return !seen.has(key);
+      if (item.kind === 'content' && !item.thread && item.outcome) return !seen.has(key);
+      return false;
+    });
+    setItems(all);
+  }).catch(() => {});
 
-  if (lines.length === 0) return null;
+  useEffect(() => { load(); }, []);
+
+  if (items.length === 0) return null;
 
   function close() {
-    markSeen(lines.map((l) => l.key));
-    setLines([]);
+    for (const item of items) {
+      const key = threadKeyOf(item);
+      markSeen([key]);
+      if (item.thread?.messages?.length) markThreadSeen(key, item.thread.messages[item.thread.messages.length - 1].seq);
+    }
+    setItems([]);
   }
 
   return (
     <div className="ntc-overlay" onClick={close}>
-      <div className="ntc-modal" role="dialog" aria-modal="true" aria-label="제안·신고 결과" onClick={(e) => e.stopPropagation()}>
+      <div className="ntc-modal" role="dialog" aria-modal="true" aria-label="피드백" onClick={(e) => e.stopPropagation()}>
         <div className="ntc-head">
-          <h3 className="ntc-title">📬 보내주신 의견에 결과가 있어요</h3>
+          <h3 className="ntc-title">📬 보내주신 의견에 새 소식이 있어요</h3>
           <button className="ntc-x" onClick={close} aria-label="닫기">✕</button>
         </div>
         <div className="ntc-list">
-          {lines.map((l) => (
-            <article key={l.key} className="ntc-item">
-              <div className="ntc-item-head">
-                <strong className="ntc-item-title">{l.badge}</strong>
-              </div>
-              {l.q && <p className="ntc-content ar-pop-q">“{l.q}”</p>}
-              <p className="ntc-content">{l.a}</p>
-              {l.note && <p className="ntc-content ar-pop-note">↳ {l.note}</p>}
+          {items.map((item) => (
+            <article key={threadKeyOf(item)} className="ntc-item">
+              <div className="ntc-item-head"><strong className="ntc-item-title">{item.title}</strong></div>
+              {item.thread
+                ? <FeedbackThread item={item} onReplied={load} />
+                : <p className="ntc-content">{legacyLine(item)}</p>}
             </article>
           ))}
         </div>
@@ -79,4 +66,19 @@ export default function FeedbackPopup() {
       </div>
     </div>
   );
+}
+
+function legacyLine(item) {
+  if (item.kind === 'correction') {
+    return item.status === 'applied' && item.autoApplied ? '📌 여러 명이 같은 제안을 해서 자동 반영됐어요.'
+      : item.status === 'applied' ? '✅ 제안이 반영됐어요.'
+      : item.status === 'rejected' ? '🔎 검토했지만 이번엔 반영하지 않았어요.'
+      : '✅ 확인 후 처리했어요.';
+  }
+  if (item.kind === 'content') {
+    return item.outcome === 'removed' ? '🗑️ 신고하신 내용이 삭제 조치됐어요.'
+      : item.outcome === 'edited' ? '✏️ 신고하신 내용이 수정 조치됐어요.'
+      : (item.note ? `검토 결과 유지됩니다: ${item.note}` : '검토 결과 유지됩니다.');
+  }
+  return item.reply || '답변이 등록됐어요.';
 }

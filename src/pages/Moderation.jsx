@@ -15,6 +15,21 @@ import '../styles/board.css';
 
 const TYPE_LABEL = { review: '강의평', class_memo: '메모', exam_archive: '족보', board_post: '게시글', board_comment: '댓글' };
 const FIELD_LABEL = { time: '요일·교시', room: '강의실', professor: '담당교수', name: '이름/과목명', department: '학과', office: '연구실', section: '분반 추가' };
+const ROOM_QUESTION = '강의실이 변동되었나요? 바뀌었다면 새 강의실 번호를 알려 주세요.';
+
+// 스레드 메시지 목록(관리자 시야 — 관리자는 username, 제출자는 익명 라벨). thread.messages: [{seq,from,name,text,at}]
+function ThreadMsgs({ thread }) {
+  if (!thread || !(thread.messages || []).length) return null;
+  return (
+    <ul className="mod-thread">
+      {thread.messages.map((m) => (
+        <li key={m.seq} className={`mod-thread-msg mod-thread-${m.from}`}>
+          <b>{m.from === 'admin' ? (m.name || '관리자') : (m.name || '제출자')}</b> {m.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
 // 현행 사유는 'threshold'(누적)·'burst'(15분 급증). 기준값은 관리자 설정이라 라벨엔 수치 미표기(정확한 수치는 신고수 배지로 표시).
 // burst_10/threshold_30/burst_3/threshold_10 은 구 기준 아카이브 행 표시용으로 유지.
 const REASON_LABEL = { threshold: '누적 신고', burst: '단시간 급증(15분)', burst_10: '15분 10건', threshold_30: '누적 30건', burst_3: '30분 3건(구)', threshold_10: '누적 10건(구)' };
@@ -160,7 +175,10 @@ function groupCorrections(list) {
   for (const c of list) {
     const k = groupKey(c);
     if (!m.has(k)) m.set(k, { ...c, ids: [c.id], count: 1 });
-    else { const g = m.get(k); g.ids.push(c.id); g.count++; }
+    else {
+      const g = m.get(k); g.ids.push(c.id); g.count++;
+      if (c.thread && !g.thread) g.thread = c.thread; // 스레드는 묶음 어느 문서에나 같은 threadId
+    }
   }
   return [...m.values()];
 }
@@ -383,6 +401,25 @@ export default function Moderation() {
     return r;
   }
 
+  // ── 수정 제안/신고: 제출자에게 질문(스레드 시작 또는 후속 메시지). 묶음 전체에 팬아웃 ──
+  async function askGroup(g, text) {
+    const t = (text || '').trim();
+    if (!t) return;
+    const r = await call('ask_feedback_question', { channel: 'correction', ids: g.ids, text: t });
+    if (!r.ok) { alert('질문 전송 실패: ' + (r.status ?? '오류')); return; }
+    load();
+  }
+  async function askReport(it, text) {
+    const t = (text || '').trim();
+    if (!t) return;
+    const r = await call('ask_feedback_question', {
+      channel: 'content_report', contentRef: { type: it.type, id: it.id },
+      label: it.courseCode, summary: (it.text || '').slice(0, 200), text: t,
+    });
+    if (!r.ok) { alert('질문 전송 실패: ' + (r.status ?? '오류')); return; }
+    load();
+  }
+
   // ── 수정 제안: 그룹 단위 적용/반려 (note = 제출자에게 표시될 관리자 메모, 선택) ──
   async function applyGroup(g, note) {
     for (const id of g.ids) {
@@ -404,16 +441,12 @@ export default function Moderation() {
     for (const id of g.ids) await call('reject_correction', { id, reason: note });
     setCorrs((prev) => prev.filter((c) => !g.ids.includes(c.id)));
   }
-  // 처리함: 이미 적용/반려한 제안에 사후 메모를 남긴다(제출자에게 다시 뜬다).
+  // 처리함: 이미 처리된 제안 스레드에 관리자 후속 메시지를 붙인다(제출자에게 다시 뜬다).
   async function annotateCorr(id, note) {
     const r = await call('annotate_correction', { id, reason: note });
     if (r.status === 'GONE') { alert('30일이 지나 정리된 제안입니다.'); return false; }
-    if (!r.ok) { alert('메모 저장 실패: ' + (r.status ?? '오류')); return false; }
-    setProcessedCorrs((prev) => {
-      const hit = prev.find((c) => c.id === id);
-      const rest = prev.filter((c) => c.id !== id);
-      return hit ? [{ ...hit, reply: note || null }, ...rest] : prev;
-    });
+    if (!r.ok) { alert('메시지 전송 실패: ' + (r.status ?? '오류')); return false; }
+    load();
     return true;
   }
   // 자동반영 알림 확인 처리
@@ -546,7 +579,7 @@ export default function Moderation() {
           )}
           {reported.map((it) => (
             <ReportCard key={`rep-${it.type}-${it.id}`} it={it} fmtDateTime={fmtDateTime} navigate={navigate}
-              onAck={ackReport} onDismiss={dismissReport} onDelete={remove}
+              onAck={ackReport} onDismiss={dismissReport} onDelete={remove} onAsk={askReport}
               onEdit={(t, note) => saveEditFrom(it, t, note)} />
           ))}
           </ul>
@@ -591,7 +624,7 @@ export default function Moderation() {
             )}
             {corrGroups.map((g) => (
               <CorrectionCard key={`corr-${g.id}`} g={g} cat={cat} fmtDateTime={fmtDateTime}
-                onApply={applyGroup} onReject={rejectGroup} onEdit={openEdit} />
+                onApply={applyGroup} onReject={rejectGroup} onEdit={openEdit} onAsk={askGroup} />
             ))}
           </ul>
 
@@ -663,9 +696,12 @@ export default function Moderation() {
                     <div className="mod-card-top">
                       <span className="tag mod-type">답변함</span>
                       <span className="mod-course">{it.path || '경로 없음'}</span>
+                      {it.thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
                     </div>
                     <p className="mod-text">{it.text}</p>
-                    <p className="mod-corr-note">↳ {REPLY_STATUS_LABEL[it.replyStatus] || '답변'} · {it.reply}</p>
+                    {it.thread
+                      ? <ThreadMsgs thread={it.thread} />
+                      : <p className="mod-corr-note">↳ {REPLY_STATUS_LABEL[it.replyStatus] || '답변'} · {it.reply}</p>}
                   </li>
                 ))}
               </ul>
@@ -692,10 +728,13 @@ function ModMemo({ value, onChange }) {
   );
 }
 
-function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit }) {
+function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit, onAsk }) {
   const [note, setNote] = useState('');
+  const [q, setQ] = useState('');
   const highRisk = HIGH_RISK.has(`${g.target}:${g.field}`) && g.count >= 3;
   const memo = note.trim() || undefined;
+  const thread = g.thread;
+  const isRoom = g.target === 'section_time' && g.field === 'room';
   return (
     <li className={`card mod-card ${highRisk ? 'flagged' : ''}`}>
       <div className="mod-card-top">
@@ -703,6 +742,8 @@ function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit }) {
         <span className="mod-course">{g.label || g.target} · <span className="mod-corr-field">{FIELD_LABEL[g.field] || g.field}</span></span>
         {g.count > 1 && <span className="tag mod-badge">동일 {g.count}건</span>}
         {highRisk && <span className="tag tag-warn mod-badge">⚠ 검토 필요</span>}
+        {thread?.status === 'open' && <span className="tag mod-badge">⏳ 답변 대기</span>}
+        {thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
         <span className="mod-time">{fmtDateTime(g.createdAt)}</span>
       </div>
       <div className="mod-text">
@@ -715,6 +756,21 @@ function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit }) {
         </p>
         {g.note ? <p className="mod-corr-note">설명: {g.note}</p> : null}
       </div>
+
+      <ThreadMsgs thread={thread} />
+
+      <div className="mod-ask">
+        {isRoom && !thread && (
+          <button type="button" className="link-btn" onClick={() => onAsk(g, ROOM_QUESTION)}>💬 강의실 변동 확인</button>
+        )}
+        <textarea className="ar-reply-ta" rows={2} value={q} maxLength={1000}
+          placeholder={thread ? '제출자에게 메시지…' : '제출자에게 질문 (보내면 답을 기다립니다)'}
+          onChange={(e) => setQ(e.target.value)} />
+        <button type="button" className="btn-ghost btn-sm" disabled={!q.trim()} onClick={() => { onAsk(g, q); setQ(''); }}>
+          {thread ? '메시지 보내기' : '질문 보내기'}
+        </button>
+      </div>
+
       <ModMemo value={note} onChange={setNote} />
       <div className="mod-actions">
         <button className="btn-add btn-sm" onClick={() => onApply(g, memo)}>{g.target === 'section_add' ? '분반 생성' : '적용'}</button>
@@ -727,54 +783,63 @@ function CorrectionCard({ g, cat, fmtDateTime, onApply, onReject, onEdit }) {
 
 const CORR_STATUS_LABEL = { applied: '반영됨', rejected: '반려', resolved: '직접 수정' };
 
-// 처리함 카드: 이미 적용/반려한 제안. 사후 메모를 남기거나 고칠 수 있다.
+// 처리함 카드: 이미 처리된 제안. 요약 행 → 탭하면 전체 대화 + 후속 메시지.
 function ProcessedCorrectionCard({ c, fmtDateTime, onAnnotate }) {
-  const [note, setNote] = useState(c.reply || '');
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const dirty = (note.trim() || '') !== (c.reply || '');
+  const [open, setOpen] = useState(false);
   const statusLabel = c.autoApplied ? '자동 반영' : (CORR_STATUS_LABEL[c.status] || c.status);
+  const thread = c.thread;
+  const last = thread?.messages?.[thread.messages.length - 1];
 
   async function save() {
+    if (!note.trim()) return;
     setBusy(true);
-    await onAnnotate(c.id, note.trim() || undefined);
-    setBusy(false);
+    await onAnnotate(c.id, note.trim());
+    setBusy(false); setNote('');
   }
 
   return (
     <li className="card mod-card">
-      <div className="mod-card-top">
+      <div className="mod-card-top" onClick={() => setOpen((v) => !v)} style={{ cursor: 'pointer' }}>
         <span className={`tag mod-type ${c.status === 'rejected' ? 'tag-warn' : 'tag-primary'}`}>{statusLabel}</span>
         <span className="mod-course">{c.label || c.target} · <span className="mod-corr-field">{FIELD_LABEL[c.field] || c.field}</span></span>
         <span className="mod-time">{fmtDateTime(c.repliedAt)}</span>
       </div>
-      {(c.prevValue || c.suggested) && (
-        <p className="mod-corr-diff">
-          <span className="mod-diff-label">이전</span>
-          <span className="mod-diff-before">{c.prevValue ?? '—'}</span>
-          <span className="mod-diff-arrow">→</span>
-          <span className="mod-diff-label">제안</span>
-          <b className="mod-diff-after">{c.suggested ? fmtCorrAfter(c) : '—'}</b>
-        </p>
+      {!open && last && <p className="mod-corr-note">↳ {last.from === 'admin' ? (last.name || '관리자') : '제출자'}: {last.text}</p>}
+      {open && (
+        <>
+          {(c.prevValue || c.suggested) && (
+            <p className="mod-corr-diff">
+              <span className="mod-diff-label">이전</span>
+              <span className="mod-diff-before">{c.prevValue ?? '—'}</span>
+              <span className="mod-diff-arrow">→</span>
+              <span className="mod-diff-label">제안</span>
+              <b className="mod-diff-after">{c.suggested ? fmtCorrAfter(c) : '—'}</b>
+            </p>
+          )}
+          {c.note ? <p className="mod-corr-note">설명: {c.note}</p> : null}
+          <ThreadMsgs thread={thread} />
+          <textarea className="ar-reply-ta" rows={2} value={note} maxLength={1000}
+            placeholder="후속 메시지 (보내면 제출자에게 다시 표시됩니다)"
+            onChange={(e) => setNote(e.target.value)} />
+          <div className="mod-actions">
+            <button className="btn-add btn-sm" disabled={busy || !note.trim()} onClick={save}>메시지 보내기</button>
+          </div>
+        </>
       )}
-      {c.note ? <p className="mod-corr-note">설명: {c.note}</p> : null}
-      <textarea className="ar-reply-ta" rows={2} value={note} maxLength={300}
-        placeholder="제출자에게 남길 메모 (저장하면 앱에 다시 표시됩니다)"
-        onChange={(e) => setNote(e.target.value)} />
-      <div className="mod-actions">
-        <button className="btn-add btn-sm" disabled={busy || !dirty} onClick={save}>
-          {c.reply ? '메모 수정' : '메모 남기기'}
-        </button>
-      </div>
     </li>
   );
 }
 
-function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onEdit }) {
+function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onEdit, onAsk }) {
   const [note, setNote] = useState('');
+  const [q, setQ] = useState('');
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(it.text || '');
   const memo = note.trim() || undefined;
   const canEdit = it.type === 'review' || it.type === 'class_memo' || it.type === 'board_post';
+  const thread = it.thread;
 
   return (
     <li className="card mod-card flagged">
@@ -782,6 +847,8 @@ function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onE
         <span className="tag tag-primary mod-type">{TYPE_LABEL[it.type]}</span>
         <span className="mod-course">{it.courseCode}{it.meta?.sectionNo ? `·${it.meta.sectionNo}분반` : ''}</span>
         <span className="tag tag-warn mod-badge">🚨 신고 {it.reportCount}건</span>
+        {thread?.status === 'open' && <span className="tag mod-badge">⏳ 답변 대기</span>}
+        {thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
         <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
       </div>
 
@@ -793,6 +860,15 @@ function ReportCard({ it, fmtDateTime, navigate, onAck, onDismiss, onDelete, onE
           <Highlighted text={it.text || '(내용 없음)'} />
         </p>
       )}
+
+      <ThreadMsgs thread={thread} />
+      <div className="mod-ask">
+        <textarea className="ar-reply-ta" rows={2} value={q} maxLength={1000}
+          placeholder="신고자에게 질문 (예: 어느 부분이 문제인가요?)"
+          onChange={(e) => setQ(e.target.value)} />
+        <button type="button" className="btn-ghost btn-sm" disabled={!q.trim()}
+          onClick={() => { onAsk(it, q); setQ(''); }}>질문 보내기</button>
+      </div>
 
       <ModMemo value={note} onChange={setNote} />
 
@@ -836,6 +912,7 @@ function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
       <div className="mod-card-top">
         <span className="tag tag-primary mod-type">앱 문제</span>
         <span className="mod-course">{it.path || '경로 없음'}</span>
+        {it.thread?.status === 'answered' && <span className="tag tag-warn mod-badge">● 새 답변</span>}
         <span className="mod-time">{fmtDateTime(it.createdAt)}</span>
       </div>
       <p className="mod-text">{it.text}</p>
@@ -844,7 +921,8 @@ function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
         {it.subId ? ' · 푸시 가능' : ' · 푸시 없음'}
         {it.sw ? ` · SW[${it.sw}]` : ''}
       </p>
-      <textarea className="ar-reply-ta" rows={2} value={reply} placeholder="답변 (사용자에게 그대로 전달됩니다)"
+      <ThreadMsgs thread={it.thread} />
+      <textarea className="ar-reply-ta" rows={2} value={reply} placeholder="답변 / 추가 질문 (사용자에게 그대로 전달됩니다)"
         onChange={(e) => setReply(e.target.value)} maxLength={1000} />
       {err && <p className="error-msg">{err}</p>}
       <div className="mod-actions">

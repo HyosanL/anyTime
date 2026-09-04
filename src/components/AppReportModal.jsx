@@ -1,9 +1,7 @@
-import { useEffect, useState } from 'react';
-import { submitAppReport as submitReport, fetchMyAppReports as fetchMyReports } from '../lib/feedback';
+import { useState } from 'react';
+import { submitAppReport as submitReport } from '../lib/feedback';
 import { isStandalone } from './InstallGate';
 import '../styles/correction.css';
-
-const STATUS_LABEL = { reviewing: '검토중', resolved: '해결됨', planned: '반영예정' };
 
 // 기기의 서비스워커·알림 상태를 짧은 한 줄로. "알림이 안 온다" 류 리포트의 첫 단서 —
 // 특히 pushsw 버전(옛 SW 가 새 알림 종류를 조용히 흘리는 경우)과 controller 유무.
@@ -38,9 +36,6 @@ export default function AppReportModal({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState('');
-  const [mine, setMine] = useState([]);
-
-  useEffect(() => { fetchMyReports().then(setMine).catch(() => {}); }, []);
 
   async function submit() {
     const t = text.trim();
@@ -56,7 +51,6 @@ export default function AppReportModal({ onClose }) {
     setBusy(false);
     if (!r.ok) return setErr(r.message || '제출에 실패했습니다.');
     setDone(true);
-    setMine((prev) => [{ id: r.id, text: t, status: 'pending', reply: null, replyStatus: null }, ...prev]);
   }
 
   return (
@@ -70,6 +64,7 @@ export default function AppReportModal({ onClose }) {
         {done ? (
           <div className="cor-done">
             <p>✅ 접수되었습니다. 검토 후 반영됩니다. 감사합니다!</p>
+            <p className="cor-hint">답변·추가 질문은 ‘내 피드백’ 화면에서 이어집니다.</p>
             <button className="btn-add btn-block" onClick={onClose}>닫기</button>
           </div>
         ) : (
@@ -87,27 +82,6 @@ export default function AppReportModal({ onClose }) {
             <button className="btn-add btn-block" disabled={busy} onClick={submit}>{busy ? '제출 중…' : '제출하기'}</button>
             <p className="cor-hint">익명으로 접수됩니다(작성자 정보 미저장). 진단 정보(현재 화면 경로·기기환경·알림 상태)가 함께 전송돼요.</p>
           </>
-        )}
-
-        {mine.length > 0 && (
-          <div className="ar-mine">
-            <h4 className="ar-mine-h">내가 보낸 리포트</h4>
-            <ul className="ar-mine-list">
-              {mine.map((m) => (
-                <li key={m.id} className="ar-mine-item">
-                  <p className="ar-mine-text">{m.text}</p>
-                  {m.reply ? (
-                    <div className="ar-mine-reply">
-                      <span className="ar-mine-badge">{STATUS_LABEL[m.replyStatus] || '답변'}</span>
-                      <p className="ar-mine-reply-t">{m.reply}</p>
-                    </div>
-                  ) : (
-                    <p className="ar-mine-pending">접수됨 · 검토 중</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
       </div>
     </div>
