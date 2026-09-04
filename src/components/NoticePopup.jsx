@@ -45,7 +45,11 @@ export default function NoticePopup() {
       setNotices(data.filter((n) => {
         try { return !localStorage.getItem(seenKey(n)); } catch { return true; }
       }));
-    }).catch(() => {});
+    }).catch((err) => {
+      // 조용히 숨기면(과거 getMemos 사례처럼) 권한 오류·색인 누락 같은 원인이
+      // 콘솔에도 안 남아 재현할 때마다 원인을 처음부터 다시 찾아야 한다.
+      console.error('[NoticePopup] 공지 조회 실패', err);
+    });
     return () => { active = false; };
   }, []);
 
