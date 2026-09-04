@@ -187,24 +187,37 @@ export const replyFeedbackThread = onCall(
         .update({ subIds: FieldValue.arrayUnion(sha256hex(endpoint)) });
     }
 
+    // 제출자가 연달아 여러 개 보내면 관리자에게는 그 묶음의 첫 메시지에만 알린다(푸시 도배 방지).
     const threadSnap = await db.collection('feedbackThreads').doc(threadId).get();
-    await adminPush(db, { fanoutUrl: pushFanoutUrl.value(), fanoutSecret: pushFanoutSecret.value() }, {
-      kind: 'feedback_reply', title: '💬 피드백 답변 도착', body: threadSnap.get('label') || '제출자가 답했어요',
-    });
+    const msgs = threadSnap.get('messages') || [];
+    const prev = msgs[msgs.length - 2];
+    const burstContinuation = prev && prev.from === 'user' && prev.authorKey === authorKey;
+    if (!burstContinuation) {
+      await adminPush(db, { fanoutUrl: pushFanoutUrl.value(), fanoutSecret: pushFanoutSecret.value() }, {
+        kind: 'feedback_reply', title: '💬 피드백 답변 도착', body: threadSnap.get('label') || '제출자가 답했어요',
+      });
+    }
     return { status: 'OK' };
   },
 );
 
-// ── 정리: closed 콘텐츠 신고 스레드(월간) — deletedContent 30일 TTL 과 보조 ──
-export const purgeContentThreads = onSchedule({ schedule: '0 19 1 * *', timeZone: 'UTC' }, async () => {
-  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+// ── 정리: 마지막 메시지 이후 15일 지난 피드백 스레드(매일). 종료 여부와 무관하게
+// 15일간 활동 없으면 대화 기록을 파기하고, 연결된 소스 문서(correction·appReport)도 함께 지운다.
+// 콘텐츠 신고는 소스 문서가 없다(reportCount + reactions 뿐). ──
+export const purgeFeedbackThreads = onSchedule({ schedule: '0 18 * * *', timeZone: 'UTC' }, async () => {
+  const cutoff = Date.now() - 15 * 24 * 60 * 60 * 1000;
   const ms = (ts) => (typeof ts?.toMillis === 'function' ? ts.toMillis() : 0);
-  const snap = await db.collection('feedbackThreads').where('channel', '==', 'content_report').get();
-  const stale = snap.docs.filter((doc) => doc.get('status') === 'closed'
-    && ms(doc.get('lastMessageAt')) > 0 && ms(doc.get('lastMessageAt')) < cutoff);
-  for (let i = 0; i < stale.length; i += 400) {
-    const batch = db.batch();
-    for (const doc of stale.slice(i, i + 400)) batch.delete(doc.ref);
-    await batch.commit();
+  const snap = await db.collection('feedbackThreads').get();
+  const stale = snap.docs.filter((doc) => ms(doc.get('lastMessageAt')) > 0 && ms(doc.get('lastMessageAt')) < cutoff);
+  for (const doc of stale) {
+    const t = doc.data();
+    if (t.channel === 'correction') {
+      for (const cid of (t.correctionIds || [])) {
+        await db.collection('corrections').doc(cid).delete().catch(() => {});
+      }
+    } else if (t.channel === 'app_report' && t.appReportId) {
+      await db.collection('appReports').doc(t.appReportId).delete().catch(() => {});
+    }
+    await doc.ref.delete().catch(() => {});
   }
 });

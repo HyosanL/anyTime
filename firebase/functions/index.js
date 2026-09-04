@@ -50,7 +50,7 @@ export {
 export { submitCorrection } from './src/corrections.js';
 export { submitAppReport, getMyAppReports, purgeAppReports } from './src/appReport.js';
 export { getMyFeedback, purgeCorrections } from './src/feedback.js';
-export { replyFeedbackThread, purgeContentThreads } from './src/feedbackThreads.js';
+export { replyFeedbackThread, purgeFeedbackThreads } from './src/feedbackThreads.js';
 
 export {
   createBoard,

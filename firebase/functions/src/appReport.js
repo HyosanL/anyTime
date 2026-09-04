@@ -90,14 +90,15 @@ export const getMyAppReports = onCall(async (request) => {
 // 메모리 필터 — purgePastMemos 와 같은 패턴(복합색인 불필요).
 export const purgeAppReports = onSchedule({ schedule: '0 18 1 * *', timeZone: 'UTC' }, async () => {
   const now = Date.now();
-  const repliedCutoff = now - 30 * 24 * 60 * 60 * 1000;
+  const repliedCutoff = now - 15 * 24 * 60 * 60 * 1000;
   const pendingCutoff = now - 90 * 24 * 60 * 60 * 1000;
   const ms = (ts) => (typeof ts?.toMillis === 'function' ? ts.toMillis() : 0);
 
   const snap = await db.collection('appReports').get();
   const stale = snap.docs.filter((d) => {
     const x = d.data();
-    if (x.status === 'replied') return ms(x.repliedAt) > 0 && ms(x.repliedAt) < repliedCutoff;
+    // 대화(threadId)가 달린 replied 는 purgeFeedbackThreads 가 마지막 메시지 기준으로 처리.
+    if (x.status === 'replied') return !x.threadId && ms(x.repliedAt) > 0 && ms(x.repliedAt) < repliedCutoff;
     if (x.status === 'pending') return ms(x.createdAt) > 0 && ms(x.createdAt) < pendingCutoff;
     return false;
   });
@@ -107,10 +108,5 @@ export const purgeAppReports = onSchedule({ schedule: '0 18 1 * *', timeZone: 'U
     const batch = db.batch();
     for (const d of stale.slice(i, i + 400)) batch.delete(d.ref);
     await batch.commit();
-  }
-  // 연결된 피드백 스레드도 함께 정리.
-  for (const d of stale) {
-    const tid = d.get('threadId');
-    if (tid) await db.collection('feedbackThreads').doc(tid).delete().catch(() => {});
   }
 });

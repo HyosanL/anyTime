@@ -130,33 +130,24 @@ async function loadThreads(entries) {
   return out;
 }
 
-// 결과 통보가 끝난 수정 제안 정리(월간) — applied/rejected/resolved 이고 repliedAt 30일 경과.
-// autoApplied 미확인 건은 ackCorrection 이 따로 정리하므로 여기선 건드리지 않는다.
+// 대화 없이 처리된 수정 제안 정리(매일) — applied/rejected/resolved, threadId 없음, repliedAt 15일 경과.
+// 대화가 달린 건은 purgeFeedbackThreads, autoApplied 미확인 건은 ackCorrection 이 따로 정리한다.
 // 컬렉션이 작아 전체 스캔(purgeAppReports 패턴, 복합색인 불필요).
-export const purgeCorrections = onSchedule({ schedule: '0 18 1 * *', timeZone: 'UTC' }, async () => {
-  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+export const purgeCorrections = onSchedule({ schedule: '0 18 * * *', timeZone: 'UTC' }, async () => {
+  const cutoff = Date.now() - 15 * 24 * 60 * 60 * 1000;
   const ms = (ts) => (typeof ts?.toMillis === 'function' ? ts.toMillis() : 0);
   const snap = await db.collection('corrections').get();
   const stale = snap.docs.filter((d) => {
     const st = d.get('status');
     return (st === 'applied' || st === 'rejected' || st === 'resolved')
       && d.get('autoApplied') !== true
+      && !d.get('threadId')   // 대화가 달린 건 purgeFeedbackThreads 가 마지막 메시지 기준으로 처리
       && ms(d.get('repliedAt')) > 0 && ms(d.get('repliedAt')) < cutoff;
   });
   if (!stale.length) return;
-  // correction 문서를 지우면서, 그 묶음의 모든 correction 이 이번에 사라진 threadId 는
-  // feedbackThreads 문서도 함께 지운다.
-  const staleIds = new Set(stale.map((d) => d.id));
-  const threadIds = new Set(stale.map((d) => d.get('threadId')).filter(Boolean));
   for (let i = 0; i < stale.length; i += 400) {
     const batch = db.batch();
     for (const d of stale.slice(i, i + 400)) batch.delete(d.ref);
     await batch.commit();
-  }
-  for (const threadId of threadIds) {
-    const tSnap = await db.collection('feedbackThreads').doc(threadId).get();
-    if (!tSnap.exists) continue;
-    const linked = tSnap.get('correctionIds') || [];
-    if (linked.every((id) => staleIds.has(id))) await tSnap.ref.delete();
   }
 });
