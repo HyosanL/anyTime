@@ -22,8 +22,8 @@
 ### Task 1: `push-fanout` synchronous mode + `today_summary` TTL + pass-through of `quiet`/`test`
 
 **Files:**
-- Modify: `functions/api/push-fanout.js`
-- Modify: `functions/lib/pushFanout.js`
+- Modify: `functions/api/push-fanout.js` (Cloudflare Pages Function)
+- Modify: `firebase/functions/src/lib/pushFanout.js` (Firebase helper that `nextClass.js` / `board.js` / `push.js` import — NOT `functions/lib/`)
 
 **Interfaces:**
 - Produces: `POST /api/push-fanout` accepts `sync: true` in the body → responds `{ status: 'OK', results: [{ endpoint, status }] }` (status = push-service HTTP status, or `0` on a thrown send). Without `sync`, unchanged (`{ status: 'ACCEPTED', targets }`).
@@ -125,7 +125,7 @@ function json(obj, status = 200) {
 }
 ```
 
-- [ ] **Step 2: Update `functions/lib/pushFanout.js`**
+- [ ] **Step 2: Update `firebase/functions/src/lib/pushFanout.js`**
 
 Replace the whole file with:
 

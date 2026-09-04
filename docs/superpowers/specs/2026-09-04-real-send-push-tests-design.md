@@ -97,9 +97,9 @@ Rejected alternatives:
   | `next_class` | `{ kind: 'next_class', test: true, mow: <seoulMinuteOfWeek()>, path: '/' }` |
   | `today_summary` | `{ kind: 'today_summary', test: true, mow: <seoulMinuteOfWeek()>, path: '/' }` |
 
-  `push.js` already has its own local `subscriptionId`. For the week-minute, **export
-  `seoulMinuteOfWeek` from `firebase/functions/src/nextClass.js`** (currently module-local) and
-  import it in `push.js` — `nextClass.js` has no heavy deps, so the added import is cheap.
+  `push.js` already has its own local `subscriptionId` (the codebase already duplicates this
+  tiny helper between `push.js` and `nextClass.js`). Follow that same convention: add a local
+  `seoulMinuteOfWeek` copy to `push.js` rather than coupling `push.js` → `nextClass.js`.
 
 - `pushFanout(pushFanoutUrl.value(), pushFanoutSecret.value(), payload, [target], { sync: true })`.
 - Map the single result `status` → return value:
