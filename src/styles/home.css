@@ -48,6 +48,26 @@
   color: var(--primary);
   font-weight: 700;
 }
+/* 🚩 내 피드백 바로가기 + 안읽음 배지 */
+.home-flag-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.home-flag-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: var(--on-danger);
+  font-size: 0.6rem;
+  line-height: 15px;
+  text-align: center;
+  font-weight: 700;
+}
 
 /* ============================================================
    홈 시간표 카드

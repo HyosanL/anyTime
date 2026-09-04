@@ -29,11 +29,3 @@
 .fb-msg-at { font-size: 0.64rem; color: var(--text-3); align-self: flex-end; }
 .fb-reply { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 .fb-reply textarea { flex: 1; resize: none; }
-
-/* 홈 헤더 🚩 배지 */
-.home-flag-wrap { position: relative; display: inline-flex; }
-.home-flag-badge {
-  position: absolute; top: -4px; right: -6px; min-width: 15px; height: 15px; padding: 0 3px;
-  border-radius: var(--r-full); background: var(--danger); color: var(--on-danger);
-  font-size: 0.6rem; line-height: 15px; text-align: center; font-weight: 700;
-}

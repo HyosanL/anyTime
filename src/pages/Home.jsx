@@ -19,7 +19,7 @@ import {
 import { listCustomClasses, addCustomClass, removeCustomClass, readCustomCache, hmToMin } from '../lib/customClass';
 import { detectConflicts } from '../lib/conflict';
 import { buildSeed, seedDraft, readDraft, clearDraft } from '../lib/wizardDraft';
-import AppReportModal from '../components/AppReportModal';
+import { fetchFeedback, unreadCount } from '../lib/feedback';
 
 // 캔버스 렌더러(lib/timetableImage)는 버튼을 누른 사람만 쓴다 → 첫 화면 번들에서 빼고 그때 받는다.
 const TimetableImageSheet = lazy(() => import('../components/TimetableImageSheet'));
@@ -93,7 +93,7 @@ export default function Home() {
   const [adding, setAdding] = useState(false);
   const [palOpen, setPalOpen] = useState(false);   // 시간표 색상 테마 시트(⚙️)
   const [imgSheetOpen, setImgSheetOpen] = useState(false);   // 시간표 이미지 저장 시트(🖼️)
-  const [appReportOpen, setAppReportOpen] = useState(false);   // 앱 문제 리포트 모달(🚩)
+  const [fbUnread, setFbUnread] = useState(0);   // 🚩 배지 — 안 읽은 피드백 수
   // 수강신청용 요약표(어느 시간표든 목록에서 바로) — { tt, entries, customs, loading }
   const [summary, setSummary] = useState(null);
   // 게시판 활성 여부는 부팅 RPC 로 이미 와 있다 — 홈 진입마다 board_enabled() 를 따로 부르지 않는다.
@@ -239,6 +239,13 @@ export default function Home() {
   // 홈을 켜 둔 채로도 격자가 새 강의 정보로 다시 그려진다 — 사용자가 새로고침할 필요가 없다.
   useEffect(() => subscribeCatalog(setCatalog), []);
 
+  // 🚩 배지: 안 읽은 관리자 메시지·결과 수. FeedbackPopup 도 같은 CF 를 부르지만 호출은 가볍다.
+  useEffect(() => {
+    let on = true;
+    fetchFeedback().then((f) => { if (on) setFbUnread(unreadCount(f)); }).catch(() => {});
+    return () => { on = false; };
+  }, []);
+
   // ── 선택한 시간표의 내용(담긴 분반 + 직접추가) ───────────────────────
   useEffect(() => {
     if (!selectedId) { setEntries([]); setCustomClasses([]); return; }
@@ -382,7 +389,9 @@ export default function Home() {
           <Badge tier={tier} level={count} size={22} />
         </Link>
         <div className="home-header-actions">
-          <button className="link-btn" onClick={() => setAppReportOpen(true)} title="앱 문제 리포트" aria-label="앱 문제 리포트">🚩</button>
+          <Link to="/feedback" className="link-btn home-flag-wrap" title="내 피드백" aria-label="내 피드백">
+            🚩{fbUnread > 0 && <span className="home-flag-badge">{fbUnread > 9 ? '9+' : fbUnread}</span>}
+          </Link>
           {isAdmin && <Link to="/admin/moderation" className="link-btn home-mod-link" title="검열" aria-label="검열">🧹</Link>}
         </div>
       </header>
@@ -561,7 +570,6 @@ export default function Home() {
           />
         </Suspense>
       )}
-      {appReportOpen && <AppReportModal onClose={() => setAppReportOpen(false)} />}
     </PullToRefresh>
   );
 }
