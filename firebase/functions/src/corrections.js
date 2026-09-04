@@ -3,6 +3,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { adminPush } from './lib/adminNotify.js';
+import { threadIdFor } from './lib/feedbackThread.js';
 
 // push.js·appReport.js 와 동일: sha256(endpoint) hex. 관리자 검토 시 pushSubscriptions/{subId} 를 찾는다.
 function subscriptionId(endpoint) {
@@ -419,8 +420,22 @@ export const submitCorrection = onCall({ secrets: [pushFanoutUrl, pushFanoutSecr
     isAuto = true;
   }
 
+  // 이 묶음에 열린 피드백 스레드가 걸려 있으면(관리자가 확인 질문 중) 자동반영을 보류한다 —
+  // 스레드가 closed 되면 다음 제출부터 다시 자동반영. 겸사겸사 새 제출도 그 스레드에 연결한다.
+  let threadOpen = false;
+  {
+    const tRef = db.collection('feedbackThreads')
+      .doc(threadIdFor('correction', { target, professorCode, courseCode, year, term, sectionNo, field, suggested: sug }));
+    const tSnap = await tRef.get();
+    if (tSnap.exists) {
+      threadOpen = tSnap.get('status') !== 'closed';
+      await correctionRef.update({ threadId: tSnap.id });
+      await tRef.update({ correctionIds: FieldValue.arrayUnion(correctionRef.id) });
+    }
+  }
+
   let applied = false;
-  if (isAuto && sug != null && dupeCount >= 3) {
+  if (isAuto && sug != null && dupeCount >= 3 && !threadOpen) {
     const result = await db.runTransaction((tx) => applyCorrectionRowInternal(tx, db, correctionRef.id));
     if (result === 'OK') {
       applied = true;

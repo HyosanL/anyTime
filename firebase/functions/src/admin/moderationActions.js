@@ -4,6 +4,76 @@ import { applyCorrectionRowInternal } from '../corrections.js';
 import { archiveDeleted } from '../lib/archive.js';
 import { pushFanout } from '../lib/pushFanout.js';
 import { pushFanoutUrl, pushFanoutSecret } from '../lib/secrets.js';
+import { askFeedbackQuestionInternal } from '../feedbackThreads.js';
+
+// 관리자 username 스냅샷 — 스레드 메시지에 "누가 썼는지"(관리자끼리만 보임).
+async function adminNameOf(uid) {
+  try { return (await db.collection('users').doc(uid).get()).get('username') ?? null; }
+  catch { return null; }
+}
+
+async function askFeedbackQuestion(uid, payload) {
+  const adminName = await adminNameOf(uid);
+  return askFeedbackQuestionInternal({ uid, adminName, ...payload });
+}
+
+// 처리 결과를 correction 스레드에 마감 메시지로 남기고 status='closed' + outcome. 스레드 없으면 무시.
+async function closeCorrectionThread(uid, ids, outcome, text) {
+  const first = await db.collection('corrections').doc(String(ids[0])).get();
+  if (!first.exists || !first.get('threadId')) return;
+  const adminName = await adminNameOf(uid);
+  await askFeedbackQuestionInternal({
+    uid, adminName, channel: 'correction', ids: ids.map(String),
+    text: (text && String(text).trim()) || outcomeDefaultMsg(outcome),
+    close: true, outcome,
+  });
+}
+function outcomeDefaultMsg(outcome) {
+  return outcome === 'applied' ? '확인 후 반영했어요. 감사합니다!'
+    : outcome === 'rejected' ? '검토했지만 이번엔 반영하지 않았어요.'
+    : '확인 후 처리했어요.';
+}
+
+// 콘텐츠 신고 스레드 마감(삭제/유지/수정 조치 시).
+async function closeContentThread(uid, type, id, outcome, text) {
+  const tRef = db.collection('feedbackThreads').doc(`content_${type}_${id}`);
+  const tSnap = await tRef.get();
+  if (!tSnap.exists) return;
+  const adminName = await adminNameOf(uid);
+  await askFeedbackQuestionInternal({
+    uid, adminName, channel: 'content_report', contentRef: { type, id },
+    label: tSnap.get('label'), summary: tSnap.get('summary'),
+    text: (text && String(text).trim())
+      || (outcome === 'removed' ? '신고 확인 후 삭제 조치했어요.'
+        : outcome === 'edited' ? '신고 확인 후 수정 조치했어요.'
+        : '검토 결과 유지합니다.'),
+    close: true, outcome,
+  });
+}
+
+// 관리자 화면용: items[] 에 스레드 메시지(관리자 시야 — username 그대로) 첨부. threadId 로 batch 조회.
+async function withThreads(items) {
+  const ids = [...new Set(items.map((i) => i.threadId).filter(Boolean))];
+  if (!ids.length) return items;
+  const snaps = await db.getAll(...ids.map((id) => db.collection('feedbackThreads').doc(id)));
+  const byId = {};
+  snaps.forEach((s) => { if (s.exists) byId[s.id] = s.data(); });
+  return items.map((i) => {
+    const t = i.threadId && byId[i.threadId];
+    if (!t) return i;
+    return {
+      ...i,
+      thread: {
+        status: t.status, outcome: t.outcome ?? null,
+        messages: (t.messages || []).map((m) => ({
+          seq: m.seq, from: m.from,
+          name: m.from === 'admin' ? (m.adminName || '관리자') : '제출자',
+          text: m.text, at: m.at?.toMillis?.() ?? (m.at?._seconds ? m.at._seconds * 1000 : null),
+        })),
+      },
+    };
+  });
+}
 
 // Port of admin-action/index.ts's non-catalog branches: notices, banned
 // words, admin grant/revoke, correction moderation, report moderation,
@@ -160,7 +230,7 @@ async function revokeAdmin(uid, payload) {
 async function listCorrections(uid, payload) {
   const status = payload.status ? String(payload.status) : 'pending';
   const snap = await db.collection('corrections').where('status', '==', status).orderBy('createdAt', 'desc').limit(200).get();
-  return { status: 'OK', items: snap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+  return { status: 'OK', items: await withThreads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))) };
 }
 
 async function rejectCorrection(uid, payload) {
@@ -169,7 +239,9 @@ async function rejectCorrection(uid, payload) {
   const ref = db.collection('corrections').doc(id);
   const snap = await ref.get();
   if (!snap.exists) return { status: 'OK' };
-  await ref.update({ status: 'rejected', reply: noteOf(payload), repliedAt: FieldValue.serverTimestamp() });
+  const note = noteOf(payload) ?? (payload.text ? String(payload.text).trim().slice(0, 300) : null);
+  await ref.update({ status: 'rejected', reply: note, repliedAt: FieldValue.serverTimestamp() });
+  await closeCorrectionThread(uid, [id], 'rejected', payload.text ?? payload.reason);
   await pushCorrectionOutcome(await ref.get());
   return { status: 'OK' };
 }
@@ -194,6 +266,7 @@ async function applyCorrection(uid, payload) {
   if (status === 'OK' || status === 'ALREADY_DONE') {
     const snap = await db.collection('corrections').doc(id).get();
     if (snap.exists) await pushCorrectionOutcome(snap);
+    await closeCorrectionThread(uid, [id], 'applied', payload.text ?? payload.reason);
   }
   return { status };
 }
@@ -217,6 +290,7 @@ async function resolveCorrection(uid, payload) {
     const fresh = await db.getAll(...liveRefs);
     for (const s of fresh) await pushCorrectionOutcome(s);
   }
+  await closeCorrectionThread(uid, ids.map(String), 'resolved', payload.text ?? payload.reason);
   return { status: 'OK' };
 }
 
@@ -227,21 +301,24 @@ async function resolveCorrection(uid, payload) {
 // 무관하게 하나도 목록에서 빠지지 않도록(사후 피드백 가능성).
 async function listProcessedCorrections() {
   const snap = await db.collection('corrections').orderBy('repliedAt', 'desc').limit(150).get();
-  return { status: 'OK', items: snap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+  return { status: 'OK', items: await withThreads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))) };
 }
 
-// 처리함에서 사후 메모 남기기/수정 — 이미 적용해 큐에서 사라진 뒤 잘못을 발견했을 때.
-// status 는 유지하고 reply 만 갈아끼운다. repliedAt 을 갱신해 처리함 맨 위로 올리고,
-// FeedbackPopup 이 (키에 repliedAt 을 넣으므로) 제출자에게 다시 뜬다.
+// 처리함에서 사후 메시지 — 이미 처리된 제안 스레드에 관리자 메시지를 하나 더 붙이고
+// status='open' 으로 되돌려 제출자에게 다시 뜨게 한다(옛 '사후 메모'의 대체).
 async function annotateCorrection(uid, payload) {
   const id = String(payload.id ?? '');
   if (!id) invalid('id가 필요합니다.');
   const ref = db.collection('corrections').doc(id);
   const snap = await ref.get();
   if (!snap.exists) return { status: 'GONE' }; // 30일 경과 후 purgeCorrections 가 정리함
-  await ref.update({ reply: noteOf(payload), repliedAt: FieldValue.serverTimestamp() });
-  await pushCorrectionOutcome(await ref.get());
-  return { status: 'OK' };
+  const text = payload.reason != null ? String(payload.reason).trim() : '';
+  if (!text) return { status: 'OK' };
+  const adminName = await adminNameOf(uid);
+  const r = await askFeedbackQuestionInternal({ uid, adminName, channel: 'correction', ids: [id], text });
+  // reply 비정규화(처리함 목록 미리보기) 갱신 + 맨 위로.
+  await ref.update({ reply: text.slice(0, 300), repliedAt: FieldValue.serverTimestamp() });
+  return { status: r.status === 'OK' ? 'OK' : r.status };
 }
 
 // 편집 페이지로 딥링크했을 때 배너에 제안값을 그리기 위한 단건 조회.
@@ -273,7 +350,7 @@ async function ackCorrection(uid, payload) {
 
 async function listAppReports() {
   const snap = await db.collection('appReports').where('status', '==', 'pending').orderBy('createdAt', 'desc').limit(200).get();
-  return { status: 'OK', items: snap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+  return { status: 'OK', items: await withThreads(snap.docs.map((d) => ({ id: d.id, ...d.data() }))) };
 }
 
 async function ackAppReport(uid, payload) {
@@ -303,6 +380,14 @@ async function replyAppReport(uid, payload) {
     replyStatus,
     repliedAt: FieldValue.serverTimestamp(),
     status: 'replied',
+  });
+
+  // 스레드에도 관리자 메시지로 남긴다 — 'resolved' 면 닫고, 아니면 열어 둬서 제출자가 더 물을 수 있게.
+  const adminName = await adminNameOf(uid);
+  await askFeedbackQuestionInternal({
+    uid, adminName, channel: 'app_report', appReportId: id, text: reply,
+    close: replyStatus === 'resolved',
+    outcome: replyStatus === 'resolved' ? 'done' : replyStatus,
   });
 
   // 제출 시점 푸시 구독이 살아 있으면 그 한 기기에만 알린다(실패는 삼킨다 — 답변은 이미 저장됨).
@@ -354,17 +439,16 @@ async function listRepliedAppReports() {
     .orderBy('repliedAt', 'desc')
     .limit(50)
     .get();
-  return {
-    status: 'OK',
-    items: snap.docs.map((d) => {
-      const x = d.data();
-      return {
-        id: d.id, text: x.text ?? '', path: x.path ?? null,
-        reply: x.reply ?? '', replyStatus: x.replyStatus ?? null,
-        repliedAt: x.repliedAt ?? null, createdAt: x.createdAt ?? null,
-      };
-    }),
-  };
+  const rows = snap.docs.map((d) => {
+    const x = d.data();
+    return {
+      id: d.id, text: x.text ?? '', path: x.path ?? null,
+      reply: x.reply ?? '', replyStatus: x.replyStatus ?? null,
+      repliedAt: x.repliedAt ?? null, createdAt: x.createdAt ?? null,
+      threadId: x.threadId ?? null,
+    };
+  });
+  return { status: 'OK', items: await withThreads(rows) };
 }
 
 // =====================================================================
@@ -408,6 +492,24 @@ async function listReported() {
     })),
   ].sort((a, b) => (b.reportCount - a.reportCount) || (millis(b.createdAt) - millis(a.createdAt)));
 
+  // content_report 스레드 첨부(관리자 시야 — 신고자는 "제출자" 로 익명화).
+  const tRefs = items.map((it) => db.collection('feedbackThreads').doc(`content_${it.type}_${it.id}`));
+  const tSnaps = tRefs.length ? await db.getAll(...tRefs) : [];
+  const tById = {};
+  tSnaps.forEach((s) => { if (s.exists) tById[s.id] = s.data(); });
+  for (const it of items) {
+    const t = tById[`content_${it.type}_${it.id}`];
+    if (!t) continue;
+    it.thread = {
+      status: t.status, outcome: t.outcome ?? null,
+      messages: (t.messages || []).map((m) => ({
+        seq: m.seq, from: m.from,
+        name: m.from === 'admin' ? (m.adminName || '관리자') : '신고자',
+        text: m.text, at: m.at?.toMillis?.() ?? (m.at?._seconds ? m.at._seconds * 1000 : null),
+      })),
+    };
+  }
+
   return { status: 'OK', items };
 }
 
@@ -446,6 +548,7 @@ async function dismissReport(uid, payload) {
     await db.recursiveDelete(ref.collection('events'));
     await ref.update({ reportCount: 0, reportReviewedCount: 0, ...dismissMark });
   }
+  await closeContentThread(uid, table, id, 'kept', reason);
   return { status: 'OK' };
 }
 
@@ -795,6 +898,7 @@ async function deletePost(uid, payload) {
         tx.delete(ref);
       });
       await db.recursiveDelete(ref); // tx 밖 서브컬렉션 잔여분
+      await closeContentThread(uid, table, id, 'removed', note);
       return { status: 'OK' };
     }
   }
@@ -840,6 +944,7 @@ async function editPost(uid, payload) {
   }
 
   await ref.update(patch);
+  if (patch.reportEditedAt) await closeContentThread(uid, table, id, 'edited', noteOf(payload));
   return { status: 'OK' };
 }
 
@@ -862,6 +967,7 @@ export const moderationActions = {
   apply_correction: applyCorrection,
   resolve_correction: resolveCorrection,
   annotate_correction: annotateCorrection,
+  ask_feedback_question: askFeedbackQuestion,
   get_correction: getCorrection,
   list_auto_notices: listAutoNotices,
   ack_correction: ackCorrection,
