@@ -87,7 +87,9 @@ export async function vapidAuthorization(endpoint, vapid, cache) {
   return value;
 }
 
-// 구독 1건에 발송. 반환 = HTTP status(201 접수 / 404·410 구독 사망 → 정리 대상).
+// 구독 1건에 발송. 반환 = { status, detail } — status 는 HTTP 상태(201 접수 / 404·410
+// 구독 사망 → 정리 대상), detail 은 실패(비-2xx) 응답 본문 일부(푸시서비스가 거부 사유를
+// 알려주는 경우가 많다 — 예: "InvalidTtl", "topic header exceeds..."). 성공이면 detail 없음.
 export async function sendPush(target, data, { ttl = 86400, urgency = 'normal', topic } = {}, vapid, jwtCache) {
   const body = await encryptPayload(target.p256dh, target.auth, JSON.stringify(data));
   const headers = {
@@ -99,6 +101,13 @@ export async function sendPush(target, data, { ttl = 86400, urgency = 'normal', 
   };
   if (topic) headers.Topic = topic;   // 같은 topic 미전달분은 최신 것으로 대체(중복 알림 억제)
   const res = await fetch(target.endpoint, { method: 'POST', headers, body });
-  try { await res.body?.cancel(); } catch { /* 본문 미사용 — 커넥션 반환만 */ }
-  return res.status;
+  if (res.ok) {
+    try { await res.body?.cancel(); } catch { /* 본문 미사용 — 커넥션 반환만 */ }
+    return { status: res.status };
+  }
+  // 실패 응답은 원인 진단에 쓰이므로 본문을 읽는다(테스트 버튼 전용 sync 경로에서만
+  // 실제로 사용됨 — 실서비스 팬아웃은 detail 을 무시하고 status 만 본다).
+  let detail;
+  try { detail = (await res.text()).slice(0, 300) || undefined; } catch { /* 무시 */ }
+  return { status: res.status, detail };
 }

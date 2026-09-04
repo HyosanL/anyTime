@@ -75,7 +75,8 @@ function PushSettings() {
     if (r.status === 'REJECTED') return `푸시 서비스가 요청을 거부했어요 (코드 ${r.code}).`;
     if (r.status === 'NETWORK') return '푸시 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
     if (r.status === 'FAIL' && r.message) return r.message;
-    return `테스트 알림을 보내지 못했어요${r.code ? ` (코드 ${r.code})` : ''}.`;
+    const code = r.code ? ` (코드 ${r.code}${r.detail ? `: ${r.detail}` : ''})` : '';
+    return `테스트 알림을 보내지 못했어요${code}.`;
   }
 
   async function runTest(kind) {

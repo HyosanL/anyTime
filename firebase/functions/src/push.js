@@ -210,12 +210,12 @@ function testPayload(kind) {
   }
 }
 
-function classifyStatus(status) {
+function classifyStatus(status, detail) {
   if (status >= 200 && status < 300) return { status: 'OK' };
   if (status === 404 || status === 410) return { status: 'GONE' };
   if (status === 401 || status === 403) return { status: 'REJECTED', code: status };
   if (status === 0) return { status: 'NETWORK' };
-  return { status: 'ERROR', code: status };
+  return { status: 'ERROR', code: status, ...(detail ? { detail } : {}) };
 }
 
 export const sendSelfTestPush = onCall({ secrets: [pushFanoutUrl, pushFanoutSecret] }, async (request) => {
@@ -238,5 +238,6 @@ export const sendSelfTestPush = onCall({ secrets: [pushFanoutUrl, pushFanoutSecr
     [{ endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth }],
     { sync: true }
   );
-  return classifyStatus(results?.[0]?.status ?? 0);
+  const r0 = results?.[0];
+  return classifyStatus(r0?.status ?? 0, r0?.detail);
 });
