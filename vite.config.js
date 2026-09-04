@@ -59,8 +59,9 @@ export default defineConfig({
       },
       workbox: {
         // 웹푸시 수신 핸들러(public/push-sw.js)를 생성된 sw.js 에 포함.
-        // ※ push-sw.js 내용만 바꾸면 SW 갱신이 안 잡힌다 — 수정 시 ?v=N 을 올릴 것.
-        importScripts: ['push-sw.js?v=13'],
+        // ※ push-sw.js 내용만 바꾸면 SW 갱신이 안 잡힌다 — 수정 시 ?v=N 과
+        //   push-sw.js 의 PUSH_SW_VERSION 을 함께 올릴 것.
+        importScripts: ['push-sw.js?v=14'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // 관리자 전용 무거운 청크(편람 PDF 파서 pdfjs 등)는 프리캐시에서 제외.
         // 대다수(시간표 확인용)의 설치를 가볍게 유지 — 해당 페이지는 접속 시 그때 로드된다.
@@ -69,7 +70,12 @@ export default defineConfig({
         // 오프라인: 어떤 경로로 새로고침해도 앱 셸(index.html)을 캐시에서 반환
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/],
-        cleanupOutdatedCaches: true
+        cleanupOutdatedCaches: true,
+        // 활성화 즉시 열려 있는 탭까지 새 SW 가 장악한다. iOS standalone PWA 는
+        // location.reload() 가 소프트 리로드라 컨트롤러가 안 바뀌어, skipWaiting 만으로는
+        // 옛 SW 가 계속 push 를 처리한다(새 알림 종류를 조용히 흘림). clientsClaim 이 있으면
+        // 활성화하는 순간 새 SW 가 push 도 처리하고, UpdatePrompt 의 controllerchange→reload 도 걸린다.
+        clientsClaim: true
       }
     })
   ]

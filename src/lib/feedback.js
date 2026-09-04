@@ -61,9 +61,9 @@ async function currentEndpoint() {
   } catch { return null; }
 }
 
-export async function submitAppReport({ text, path, ua, standalone }) {
+export async function submitAppReport({ text, path, ua, standalone, sw }) {
   const endpoint = await currentEndpoint();
-  const r = await callFn('submitAppReport', { text, path, ua, standalone, ...(endpoint ? { endpoint } : {}) });
+  const r = await callFn('submitAppReport', { text, path, ua, standalone, sw, ...(endpoint ? { endpoint } : {}) });
   if (r.ok && r.data?.id) recordSubmission('appReport', { id: r.data.id, summary: String(text).slice(0, 200) });
   return { ok: r.ok, id: r.data?.id, message: r.message };
 }

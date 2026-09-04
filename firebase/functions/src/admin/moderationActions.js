@@ -267,7 +267,7 @@ async function ackCorrection(uid, payload) {
 }
 
 // =====================================================================
-//  앱 문제 리포트 — appReports/{id} 필드명(text, path, ua, standalone, status,
+//  앱 문제 리포트 — appReports/{id} 필드명(text, path, ua, sw, standalone, status,
 //  createdAt)은 ../appReport.js 의 실제 구현과 대조 확인됨.
 // =====================================================================
 

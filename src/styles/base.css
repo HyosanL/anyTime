@@ -398,16 +398,18 @@ a.list-row, .list-row a { color: inherit; }
   position: fixed; left: 50%; z-index: 90;
   bottom: calc(1rem + env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  display: flex; align-items: center; gap: 0.7rem;
-  max-width: min(calc(100vw - 2rem), var(--app-w));
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.7rem;
+  width: min(calc(100vw - 2rem), var(--app-w));
+  box-sizing: border-box;
   padding: 0.5rem 0.6rem 0.5rem 1rem;
   background: var(--primary-weak); color: var(--text);
-  border: 1px solid var(--primary-weak-border); border-radius: var(--r-full);
+  border: 1px solid var(--primary-weak-border); border-radius: var(--r-lg);
   box-shadow: var(--shadow-md); font-size: 0.85rem;
   animation: update-rise 0.24s ease;
 }
-.update-msg { font-weight: 600; white-space: nowrap; }
-.update-actions { display: flex; align-items: center; gap: 0.3rem; flex: none; }
+/* 좁은 화면: 문구는 남는 폭을 먹고(줄바꿈 허용), 버튼 묶음은 안 줄고 아랫줄로 내려간다 */
+.update-msg { font-weight: 600; flex: 1 1 auto; min-width: 0; }
+.update-actions { display: flex; align-items: center; gap: 0.3rem; flex: 0 0 auto; margin-left: auto; }
 .update-yes {
   background: var(--primary); color: var(--on-primary); border: none;
   border-radius: var(--r-full); padding: 0.4rem 0.95rem; font-weight: 700;

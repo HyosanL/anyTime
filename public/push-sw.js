@@ -16,6 +16,11 @@
 //   대비 보험 — 앱이 부팅하면서 회수해 이동한다(App.jsx PushNavigator).
 const META_CACHE = 'push-meta';
 
+// 이 파일의 버전. vite.config.js 의 importScripts `?v=N` 과 함께 올릴 것.
+// 앱 문제 리포트(AppReportModal)가 GET_SW_INFO 로 물어봐 진단에 첨부한다 —
+// "기기에서 실제로 도는 SW 가 몇 버전인지"가 알림 안 오는 문제의 첫 단서다.
+const PUSH_SW_VERSION = 14;
+
 // 방해금지 기본값 — 설정 전 기기도 기본 켬(22:30~08:00). src/lib/push.js 의 DND_DEFAULT 와 일치.
 const DND_DEFAULT = { on: true, start: '22:30', end: '08:00' };
 
@@ -183,6 +188,11 @@ self.addEventListener('push', (event) => {
 // 방해금지 무음 판정·클릭 딥링크(data.path)가 그대로 검증된다(실제 서버 발송 없이).
 self.addEventListener('message', (event) => {
   const d = event.data;
+  // 진단: 앱이 MessageChannel 로 이 SW 의 버전을 물어본다(앱 문제 리포트에 첨부).
+  if (d && d.type === 'GET_SW_INFO' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ pushSwVersion: PUSH_SW_VERSION });
+    return;
+  }
   if (d && d.type === 'TEST_PUSH') event.waitUntil(showPush(d.msg || {}));
 });
 

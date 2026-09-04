@@ -17,12 +17,14 @@ function subscriptionId(endpoint) {
 // 설계: docs/superpowers/specs/2026-09-03-daily-brief-and-app-report-design.md
 export const submitAppReport = onCall({ secrets: [pushFanoutUrl, pushFanoutSecret] }, async (request) => {
   requireAuth(request);
-  const { text, path, ua, standalone } = request.data ?? {};
+  const { text, path, ua, standalone, sw } = request.data ?? {};
 
   const t = String(text ?? '').trim();
   if (t.length < 5 || t.length > 500) invalid('문제 설명은 5자 이상 500자 이하로 입력하세요.');
   const p = path != null ? String(path).slice(0, 200) : null;
   const u = ua != null ? String(ua).slice(0, 300) : null;
+  // 진단: 기기의 서비스워커 상태(버전·컨트롤·알림권한). AppReportModal 이 조립한 짧은 문자열.
+  const s = sw != null ? String(sw).slice(0, 200) : null;
 
   const { endpoint } = request.data ?? {};
   const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
@@ -33,6 +35,7 @@ export const submitAppReport = onCall({ secrets: [pushFanoutUrl, pushFanoutSecre
     text: t,
     path: p,
     ua: u,
+    sw: s,
     standalone: !!standalone,
     status: 'pending',
     subId,

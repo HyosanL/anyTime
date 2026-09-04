@@ -5,6 +5,31 @@ import '../styles/correction.css';
 
 const STATUS_LABEL = { reviewing: '검토중', resolved: '해결됨', planned: '반영예정' };
 
+// 기기의 서비스워커·알림 상태를 짧은 한 줄로. "알림이 안 온다" 류 리포트의 첫 단서 —
+// 특히 pushsw 버전(옛 SW 가 새 알림 종류를 조용히 흘리는 경우)과 controller 유무.
+async function collectSwInfo() {
+  const p = [];
+  try {
+    p.push(`perm=${(typeof Notification !== 'undefined' && Notification.permission) || 'n/a'}`);
+    const swc = navigator.serviceWorker;
+    if (!swc) return 'sw=unsupported';
+    p.push(`ctrl=${swc.controller ? 'y' : 'n'}`);
+    const reg = await swc.getRegistration();
+    if (reg) p.push(`wait=${reg.waiting ? 'y' : 'n'}`);
+    const target = swc.controller || reg?.active;
+    if (target) {
+      const v = await new Promise((res) => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = (e) => res(e.data?.pushSwVersion ?? '?');
+        setTimeout(() => res('to'), 1200);
+        target.postMessage({ type: 'GET_SW_INFO' }, [ch.port2]);
+      });
+      p.push(`pushsw=v${v}`);
+    }
+  } catch { p.push('err'); }
+  return p.join(' ');
+}
+
 // 앱 문제 리포트 — 정보 수정 제안(CorrectionModal, 강의 데이터 오류용)과는 별개 채널.
 // 앱 자체의 버그·오류를 익명으로 접수한다. 진단 정보(경로·기기환경)는 자동 첨부되고
 // 사용자가 편집하지 않는다(제출 시점에 채워 넣을 뿐).
@@ -26,6 +51,7 @@ export default function AppReportModal({ onClose }) {
       path: location.pathname,
       ua: navigator.userAgent,
       standalone: isStandalone(),
+      sw: await collectSwInfo(),
     });
     setBusy(false);
     if (!r.ok) return setErr(r.message || '제출에 실패했습니다.');
@@ -59,7 +85,7 @@ export default function AppReportModal({ onClose }) {
             </label>
             {err && <p className="error-msg">{err}</p>}
             <button className="btn-add btn-block" disabled={busy} onClick={submit}>{busy ? '제출 중…' : '제출하기'}</button>
-            <p className="cor-hint">익명으로 접수됩니다(작성자 정보 미저장). 진단 정보(현재 화면 경로·기기환경)가 함께 전송돼요.</p>
+            <p className="cor-hint">익명으로 접수됩니다(작성자 정보 미저장). 진단 정보(현재 화면 경로·기기환경·알림 상태)가 함께 전송돼요.</p>
           </>
         )}
 

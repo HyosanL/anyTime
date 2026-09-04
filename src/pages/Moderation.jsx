@@ -842,6 +842,7 @@ function AppReportCard({ it, onReply, onAck, fmtDateTime }) {
       <p className="mod-corr-note">
         {it.standalone ? '설치된 앱' : '브라우저'} · {it.ua || 'UA 없음'}
         {it.subId ? ' · 푸시 가능' : ' · 푸시 없음'}
+        {it.sw ? ` · SW[${it.sw}]` : ''}
       </p>
       <textarea className="ar-reply-ta" rows={2} value={reply} placeholder="답변 (사용자에게 그대로 전달됩니다)"
         onChange={(e) => setReply(e.target.value)} maxLength={1000} />
