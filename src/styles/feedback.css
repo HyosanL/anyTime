@@ -1,0 +1,39 @@
+/* 내 피드백 허브(/feedback) + 스레드 뷰. 토큰: src/styles/tokens.css */
+
+.fb-page { padding: var(--pad); }
+.fb-new-btn { margin-bottom: 1rem; }
+
+.fb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.fb-row {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 0.75rem 0.9rem; cursor: pointer;
+}
+.fb-row-head { display: flex; align-items: center; gap: 0.5rem; }
+.fb-row-title { font-weight: 600; font-size: 0.92rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-row-badge {
+  font-size: 0.72rem; padding: 0.1rem 0.4rem; border-radius: var(--r-sm);
+  background: var(--chip-bg); color: var(--chip-fg); white-space: nowrap;
+}
+.fb-row-dot { width: 8px; height: 8px; border-radius: var(--r-full); background: var(--danger); flex: none; }
+.fb-row-sum { margin: 0.25rem 0 0; font-size: 0.82rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fb-thread { margin-top: 0.6rem; }
+.fb-thread-empty, .fb-thread-status { font-size: 0.82rem; color: var(--text-3); margin: 0.5rem 0 0; }
+.fb-msgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 52vh; overflow-y: auto; }
+.fb-msg { display: flex; flex-direction: column; max-width: 84%; padding: 0.4rem 0.6rem; border-radius: var(--r-md); }
+.fb-msg-admin { align-self: flex-start; background: var(--chip-bg); color: var(--text); }
+.fb-msg-me { align-self: flex-end; background: var(--primary-weak); color: var(--text); }
+.fb-msg-other { align-self: flex-start; background: var(--card-active); color: var(--text); }
+.fb-msg-who { font-size: 0.68rem; color: var(--text-3); }
+.fb-msg-text { margin: 0.1rem 0; font-size: 0.88rem; white-space: pre-wrap; word-break: break-word; }
+.fb-msg-at { font-size: 0.64rem; color: var(--text-3); align-self: flex-end; }
+.fb-reply { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+.fb-reply textarea { flex: 1; resize: none; }
+
+/* 홈 헤더 🚩 배지 */
+.home-flag-wrap { position: relative; display: inline-flex; }
+.home-flag-badge {
+  position: absolute; top: -4px; right: -6px; min-width: 15px; height: 15px; padding: 0 3px;
+  border-radius: var(--r-full); background: var(--danger); color: var(--on-danger);
+  font-size: 0.6rem; line-height: 15px; text-align: center; font-weight: 700;
+}
