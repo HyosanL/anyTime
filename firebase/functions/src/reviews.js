@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
@@ -126,9 +127,11 @@ export const likeReview = onCall(async (request) => {
 
 export const reportReview = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }, async (request) => {
   const uid = requireAuth(request);
-  const { id } = request.data ?? {};
+  const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
 
+  const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
+    ? createHash('sha256').update(endpoint).digest('hex') : null;
   const hash = actorHash(actorHashSalt.value(), uid, 'review-report', id);
   const reviewRef = db.collection('reviews').doc(id);
   const reactionRef = reviewRef.collection('reactions').doc(hash);
@@ -143,7 +146,7 @@ export const reportReview = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pus
     const [reviewSnap, reactionSnap] = await Promise.all([tx.get(reviewRef), tx.get(reactionRef)]);
     if (!reviewSnap.exists) return { status: 'NOT_FOUND' };
     if (reactionSnap.exists) return { status: 'ALREADY' };
-    tx.set(reactionRef, { kind: 'report', createdAt: FieldValue.serverTimestamp() });
+    tx.set(reactionRef, { kind: 'report', subId, createdAt: FieldValue.serverTimestamp() });
     tx.set(eventsRef.doc(), { kind: 'report', createdAt: FieldValue.serverTimestamp() });
     tx.update(reviewRef, { reportCount: FieldValue.increment(1) });
     return { status: 'OK', reportCountBefore: reviewSnap.get('reportCount') ?? 0 };

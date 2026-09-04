@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { callFn } from '../lib/functions';
+import { pushEndpoint } from '../lib/feedback';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog, formatTimes } from '../lib/cache';
 import { maskText, prefetchMask } from '../lib/mask';
@@ -139,7 +140,7 @@ export default function Memo() {
     if (getReacted('memo', id).report) return;
     if (!confirm('이 메모를 신고할까요?')) return;
     markReacted('memo', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
-    const r = await callFn('reportMemo', { id });
+    const r = await callFn('reportMemo', { id, endpoint: await pushEndpoint() });
     const status = r.ok ? r.data.status : 'ERROR';
     if (status === 'DELETED') { setMemos((prev) => prev.filter((m) => m.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
     else if (status === 'ALREADY') alert('이미 신고한 메모입니다.');

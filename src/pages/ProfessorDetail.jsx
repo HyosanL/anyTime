@@ -4,6 +4,7 @@ import { collection, doc, getDoc, getDocs, query, where, orderBy, limit } from '
 import { db } from '../firebase';
 import { getCatalog, buildSections } from '../lib/cache';
 import { callFn } from '../lib/functions';
+import { pushEndpoint } from '../lib/feedback';
 import { getReacted, markReacted } from '../lib/reactions';
 import TimetableGrid from '../components/TimetableGrid';
 import CorrectionModal from '../components/CorrectionModal';
@@ -102,7 +103,7 @@ export default function ProfessorDetail() {
     if (getReacted('review', id).report) return;
     if (!confirm('이 강의평을 신고할까요?')) return;
     markReacted('review', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
-    const r = await callFn('reportReview', { id });
+    const r = await callFn('reportReview', { id, endpoint: await pushEndpoint() });
     const status = r.ok ? r.status : 'ERROR';
     if (status === 'DELETED') {
       setReviews((prev) => prev.filter((rv) => rv.id !== id));

@@ -186,8 +186,8 @@ export async function listComments(postId) {
   const snap = await getDocs(query(collection(db, 'boardPosts', postId, 'comments'), orderBy('createdAt')));
   return snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, createdAt: toIso(data.createdAt) }; });
 }
-export const react = (postId, kind) =>
-  callFn('boardReact', { postId, kind }).then((r) => (r.ok ? r.data.status : 'ERROR'));
+export const react = (postId, kind, endpoint) =>
+  callFn('boardReact', { postId, kind, ...(endpoint ? { endpoint } : {}) }).then((r) => (r.ok ? r.data.status : 'ERROR'));
 export const addComment = (postId, parentId, content, password) =>
   callFn('createComment', { postId, parentId: parentId || null, content, postPassword: password })
     .then((r) => (r.ok ? r.data.id : null));

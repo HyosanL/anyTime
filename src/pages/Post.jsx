@@ -5,6 +5,7 @@ import { getPost, listComments, react, addComment, deletePost, deleteComment, po
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { hasViewed, markViewed } from '../lib/views';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
+import { pushEndpoint } from '../lib/feedback';
 import { maskText, prefetchMask } from '../lib/mask';
 import { kvGet, kvSet, kvDel } from '../lib/cache';
 import BoardImage from '../components/BoardImage';
@@ -125,7 +126,7 @@ export default function Post() {
     // 요청 전에 먼저 로컬 기록/해제해 연타 차단
     if (on) unmarkReacted('post', id, kind); else markReacted('post', id, kind);
     setReacted(getReacted('post', id));
-    const r = await react(id, on ? `un${kind}` : kind);
+    const r = await react(id, on ? `un${kind}` : kind, kind === 'report' ? await pushEndpoint() : undefined);
     if (r === 'DELETED') { alert('신고 누적으로 삭제되었습니다.'); kvDel(`bb:post:${id}`); navigate(-1); return; }
     // 'ALREADY' = 서버가 이미 내 반응을 갖고 있다(다른 기기에서 눌렀거나 로컬 기록이 지워진 경우).
     // 좋아요/싫어요는 로컬 상태만 맞추면 되니 조용히 넘어가고, 신고만 안내한다.

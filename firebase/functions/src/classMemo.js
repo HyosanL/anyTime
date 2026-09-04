@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
@@ -106,9 +107,11 @@ export const deleteMemo = onCall(async (request) => {
 
 export const reportMemo = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }, async (request) => {
   const uid = requireAuth(request);
-  const { id } = request.data ?? {};
+  const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
 
+  const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
+    ? createHash('sha256').update(endpoint).digest('hex') : null;
   // Mirrors reviews.js's reportReview shape exactly: dedup via "document ID =
   // actor hash" under reactions/, events/ subcollection doubling as the
   // 15-minute burst-count source (design doc §4).
@@ -121,7 +124,7 @@ export const reportMemo = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushF
     const [memoSnap, reactionSnap] = await Promise.all([tx.get(memoRef), tx.get(reactionRef)]);
     if (!memoSnap.exists) return { status: 'NOT_FOUND' };
     if (reactionSnap.exists) return { status: 'ALREADY' };
-    tx.set(reactionRef, { kind: 'report', createdAt: FieldValue.serverTimestamp() });
+    tx.set(reactionRef, { kind: 'report', subId, createdAt: FieldValue.serverTimestamp() });
     tx.set(eventsRef.doc(), { kind: 'report', createdAt: FieldValue.serverTimestamp() });
     tx.update(memoRef, { reportCount: FieldValue.increment(1) });
     return { status: 'OK', reportCountBefore: memoSnap.get('reportCount') ?? 0 };

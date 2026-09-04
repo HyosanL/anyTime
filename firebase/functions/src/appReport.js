@@ -108,4 +108,9 @@ export const purgeAppReports = onSchedule({ schedule: '0 18 1 * *', timeZone: 'U
     for (const d of stale.slice(i, i + 400)) batch.delete(d.ref);
     await batch.commit();
   }
+  // 연결된 피드백 스레드도 함께 정리.
+  for (const d of stale) {
+    const tid = d.get('threadId');
+    if (tid) await db.collection('feedbackThreads').doc(tid).delete().catch(() => {});
+  }
 });

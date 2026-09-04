@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getCatalog } from '../lib/cache';
 import { callFn } from '../lib/functions';
+import { pushEndpoint } from '../lib/feedback';
 import { getReacted, markReacted } from '../lib/reactions';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
@@ -121,7 +122,7 @@ export default function Reviews() {
     if (getReacted('review', id).report) return;
     if (!confirm('이 강의평을 신고할까요?')) return;
     markReacted('review', id, 'report'); reactTick((n) => n + 1); // 요청 전에 먼저 기록해 연타 차단
-    const r = await callFn('reportReview', { id });
+    const r = await callFn('reportReview', { id, endpoint: await pushEndpoint() });
     const status = r.ok ? r.status : 'ERROR';
     if (status === 'DELETED') { setReviews((prev) => prev.filter((rv) => rv.id !== id)); alert('신고 누적으로 삭제되었습니다.'); }
     else if (status === 'ALREADY') alert('이미 신고한 강의평입니다.');

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
@@ -142,7 +143,7 @@ export const getPost = onCall(async (request) => {
 
 export const boardReact = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }, async (request) => {
   const uid = requireAuth(request);
-  const { postId, kind } = request.data ?? {};
+  const { postId, kind, endpoint } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
   if (!['like', 'dislike', 'report', 'unlike', 'undislike'].includes(kind)) invalid('잘못된 요청입니다.');
 
@@ -187,7 +188,9 @@ export const boardReact = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushF
     const [freshPostSnap, reactSnap] = await Promise.all([tx.get(postRef), tx.get(reactionRef)]);
     if (!freshPostSnap.exists) return { status: 'NOT_FOUND' };
     if (reactSnap.exists) return { status: 'ALREADY' };
-    tx.set(reactionRef, { kind, createdAt: FieldValue.serverTimestamp() });
+    const reactExtra = (kind === 'report' && typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
+      ? { subId: createHash('sha256').update(endpoint).digest('hex') } : {};
+    tx.set(reactionRef, { kind, ...reactExtra, createdAt: FieldValue.serverTimestamp() });
     tx.set(eventsRef.doc(), { kind, actorHash: hash, createdAt: FieldValue.serverTimestamp() });
     if (kind === 'like') tx.update(postRef, { likeCount: FieldValue.increment(1) });
     else if (kind === 'dislike') tx.update(postRef, { dislikeCount: FieldValue.increment(1) });
