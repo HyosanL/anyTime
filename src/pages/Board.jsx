@@ -4,6 +4,7 @@ import { getBoard, listPosts, listHot, createPost, uploadBoardImages, postImageK
 import { maskText, prefetchMask } from '../lib/mask';
 import { pushEnabled, watchPost } from '../lib/push';
 import { kvGet, kvSet } from '../lib/cache';
+import DeletePasswordField from '../components/DeletePasswordField';
 import { useAuthContext } from '../contexts/AuthContext';
 import PullToRefresh from '../components/PullToRefresh';
 import BackButton from '../components/BackButton';
@@ -187,7 +188,7 @@ export default function Board() {
               ))}
             </ul>
           )}
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="삭제용 비밀번호 (선택 · 비우면 누구나 삭제)" />
+          <DeletePasswordField value={password} onChange={setPassword} />
           {err && <p className="error-msg">{err}</p>}
           <button className="btn-add btn-block" disabled={busy}>{busy ? '등록 중…' : '글 등록'}</button>
         </form>

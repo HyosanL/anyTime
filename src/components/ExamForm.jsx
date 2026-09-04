@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { callFn } from '../lib/functions';
 import { uploadExamFiles, EXAM_RETENTION_YEARS } from '../lib/storage';
 import { maskText, prefetchMask } from '../lib/mask';
+import DeletePasswordField from './DeletePasswordField';
 
 const TYPES = ['중간고사', '기말고사', '퀴즈', '과제', '기타'];
 const CUR_YEAR = new Date().getFullYear();
@@ -138,10 +139,7 @@ export default function ExamForm({ courseCode, onDone }) {
         <span className="account-note exam-file-note">업로드 후 {EXAM_RETENTION_YEARS}년간 보관되며, 이후 자동 삭제됩니다.</span>
       </div>
 
-      <label className="field rev-form-field">
-        <span className="field-label">삭제용 비밀번호 (선택)</span>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비우면 누구나 삭제 가능" />
-      </label>
+      <DeletePasswordField value={password} onChange={setPassword} />
 
       {error && <p className="error-msg">{error}</p>}
 

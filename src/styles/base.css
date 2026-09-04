@@ -198,6 +198,7 @@ html, body { overscroll-behavior: none; }
 /* ---------- 입력 ---------- */
 input, select, textarea { font-family: inherit; }
 .input, .field input, .field select, .field textarea,
+textarea,
 input:not([type]),
 input[type="text"], input[type="password"], input[type="number"], input[type="search"], input[type="email"] {
   width: 100%;
@@ -211,6 +212,7 @@ input[type="text"], input[type="password"], input[type="number"], input[type="se
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+textarea::placeholder, input::placeholder { color: var(--text-3); }
 select {
   background: var(--input-bg); color: var(--text);
   border: 1px solid var(--border-strong); border-radius: var(--r-md);
@@ -228,6 +230,15 @@ input:focus, select:focus, textarea:focus, .input:focus {
 
 /* 체크박스 */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); width: 1.05rem; height: 1.05rem; }
+
+/* 삭제용 비밀번호 토글 (DeletePasswordField) */
+.dpf { display: flex; flex-direction: column; gap: 0.4rem; }
+.dpf-check {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.86rem; color: var(--text-2); cursor: pointer; user-select: none;
+}
+.dpf-check input { flex: none; }
+.dpf-hint { margin: 0; font-size: 0.78rem; color: var(--text-3); line-height: 1.5; }
 
 /* 검색바 */
 .search-bar { padding: 0.9rem var(--pad) 0.4rem; }

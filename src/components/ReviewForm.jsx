@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { callFn } from '../lib/functions';
 import { maskText, prefetchMask } from '../lib/mask';
 import { markReviewed } from '../lib/reactions';
+import DeletePasswordField from './DeletePasswordField';
 
 const SCORES = [
   ['overall', '종합', true],
@@ -155,10 +156,7 @@ export default function ReviewForm({ courseCode, professors, defaultProf, onDone
         <textarea value={courseComment} onFocus={prefetchMask} onChange={(e) => setCourseComment(e.target.value)} rows={2} placeholder="난이도, 과제 등" />
       </label>
 
-      <label className="field rev-form-field">
-        <span className="field-label">삭제용 비밀번호 (선택)</span>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비우면 누구나 삭제 가능" />
-      </label>
+      <DeletePasswordField value={password} onChange={setPassword} />
 
       {error && <p className="error-msg">{error}</p>}
 

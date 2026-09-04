@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import DeletePasswordField from '../components/DeletePasswordField';
 import { callFn } from '../lib/functions';
 import { pushEndpoint } from '../lib/feedback';
 import { useAuthContext } from '../contexts/AuthContext';
@@ -246,18 +247,12 @@ export default function Memo() {
               rows={2}
               placeholder="이번 수업 공지·과제·시험범위 등을 공유하세요"
             />
+            <DeletePasswordField value={password} onChange={setPassword} />
             <div className="memo-form-row">
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="삭제용 비번 (선택)"
-              />
               <button type="submit" className="btn-add" disabled={submitting}>
                 {submitting ? '등록 중…' : '메모 등록'}
               </button>
             </div>
-            <p className="account-note">비번을 비우면 누구나 삭제할 수 있어요.</p>
             {error && <p className="error-msg">{error}</p>}
           </form>
 

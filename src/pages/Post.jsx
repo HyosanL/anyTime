@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../contexts/AuthContext';
 import { getPost, listComments, react, addComment, deletePost, deleteComment, postImageKeys } from '../lib/board';
+import DeletePasswordField from '../components/DeletePasswordField';
 import { getReacted, markReacted, unmarkReacted } from '../lib/reactions';
 import { hasViewed, markViewed } from '../lib/views';
 import { pushSupported, pushEnabled, enablePush, watchPost, unwatchPost, isWatched } from '../lib/push';
@@ -221,8 +222,8 @@ export default function Post() {
         )}
         {/* 댓글창에 손을 대면 그때 비속어 사전을 미리 받는다 — 읽기만 하는 사람은 받지 않는다. */}
         <textarea value={cText} onFocus={prefetchMask} onChange={(e) => setCText(e.target.value)} rows={2} placeholder={replyTo ? '답글을 입력하세요' : '댓글을 입력하세요'} />
+        <DeletePasswordField value={cPw} onChange={setCPw} />
         <div className="comment-form-row">
-          <input type="password" value={cPw} onChange={(e) => setCPw(e.target.value)} placeholder="삭제용 비번 (선택)" />
           <button className="btn-add">등록</button>
         </div>
       </form>
