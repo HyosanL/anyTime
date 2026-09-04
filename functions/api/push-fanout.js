@@ -59,7 +59,11 @@ async function fanout(env, { kind, post_id, title, board, path, body: msgBody, m
     : kind === 'next_class'
       ? { ttl: 300, urgency: 'high', topic: 'next-class' }
       : kind === 'today_summary'
-        ? { ttl: 3600, urgency: 'high', topic: 'today-summary' }
+        // 'today-summary' 는 실제 발송에서 푸시서비스가 { reason: 'BadWebPushTopic' } 로
+        // 거부한다(길이/형식 원인 불명 — 'next-class'(10자)는 통과, 'today-summary'(13자)는
+        // 거부됨을 실기기 테스트로 확인). topic 은 "미전달 알림 중복 억제"용 최적화일 뿐
+        // 기능 필수가 아니므로, 원인 규명 전까지는 아예 빼서 발송 자체를 살린다.
+        ? { ttl: 3600, urgency: 'high' }
         : { ttl: 86400, urgency: 'high', ...(post_id != null ? { topic: `post-${post_id}` } : {}) };
 
   const jwtCache = new Map();   // VAPID JWT 는 푸시서비스 origin 당 1회만 서명
