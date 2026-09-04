@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { onCall, onRequest } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAuth, requireAdmin, invalid } from './lib/context.js';
-import { pushFanoutSecret } from './lib/secrets.js';
+import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
+import { pushFanout } from './lib/pushFanout.js';
 
 // Port of push_subscribe()/push_unsubscribe()/push_set_hot()/push_watch()/
 // push_unwatch()/push_prune()/admin_push_subscribe()/admin_push_unsubscribe()
@@ -19,6 +20,15 @@ import { pushFanoutSecret } from './lib/secrets.js';
 // doc ID (design doc §3).
 function subscriptionId(endpoint) {
   return createHash('sha256').update(endpoint).digest('hex');
+}
+
+// 지금(Asia/Seoul)의 '주간 분값' — 월요일 00:00 = 0 … 일요일 23:59 = 10079.
+// nextClass.js 에 같은 함수가 있다(subscriptionId 처럼 이 코드베이스는 이런 소형
+// 헬퍼는 파일별 사본으로 둔다). 오늘 수업 요약/다음 수업 테스트 푸시의 mow 계산용.
+function seoulMinuteOfWeek(now = new Date()) {
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const isoDay = kst.getUTCDay() === 0 ? 7 : kst.getUTCDay();
+  return (isoDay - 1) * 1440 + kst.getUTCHours() * 60 + kst.getUTCMinutes();
 }
 
 // Mirrors the identical validation duplicated in push_subscribe() and
@@ -175,4 +185,58 @@ export const adminPushUnsubscribe = onCall(async (request) => {
   if (typeof endpoint !== 'string') invalid('잘못된 요청입니다.');
   await db.collection('adminPushSubscriptions').doc(`${uid}_${subscriptionId(endpoint)}`).delete();
   return { status: 'OK' };
+});
+
+// 실기기 푸시 테스트 — 프로필 "알림 테스트" 버튼 4종이 호출한다. 실제 푸시와 100%
+// 같은 경로(pushFanout → /api/push-fanout → webpush.js → 푸시서비스)를 타고, sync 로
+// 발송 결과(HTTP 상태)를 받아 온다. 성공이면 클라이언트는 예전처럼 담백한 문구만,
+// 실패면 "구독 만료/거부/네트워크" 를 사용자에게 보여준다. 익명 유지: endpoint 로만
+// 구독 문서를 찾고 uid 는 저장하지 않는다(setNextClassAlerts 와 동일 패턴).
+const TEST_KINDS = ['plain', 'quiet', 'next_class', 'today_summary'];
+
+function testPayload(kind) {
+  switch (kind) {
+    case 'plain':
+      // 구버전 SW 도 그대로 그리는 legacy 형태 — "푸시가 물리적으로 도착하는가" 만 확인.
+      return { kind: 'hot', title: '🔔 테스트 알림', board: '테스트', path: '/' };
+    case 'quiet':
+      return { kind: 'test', quiet: true, title: '🌙 무음 테스트', body: '소리·진동 없이 왔으면 정상이에요.', path: '/' };
+    case 'next_class':
+      return { kind: 'next_class', test: true, mow: seoulMinuteOfWeek(), path: '/' };
+    case 'today_summary':
+      return { kind: 'today_summary', test: true, mow: seoulMinuteOfWeek(), path: '/' };
+    default:
+      return null;
+  }
+}
+
+function classifyStatus(status) {
+  if (status >= 200 && status < 300) return { status: 'OK' };
+  if (status === 404 || status === 410) return { status: 'GONE' };
+  if (status === 401 || status === 403) return { status: 'REJECTED', code: status };
+  if (status === 0) return { status: 'NETWORK' };
+  return { status: 'ERROR', code: status };
+}
+
+export const sendSelfTestPush = onCall({ secrets: [pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+  requireAuth(request);
+  const { endpoint, kind } = request.data ?? {};
+  if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 1024) {
+    invalid('잘못된 구독 정보입니다.');
+  }
+  if (!TEST_KINDS.includes(kind)) invalid('알 수 없는 테스트 종류입니다.');
+
+  const snap = await db.collection('pushSubscriptions').doc(subscriptionId(endpoint)).get();
+  if (!snap.exists) invalid('이 기기의 푸시 구독을 찾을 수 없어요. 푸시를 껐다 켜 주세요.');
+  const d = snap.data();
+  if (!d.endpoint || !d.p256dh || !d.auth) invalid('구독 정보가 손상됐어요. 푸시를 껐다 켜 주세요.');
+
+  const results = await pushFanout(
+    pushFanoutUrl.value(),
+    pushFanoutSecret.value(),
+    testPayload(kind),
+    [{ endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth }],
+    { sync: true }
+  );
+  return classifyStatus(results?.[0]?.status ?? 0);
 });

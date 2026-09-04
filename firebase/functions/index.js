@@ -75,6 +75,7 @@ export {
   pushPrune,
   adminPushSubscribe,
   adminPushUnsubscribe,
+  sendSelfTestPush,
 } from './src/push.js';
 
 export { setNextClassAlerts, setTodaySummaryAlert, nextClassNotify } from './src/nextClass.js';
