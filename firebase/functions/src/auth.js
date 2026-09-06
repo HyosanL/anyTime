@@ -116,6 +116,9 @@ export const signup = onCall(callable({ region: REGION }), async (request) => {
         isAdmin: false,
         ttPublic: false,
         postCount: 0,
+        // Account age — gates report auto-deletion (accountAge.js). geoVerifiedAt
+        // can't serve this: geoVerify() overwrites it on every re-check.
+        createdAt: FieldValue.serverTimestamp(),
         geoVerifiedAt: FieldValue.serverTimestamp(),
       });
     });

@@ -11,6 +11,7 @@ import { archiveDeleted } from './lib/archive.js';
 import { pushFanout } from './lib/pushFanout.js';
 import { adminPush } from './lib/adminNotify.js';
 import { assertUnderLimit } from './lib/rateLimit.js';
+import { isYoungAccount } from './lib/accountAge.js';
 
 // Port of create_board()/create_post()/get_post_b()/check_hot()/board_react()/
 // create_comment_b()/delete_post()/delete_comment_b()/purge_board()/
@@ -113,6 +114,7 @@ export const createPost = onCall(callable(), async (request) => {
     dislikeCount: 0,
     commentCount: 0,
     reportCount: 0,
+    reportCountStrong: 0, // reports from accounts >24h old — drives auto-deletion (accountAge.js)
     reportReviewedCount: 0,
     viewCount: 0,
     hot: false,
@@ -193,6 +195,10 @@ export const boardReact = onCall(callable({ secrets: [actorHashSalt, pushFanoutU
   // (design doc §3 — never part of the old get_boot_info() bundle).
   const secretsConfigSnap = await db.doc('config/secrets').get();
 
+  // Young accounts' reports still count (reportCount, dedup) and show to admins,
+  // but are excluded from the auto-delete decision (accountAge.js, spec §C).
+  const young = kind === 'report' ? await isYoungAccount(uid) : false;
+
   const reactionRef = reactionsCol.doc(`${kind}_${hash}`);
   const eventsRef = postRef.collection('events');
 
@@ -202,12 +208,19 @@ export const boardReact = onCall(callable({ secrets: [actorHashSalt, pushFanoutU
     if (reactSnap.exists) return { status: 'ALREADY' };
     const reactExtra = (kind === 'report' && typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
       ? { subId: createHash('sha256').update(endpoint).digest('hex') } : {};
-    tx.set(reactionRef, { kind, ...reactExtra, createdAt: FieldValue.serverTimestamp() });
-    tx.set(eventsRef.doc(), { kind, actorHash: hash, createdAt: FieldValue.serverTimestamp() });
+    tx.set(reactionRef, { kind, ...reactExtra, ...(kind === 'report' ? { young } : {}), createdAt: FieldValue.serverTimestamp() });
+    tx.set(eventsRef.doc(), { kind, actorHash: hash, ...(kind === 'report' ? { young } : {}), createdAt: FieldValue.serverTimestamp() });
     if (kind === 'like') tx.update(postRef, { likeCount: FieldValue.increment(1) });
     else if (kind === 'dislike') tx.update(postRef, { dislikeCount: FieldValue.increment(1) });
-    else tx.update(postRef, { reportCount: FieldValue.increment(1) });
-    return { status: 'OK', reportCountBefore: freshPostSnap.get('reportCount') ?? 0 };
+    else tx.update(postRef, {
+      reportCount: FieldValue.increment(1),
+      ...(young ? {} : { reportCountStrong: FieldValue.increment(1) }),
+    });
+    return {
+      status: 'OK',
+      reportCountBefore: freshPostSnap.get('reportCount') ?? 0,
+      strongBefore: freshPostSnap.get('reportCountStrong') ?? 0,
+    };
   });
   if (outcome.status !== 'OK') return { status: outcome.status };
 
@@ -219,19 +232,20 @@ export const boardReact = onCall(callable({ secrets: [actorHashSalt, pushFanoutU
     return { status: 'OK' };
   }
 
-  const reportCount = outcome.reportCountBefore + 1;
+  const reportCount = outcome.reportCountBefore + 1;        // true total (archive metadata)
+  const strong = outcome.strongBefore + (young ? 0 : 1);   // drives auto-deletion
   const deleteThreshold = Math.max(1, secretsConfigSnap.get('reportDeleteCount') ?? 30);
   const burstThreshold = Math.max(1, secretsConfigSnap.get('reportBurstCount') ?? 10);
   const fifteenMinAgo = Timestamp.fromMillis(Date.now() - 15 * 60 * 1000);
-  const burstSnap = await eventsRef.where('kind', '==', 'report').where('createdAt', '>', fifteenMinAgo).count().get();
-  const burstCount = burstSnap.data().count;
+  const burstSnap = await eventsRef.where('kind', '==', 'report').where('createdAt', '>', fifteenMinAgo).get();
+  const strongBurst = burstSnap.docs.filter((d) => d.get('young') !== true).length;
 
-  if (reportCount < deleteThreshold && burstCount < burstThreshold) {
+  if (strong < deleteThreshold && strongBurst < burstThreshold) {
     await db.collection('boards').doc(boardId).update({ lastActivityAt: FieldValue.serverTimestamp() });
     return { status: 'OK' };
   }
 
-  const reason = reportCount >= deleteThreshold ? 'threshold' : 'burst';
+  const reason = strong >= deleteThreshold ? 'threshold' : 'burst';
   let archived = false;
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(postRef);

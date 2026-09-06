@@ -10,6 +10,7 @@ import { inPrimaryTimetable, timetableHeldDays } from './lib/eligibility.js';
 import { adminPush } from './lib/adminNotify.js';
 import { callable } from './lib/opts.js';
 import { assertUnderLimit } from './lib/rateLimit.js';
+import { isYoungAccount } from './lib/accountAge.js';
 
 // Port of create_review()/delete_review()/like_review()/report_review()
 // (db/schema.sql) plus the course_professor_rating/professor_rating views,
@@ -71,6 +72,7 @@ export const createReview = onCall(callable(), async (request) => {
     presentation: presentation ?? null,
     likeCount: 0,
     reportCount: 0,
+    reportCountStrong: 0, // reports from accounts >24h old — drives auto-deletion (accountAge.js)
     reportReviewedCount: 0, // admin "확인처리" cutoff, set by the future adminAction gateway — not touched here
     hasPassword: !!passwordHash,
     createdAt: FieldValue.serverTimestamp(),
@@ -149,6 +151,10 @@ export const reportReview = onCall(callable({ secrets: [actorHashSalt, pushFanou
   const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
   await assertUnderLimit(uid, 'reportContent');
+  // Young accounts' reports are still recorded (reportCount, dedup) and shown to
+  // admins, but excluded from the auto-delete decision — mass-account censorship
+  // now needs established accounts (accountAge.js, spec §C).
+  const young = await isYoungAccount(uid);
 
   const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
     ? createHash('sha256').update(endpoint).digest('hex') : null;
@@ -166,14 +172,22 @@ export const reportReview = onCall(callable({ secrets: [actorHashSalt, pushFanou
     const [reviewSnap, reactionSnap] = await Promise.all([tx.get(reviewRef), tx.get(reactionRef)]);
     if (!reviewSnap.exists) return { status: 'NOT_FOUND' };
     if (reactionSnap.exists) return { status: 'ALREADY' };
-    tx.set(reactionRef, { kind: 'report', subId, createdAt: FieldValue.serverTimestamp() });
-    tx.set(eventsRef.doc(), { kind: 'report', createdAt: FieldValue.serverTimestamp() });
-    tx.update(reviewRef, { reportCount: FieldValue.increment(1) });
-    return { status: 'OK', reportCountBefore: reviewSnap.get('reportCount') ?? 0 };
+    tx.set(reactionRef, { kind: 'report', subId, young, createdAt: FieldValue.serverTimestamp() });
+    tx.set(eventsRef.doc(), { kind: 'report', young, createdAt: FieldValue.serverTimestamp() });
+    tx.update(reviewRef, {
+      reportCount: FieldValue.increment(1),
+      ...(young ? {} : { reportCountStrong: FieldValue.increment(1) }),
+    });
+    return {
+      status: 'OK',
+      reportCountBefore: reviewSnap.get('reportCount') ?? 0,
+      strongBefore: reviewSnap.get('reportCountStrong') ?? 0,
+    };
   });
   if (outcome.status !== 'OK') return { status: outcome.status };
 
-  const reportCount = outcome.reportCountBefore + 1;
+  const reportCount = outcome.reportCountBefore + 1;         // true total (archive metadata)
+  const strong = outcome.strongBefore + (young ? 0 : 1);    // drives auto-deletion
   // reportDeleteCount/reportBurstCount are never exposed via the old
   // get_boot_info() bundle, so they live in config/secrets, not config/app
   // (design doc §3 — the app/secrets split mirrors exactly which app_setting
@@ -186,12 +200,12 @@ export const reportReview = onCall(callable({ secrets: [actorHashSalt, pushFanou
   const burstSnap = await eventsRef
     .where('kind', '==', 'report')
     .where('createdAt', '>', fifteenMinAgo)
-    .count().get();
-  const burstCount = burstSnap.data().count;
+    .get();
+  const strongBurst = burstSnap.docs.filter((d) => d.get('young') !== true).length;
 
-  if (reportCount < deleteThreshold && burstCount < burstThreshold) return { status: 'OK' };
+  if (strong < deleteThreshold && strongBurst < burstThreshold) return { status: 'OK' };
 
-  const reason = reportCount >= deleteThreshold ? 'threshold' : 'burst';
+  const reason = strong >= deleteThreshold ? 'threshold' : 'burst';
   let archived = false;
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(reviewRef);
