@@ -3,6 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
 import { hashPassword, verifyPassword } from './lib/password.js';
 import { callable } from './lib/opts.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // Port of create_exam()/delete_exam()/purge_old_exams() (db/schema.sql).
 // exam_file's rows become the embedded `files` array field (design doc §3) —
@@ -11,6 +12,7 @@ import { callable } from './lib/opts.js';
 
 export const createExam = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'createExam');
   const { courseCode, srcYear, srcTerm, title, examType, description, files, postPassword } = request.data ?? {};
 
   if (!courseCode) invalid('courseCode가 필요합니다.');

@@ -4,6 +4,7 @@ import { db, FieldValue, requireAuth, requireAdmin, invalid } from './lib/contex
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { pushFanout } from './lib/pushFanout.js';
 import { callable } from './lib/opts.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // Port of push_subscribe()/push_unsubscribe()/push_set_hot()/push_watch()/
 // push_unwatch()/push_prune()/admin_push_subscribe()/admin_push_unsubscribe()
@@ -220,7 +221,8 @@ function classifyStatus(status, detail) {
 }
 
 export const sendSelfTestPush = onCall(callable({ secrets: [pushFanoutUrl, pushFanoutSecret] }), async (request) => {
-  requireAuth(request);
+  const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'sendSelfTestPush');
   const { endpoint, kind } = request.data ?? {};
   if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 1024) {
     invalid('잘못된 구독 정보입니다.');

@@ -7,6 +7,7 @@ import { callable } from './lib/opts.js';
 import { pushFanout } from './lib/pushFanout.js';
 import { adminPush } from './lib/adminNotify.js';
 import { appendMessage, threadIdFor, MSG_MAX_LEN } from './lib/feedbackThread.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // 설계: docs/superpowers/specs/2026-09-04-feedback-two-way-threads-design.md
 // feedbackThreads/{threadId} 는 Rules `if false` — 전부 이 파일 / moderationActions.js /
@@ -137,6 +138,7 @@ export const replyFeedbackThread = onCall(
   callable({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }),
   async (request) => {
     const uid = requireAuth(request);
+    await assertUnderLimit(uid, 'replyFeedbackThread');
     const d = request.data ?? {};
     const channel = String(d.channel ?? '');
     const text = String(d.text ?? '').trim();

@@ -3,6 +3,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { callable } from './lib/opts.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 import { adminPush } from './lib/adminNotify.js';
 import { threadIdFor } from './lib/feedbackThread.js';
 
@@ -309,7 +310,8 @@ export async function applyCorrectionRowInternal(tx, db, id) {
 //  author field is ever written (design doc §4).
 // =====================================================================
 export const submitCorrection = onCall(callable({ secrets: [pushFanoutUrl, pushFanoutSecret] }), async (request) => {
-  requireAuth(request);
+  const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'submitCorrection');
   const { target, targetKey, label, field, suggested, note } = request.data ?? {};
 
   if (!TARGETS.includes(target)) invalid('대상 오류');

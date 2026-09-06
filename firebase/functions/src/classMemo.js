@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from './lib/password.js';
 import { archiveDeleted } from './lib/archive.js';
 import { inPrimaryTimetable } from './lib/eligibility.js';
 import { adminPush } from './lib/adminNotify.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // Port of create_memo()/get_memos()/delete_memo()/report_memo()/purge_past_memos()
 // (db/schema.sql 7장. 강의 메모). Unlike review/examArchive, class_memo has NO
@@ -19,6 +20,7 @@ import { adminPush } from './lib/adminNotify.js';
 
 export const createMemo = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'createMemo');
   const { courseCode, year, term, sectionNo, content, postPassword } = request.data ?? {};
 
   if (!courseCode) invalid('courseCode가 필요합니다.');
@@ -110,6 +112,7 @@ export const reportMemo = onCall(callable({ secrets: [actorHashSalt, pushFanoutU
   const uid = requireAuth(request);
   const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
+  await assertUnderLimit(uid, 'reportContent');
 
   const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
     ? createHash('sha256').update(endpoint).digest('hex') : null;

@@ -5,6 +5,7 @@ import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { adminPush } from './lib/adminNotify.js';
 import { callable } from './lib/opts.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // push.js 와 동일한 문서ID 규칙(sha256(endpoint) hex). endpoint 자체가 추측 불가능한
 // capability URL 이라 salt 불필요. 답변 시 pushSubscriptions/{subId} 를 그대로 찾는다.
@@ -17,7 +18,8 @@ function subscriptionId(endpoint) {
 // 익명성 원칙). 자유 텍스트라 corrections 처럼 대상·자동반영 로직은 없다.
 // 설계: docs/superpowers/specs/2026-09-03-daily-brief-and-app-report-design.md
 export const submitAppReport = onCall(callable({ secrets: [pushFanoutUrl, pushFanoutSecret] }), async (request) => {
-  requireAuth(request);
+  const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'submitAppReport');
   const { text, path, ua, standalone, sw } = request.data ?? {};
 
   const t = String(text ?? '').trim();
