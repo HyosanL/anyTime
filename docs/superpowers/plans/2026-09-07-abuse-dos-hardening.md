@@ -43,7 +43,7 @@
     "serve": "firebase emulators:start --only functions,firestore,auth",
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",
-    "test": "node --test test/"
+    "test": "node --test"
   },
 ```
 
