@@ -82,11 +82,12 @@ Cloudflare로는 Firebase를 못 지킨다. App Check가 Firebase 측 방어의 
 - `enforceAppCheck` 는 `setGlobalOptions` 에 넣지 **않는다** — 그러면 시크릿 게이트
   `onRequest` 두 개(`boardReferencedKeys`, `pushPrune`)까지 App Check 헤더를 요구해
   cron/Cloudflare 호출이 401 난다(확인: `https.js` 가 global을 fallback으로 사용).
-- 대신 헬퍼 `callable(extra = {})` → `{ enforceAppCheck: ENFORCE, ...extra }`.
-  `ENFORCE = process.env.APPCHECK_ENFORCE === 'true'` (기본 false).
+- 대신 헬퍼 `callable(extra = {})` → `{ enforceAppCheck: ENFORCE_APP_CHECK, ...extra }`.
+  `ENFORCE_APP_CHECK` 는 `opts.js` 안의 **리뷰 가능한 한 줄 상수**(기본 `false`).
+  (`.env` 는 `.gitignore` 됨 — 상수 플립이 git 이력에 남아 더 명확.)
   모든 `onCall(...)` 를 `onCall(callable({ secrets: [...] }), handler)` 로 교체
   (약 25개 — 기계적, `signup` 포함: 로그아웃 호출도 App Check는 통과).
-- `firebase/functions/.env` 커밋: `APPCHECK_ENFORCE=false`. 관찰 후 `true` 로 바꿔 재배포.
+- 관찰 후 `ENFORCE_APP_CHECK = true` 한 줄 커밋 → CI 재배포.
 
 **Auth**: Firebase 콘솔에서 App Check 강제 on (Identity Platform). 콘솔 전용 — 런북 단계.
 
@@ -121,14 +122,15 @@ Cloudflare로는 Firebase를 못 지킨다. App Check가 Firebase 측 방어의 
    | `submitCorrection` / `submitAppReport` | 20 / 일 |
    | `replyFeedbackThread` | 30 / 시간 |
    | `sendSelfTestPush` | 5 / 시간 |
-   | `getPost` (view=true 일 때만) | 조회수 증가는 (uid,글) 24h 1회 dedup — 아래 4 |
+   | `getPost` (view=true 일 때만) | 120 / 시간 |
 
 3. **`likeReview` 중복방지** — `boardReact` 와 동일: `reviews/{id}/reactions/{actorHash}`
    문서ID 방식으로 1인 1좋아요. `actorHash(salt, uid, 'review-like', id)`. 취소(unlike)도
    지원. `onReviewWritten` 집계 트리거는 like가 평균을 안 바꾸므로 영향 없음.
    설계 메모(reviews.js "Do not add actor-hash dedup here")는 이 스펙으로 상위 결정 갱신.
-4. **`getPost` 조회수** — `boardPosts/{id}/_private/views/{actorHash}` 존재 검사로 (uid,글)
-   당 24h 1회만 `viewCount` 증가. 이미 있으면 증가 건너뜀. `_private/*` 는 Rules `if false`.
+4. **`getPost` 조회수** — `view=true` 호출을 uid당 120/시간으로 레이트리밋(위 표). `viewCount`
+   는 랭킹에 안 쓰이므로(HOT 은 events 카운트 기반) 글별 dedup 문서는 두지 않는다 —
+   저장소 부풀리기만 되고 보안 가치 없음(YAGNI).
 
 ### C. 신고·검열 내성
 
@@ -172,27 +174,34 @@ Provider: `cloudflare/cloudflare`(현행 v5 — 리소스명은 구현 시 CF �
 Zone Settings (Bot Fight Mode 토글). 무료 플랜 가정 — Enterprise 전용 리소스
 (`cloudflare_bot_management`)는 안 씀.
 
-리소스:
-1. **Rate Limiting Rules** (`cloudflare_ruleset`, phase `http_ratelimit`):
-   - `/api/board-upload` · `/api/exam-upload`: IP당 10 req / 60s → 차단 60s
-   - `/api/*` 전체: IP당 100 req / 60s → 관리형 챌린지
-   - 앱 셸(`not /api/*`): IP당 600 req / 60s → 관리형 챌린지
-2. **WAF 커스텀 규칙** (`cloudflare_ruleset`, phase `http_request_firewall_custom`):
-   - `/api/*` + `Authorization` 헤더 없음 + not (`/api/board-sweep` or `/api/push-fanout`)
-     → block. (secret-gated 엔드포인트는 자체 검증.)
-   - method not in {GET, POST, HEAD, OPTIONS} → block
-   - 알려진 스캐너/공격 UA 패턴 → managed challenge
-3. **Bot Fight Mode** — 무료 티어 존 설정 토글(`cloudflare_zone_setting` 등 현행 리소스).
-   Pro+ 면 Super Bot Fight Mode.
-4. **지역 챌린지** (선택, 완전차단 아님): `ip.geoip.country ne "KR"` + `/api/*` →
-   managed challenge. 해외 생도/VPN 고려해 challenge(차단 아님).
-5. **Turnstile 위젯** (`cloudflare_turnstile_widget`):
+**무료 플랜 제약 (실측)**: Rate Limiting Rules는 **1개, action=block, period 10s/60s,
+duration 60s/1h** 만 허용. WAF 커스텀 규칙은 **5개**, action은 Log 빼고 전부(Block,
+Managed Challenge 포함). 이 제약에 맞춰 설계:
+
+1. **Rate Limiting Rule ×1** (`cloudflare_ruleset`, phase `http_ratelimit`, action `block`):
+   - 표현식 `starts_with(http.request.uri.path, "/api/") and http.request.method eq "POST"`
+   - characteristics `["ip.src", "cf.colo.id"]`, period 60, requests_per_period 20,
+     mitigation_timeout 60. 업로드·쓰기성 `/api/*` POST 폭주를 IP당 20/분으로.
+2. **WAF 커스텀 규칙 ×최대5** (`cloudflare_ruleset`, phase `http_request_firewall_custom`):
+   1. `/api/*` POST + `Authorization` 헤더 없음 + not (`board-sweep`|`push-fanout` 경로 +
+      해당 시크릿 헤더) → **block**
+   2. HTTP 메서드 not in {GET,POST,HEAD,OPTIONS} → **block**
+   3. 위협 스코어 높음(`cf.threat_score gt 있음값`) 또는 알려진 스캐너 UA → **managed_challenge**
+   4. (선택) `ip.geoip.country ne "KR"` + `/api/*` → **managed_challenge**
+      (해외 생도/VPN 고려 — 차단 아님)
+   5. 예비
+3. **Bot Fight Mode** — 무료 티어 존 설정 토글. (`cloudflare_zone_setting` 현행 리소스명은
+   `terraform plan` 으로 확인.)
+4. **Turnstile 위젯** (`cloudflare_turnstile` 리소스, 계정 레벨):
    - 도메인: `anytime.rokafa.app`, `anytime-dzi.pages.dev`, `localhost`
    - 모드: managed. 위젯 사이트 키(공개) → `.env.production` 의 `VITE_TURNSTILE_SITE_KEY`.
      시크릿 → Firebase 시크릿 `TURNSTILE_SECRET`.
 
-체크리스트(`infra/cloudflare/README.md`): 토큰 발급 권한, `terraform init/plan/apply`,
-apply 후 대시보드에서 규칙 활성 확인, Turnstile 사이트키·시크릿 배포처 확인.
+Terraform 프로바이더 `cloudflare/cloudflare ~> 5` — `rules = [{...}]` 속성 리스트 문법.
+로컬 state (`.gitignore`). `infra/cloudflare/README.md` 에: 토큰 권한 목록,
+`terraform init/plan/apply`, **`plan` 이 프로바이더 패치버전 문법 차이를 잡는 게이트**,
+apply 후 대시보드 확인, 사이트키·시크릿 배포처. Terraform이 막히면 같은 규칙을 손으로
+넣는 대시보드 체크리스트도 동봉(버전 무관).
 
 ### F. Firebase Auth 하드닝
 
@@ -212,16 +221,18 @@ apply 후 대시보드에서 규칙 활성 확인, Turnstile 사이트키·시�
 
 1. **Cloud Billing 예산 + 알림** — 임계 50/90/100%, 알림 수신자 = 프로젝트 결제 관리자.
    `gcloud billing budgets create` 스크립트 (`infra/gcp/budget.sh`) + 런북.
-2. **`capBilling` 함수** (`firebase/functions/src/ops.js` 새 파일):
+2. **`capBilling` 함수** (`firebase/functions/src/ops.js` 새 파일) — **알림 전용**:
    - `onMessagePublished({ topic: 'billing-alerts' })` — 예산 알림 Pub/Sub 수신.
-   - `costAmount / budgetAmount >= 1.0` 이면 전 Cloud Functions를 `maxInstances: 0` 으로
-     설정(Cloud Functions Admin API `patch`) → 호출 차단. Firestore 직접읽기·Auth는
-     생존 → 앱 열람 가능.
-   - 관리자 푸시 발송("⚠️ 예산 초과 — 함수 차단됨").
-   - 복구는 수동 (`APPCHECK_ENFORCE` 처럼 재배포 또는 콘솔).
-   - 함수 자신은 차단 대상에서 제외.
-   - 필요 IAM: 서비스 계정에 `roles/cloudfunctions.admin` (배포 SA에 추가 — 런북).
-3. `maxInstances: 10` (B) 이 1차 방어선 — capBilling은 최후 수단.
+   - 알림 파싱(base64 JSON: `costAmount`, `budgetAmount`, `alertThresholdExceeded`).
+   - `config/ops` 문서에 `{ budgetBreachedAt, costAmount, ratio }` 기록(멱등 — 같은 임계
+     재알림은 무시).
+   - `ratio >= 0.9` 면 관리자 푸시("⚠️ 예산 90% 도달 — 확인 필요").
+   - **함수를 자동으로 죽이지 않는다.** Cloud Functions Admin API 패치는 추가 IAM·API
+     활성화·리스트/패치 로직이라 실패 표면이 크고, `maxInstances: 10` (B) 이 이미
+     폭주 비용을 한 자릿수 달러/일로 묶는다. 수동 대응: `globalOptions.js` 의
+     `maxInstances` 를 1(또는 0)로 한 줄 커밋 → CI 재배포. 런북에 절차 명시.
+3. `maxInstances: 10` (B) 이 실질 방어선. capBilling은 "지금 무슨 일이 나고 있다"는
+   조기 경보. 예산 자체(Spark 아님, Blaze — v2 함수 필수)엔 하드캡이 없음.
 
 ### H. Firestore 규칙 조임
 
@@ -244,14 +255,14 @@ apply 후 대시보드에서 규칙 활성 확인, Turnstile 사이트키·시�
 
 ### 자율 실행 가능 (코드 → 커밋 → CI 배포)
 
-- A: App Check 클라이언트 SDK (키 없으면 no-op), `callable()` 헬퍼, `.env` `APPCHECK_ENFORCE=false`
-- B: `maxInstances`, `rateLimit.js`, `likeReview` dedup, `getPost` 조회수 dedup
+- A: App Check 클라이언트 SDK (키 없으면 no-op), `callable()` 헬퍼, `ENFORCE_APP_CHECK=false` 상수
+- B: `maxInstances`, `rateLimit.js`, `likeReview` dedup, `getPost` 레이트리밋
 - C: `signup` 에 `createdAt`, 신고 계정연령 게이트
 - D: exam-upload MIME/크기, board-upload 크기, middleware 시크릿 하위호환
 - H: Firestore 규칙 limit + `listComments` limit
 - E의 Terraform 파일 **작성** (apply는 사용자)
 - F3: 비밀번호 8자 (코드 부분)
-- G2: `capBilling` 함수 코드 (배포는 IAM 준비 후)
+- G2: `capBilling` 함수 코드 (배포는 Pub/Sub 토픽 `billing-alerts` 생성 후 — IAM 추가 불필요)
 
 배포 경로: `firebase/**` 변경 → GitHub Actions(`deploy-firebase.yml`) → 함수 + Firestore
 규칙 배포. `src/**`·`.env.production` 변경 → Cloudflare Pages Git 빌드.
@@ -267,8 +278,8 @@ apply 후 대시보드에서 규칙 활성 확인, Turnstile 사이트키·시�
 5. Turnstile: 위젯 사이트키 → `.env.production`, 시크릿 → `firebase functions:secrets:set TURNSTILE_SECRET`
    → `signup` 의 Turnstile 검증 활성 커밋(스테이징된 것) 머지
 6. Firebase Auth 콘솔: Email Enumeration Protection on
-7. Cloud Billing: `infra/gcp/budget.sh` 실행 (결제 권한 필요), Pub/Sub 토픽
-   `billing-alerts` 생성, 배포 SA에 `roles/cloudfunctions.admin` → `capBilling` 배포
+7. Cloud Billing: Pub/Sub 토픽 `billing-alerts` 생성 → `infra/gcp/budget.sh` 실행
+   (결제 권한 필요, 예산+알림+토픽 연결) → `capBilling` 은 다음 `firebase/**` 배포에 포함
 8. Cloud Scheduler: `board-sweep` 일 1회 HTTPS 호출 job 생성 (`X-Sweep-Secret`)
 9. 시크릿 분리 마무리: `SWEEP_SECRET` 설정 확인 후 middleware의 `PUSH_SECRET` 하위호환 제거
 
@@ -284,7 +295,7 @@ apply 후 대시보드에서 규칙 활성 확인, Turnstile 사이트키·시�
 
 - 게시판 목록·카탈로그를 Cloud Function 뒤로 옮기기 — 함수 호출료 증가, App Check로 충분
 - 외부 검색 인덱스(Algolia 등) — 범위 밖
-- 결제 통째 비활성화 킬스위치 — 자발적 전면장애라 배제 (G2가 대안)
+- 결제 통째 비활성화 킬스위치 / 함수 자동 kill — 실패 표면 큼, `maxInstances:10` + 수동 대응으로 충분
 - 신고 담합 탐지 ML/휴리스틱 — 계정연령 게이트 + 관리자 복구로 충분
 - WAF Rate Limiting을 Firebase 도메인에 적용 — 불가능 (CF 프록시 밖)
 - App Check `consumeAppCheckToken`(replay 보호) — 성능/쿼터 비용, 이 앱엔 과함
@@ -299,7 +310,9 @@ apply 후 대시보드에서 규칙 활성 확인, Turnstile 사이트키·시�
 | App Check 강제 후 정상 사용자 차단 | 메트릭 관찰 후 단계 토글, 즉시 롤백 가능한 env/콘솔 토글 |
 | 레이트리밋 한도가 너무 빡빡 | 넉넉한 기본값, `resource-exhausted` 코드로 클라이언트가 안내 문구 표시 |
 | Firestore limit 규칙이 놓친 쿼리를 깨뜨림 | 배포 전 전 `getDocs` 호출부 감사 (본 스펙 Ⅱ.H.5), 규칙은 boardPosts/reviews/examArchive/comments만 |
-| `capBilling` 오발동으로 함수 전면 차단 | 임계 1.0(100%)에서만, 관리자 푸시, 수동 복구, `maxInstances:10` 이 이미 상한 |
+| 예산 폭주로 실제 과금 | `maxInstances:10` 이 함수 폭주 비용을 한 자릿수 달러/일로 제한, `capBilling` 조기경보, App Check가 Firestore 스크래핑 차단 |
 | Turnstile 필수화 시점에 위젯 미배포면 가입 불가 | 2단계 분리 — 위젯 배포 확인 후에만 필수화 커밋 머지 |
 | Terraform state 관리 | 로컬 state + `.gitignore`, README에 명시. 원격 백엔드는 범위 밖 |
 | reCAPTCHA v3 키 발급 전 App Check 코드 배포 | 키 없으면 init no-op (Ⅱ.A) |
+| CSP 확장(reCAPTCHA/Turnstile/App Check 호스트)이 셸을 깸 | 인라인 스크립트 해시는 안 건드림(호스트 소스만 추가), `script-src`/`frame-src`/`connect-src`/`img-src` 에 정확한 호스트만; 배포 후 콘솔 CSP 위반 확인 ([[security-headers-csp]]) |
+| 로그인 오류 단일화가 UX 후퇴 | 실패 문구 하나로 뭉치는 건 이메일열거 보호의 의도된 동작 — Onboarding 의 가입 단계별 세분화는 유지 |
