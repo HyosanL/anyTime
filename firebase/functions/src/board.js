@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from './lib/password.js';
 import { archiveDeleted } from './lib/archive.js';
 import { pushFanout } from './lib/pushFanout.js';
 import { adminPush } from './lib/adminNotify.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // Port of create_board()/create_post()/get_post_b()/check_hot()/board_react()/
 // create_comment_b()/delete_post()/delete_comment_b()/purge_board()/
@@ -56,7 +57,8 @@ async function deleteCommentTree(postRef, commentId) {
 }
 
 export const createBoard = onCall(callable(), async (request) => {
-  requireAuth(request);
+  const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'createBoard');
   const { name } = request.data ?? {};
   const trimmed = typeof name === 'string' ? name.trim() : '';
   if (!trimmed) invalid('게시판 이름을 입력하세요.');
@@ -78,6 +80,7 @@ export const createBoard = onCall(callable(), async (request) => {
 
 export const createPost = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'createPost');
   const { boardId, title, content, imageKeys, postPassword } = request.data ?? {};
   if (!boardId) invalid('게시판을 지정하세요.');
   if (!content) invalid('내용을 입력하세요.');
@@ -127,7 +130,7 @@ export const createPost = onCall(callable(), async (request) => {
 });
 
 export const getPost = onCall(callable(), async (request) => {
-  requireAuth(request);
+  const uid = requireAuth(request);
   const { postId, view } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
 
@@ -136,8 +139,15 @@ export const getPost = onCall(callable(), async (request) => {
   if (!snap.exists) return null;
   // p_view=TRUE only — mirrors the old RPC's client-controlled once-per-open flag.
   if (view === true) {
-    await postRef.update({ viewCount: FieldValue.increment(1) });
-    snap = await postRef.get();
+    try {
+      await assertUnderLimit(uid, 'getPostView');
+      await postRef.update({ viewCount: FieldValue.increment(1) });
+      snap = await postRef.get();
+    } catch (e) {
+      // Over the view-count rate limit — still serve the post, just skip the
+      // increment (viewCount is cosmetic). Any other error propagates.
+      if (e.code !== 'resource-exhausted') throw e;
+    }
   }
   return { id: snap.id, ...snap.data() };
 });
@@ -147,6 +157,7 @@ export const boardReact = onCall(callable({ secrets: [actorHashSalt, pushFanoutU
   const { postId, kind, endpoint } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
   if (!['like', 'dislike', 'report', 'unlike', 'undislike'].includes(kind)) invalid('잘못된 요청입니다.');
+  await assertUnderLimit(uid, 'boardReact');
 
   const postRef = db.collection('boardPosts').doc(postId);
   // Single hash per (uid, post) — same as the old actor_hash('board_post', p_post_id)
@@ -255,6 +266,7 @@ export const boardReact = onCall(callable({ secrets: [actorHashSalt, pushFanoutU
 
 export const createComment = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'createComment');
   const { postId, parentId, content, postPassword } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
   if (!content) invalid('내용을 입력하세요.');
