@@ -3,6 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { createHash, createHmac } from 'node:crypto';
 import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { actorHashSalt, pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
+import { callable } from './lib/opts.js';
 import { pushFanout } from './lib/pushFanout.js';
 import { adminPush } from './lib/adminNotify.js';
 import { appendMessage, threadIdFor, MSG_MAX_LEN } from './lib/feedbackThread.js';
@@ -133,7 +134,7 @@ async function notifyQuestion(channel, payload, threadId, label) {
 
 // ── 생도: 스레드에 답장 ──
 export const replyFeedbackThread = onCall(
-  { secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] },
+  callable({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }),
   async (request) => {
     const uid = requireAuth(request);
     const d = request.data ?? {};

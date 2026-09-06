@@ -3,6 +3,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db, requireAuth } from './lib/context.js';
 import { actorHashSalt } from './lib/secrets.js';
+import { callable } from './lib/opts.js';
 import { toClientMessages, threadIdFor } from './lib/feedbackThread.js';
 
 const REPORT_SCOPE = { review: 'review-report', class_memo: 'memo-report', board_post: 'board-post-react' };
@@ -99,7 +100,7 @@ async function lookupContentReports(refs, uid) {
   return out;
 }
 
-export const getMyFeedback = onCall({ secrets: [actorHashSalt] }, async (request) => {
+export const getMyFeedback = onCall(callable({ secrets: [actorHashSalt] }), async (request) => {
   const uid = requireAuth(request);
   const d = request.data ?? {};
   const [appReports, corrections, contentReports] = await Promise.all([

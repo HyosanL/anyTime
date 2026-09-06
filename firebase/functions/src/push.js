@@ -3,6 +3,7 @@ import { onCall, onRequest } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAuth, requireAdmin, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { pushFanout } from './lib/pushFanout.js';
+import { callable } from './lib/opts.js';
 
 // Port of push_subscribe()/push_unsubscribe()/push_set_hot()/push_watch()/
 // push_unwatch()/push_prune()/admin_push_subscribe()/admin_push_unsubscribe()
@@ -41,7 +42,7 @@ function assertSubscriptionShape(endpoint, p256dh, authKey) {
   if (typeof authKey !== 'string' || authKey.length > 64) invalid('잘못된 구독 정보입니다.');
 }
 
-export const pushSubscribe = onCall(async (request) => {
+export const pushSubscribe = onCall(callable(), async (request) => {
   // uid is an abuse gate only, per push_subscribe()'s own comment — never
   // stored anywhere (pushSubscriptions has no uid field, design doc §3).
   requireAuth(request);
@@ -63,7 +64,7 @@ export const pushSubscribe = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-export const pushUnsubscribe = onCall(async (request) => {
+export const pushUnsubscribe = onCall(callable(), async (request) => {
   requireAuth(request);
   const { endpoint } = request.data ?? {};
   if (typeof endpoint !== 'string') invalid('잘못된 요청입니다.');
@@ -75,7 +76,7 @@ export const pushUnsubscribe = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-export const pushSetHot = onCall(async (request) => {
+export const pushSetHot = onCall(callable(), async (request) => {
   requireAuth(request);
   const { endpoint, on } = request.data ?? {};
   if (typeof endpoint !== 'string') invalid('잘못된 요청입니다.');
@@ -88,7 +89,7 @@ export const pushSetHot = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-export const pushWatch = onCall(async (request) => {
+export const pushWatch = onCall(callable(), async (request) => {
   requireAuth(request);
   const { endpoint, postId } = request.data ?? {};
   if (typeof endpoint !== 'string' || !postId) invalid('잘못된 요청입니다.');
@@ -107,7 +108,7 @@ export const pushWatch = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-export const pushUnwatch = onCall(async (request) => {
+export const pushUnwatch = onCall(callable(), async (request) => {
   requireAuth(request);
   const { endpoint, postId } = request.data ?? {};
   if (typeof endpoint !== 'string' || !postId) invalid('잘못된 요청입니다.');
@@ -162,7 +163,7 @@ export const pushPrune = onRequest({ secrets: [pushFanoutSecret] }, async (req, 
   res.status(200).json({ status: 'OK' });
 });
 
-export const adminPushSubscribe = onCall(async (request) => {
+export const adminPushSubscribe = onCall(callable(), async (request) => {
   // Old admin_push_subscribe() silently no-op'd for non-admins (IF NOT
   // is_admin() THEN RETURN). requireAdmin() throws instead — an intentional
   // tightening to match this codebase's explicit-denial governance model
@@ -176,7 +177,7 @@ export const adminPushSubscribe = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-export const adminPushUnsubscribe = onCall(async (request) => {
+export const adminPushUnsubscribe = onCall(callable(), async (request) => {
   // Deleting your own subscription doesn't need admin — matches the old
   // function, which was REVOKE ALL + GRANT authenticated only (no is_admin()
   // check at all), scoped to auth.uid() in the WHERE clause.
@@ -218,7 +219,7 @@ function classifyStatus(status, detail) {
   return { status: 'ERROR', code: status, ...(detail ? { detail } : {}) };
 }
 
-export const sendSelfTestPush = onCall({ secrets: [pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+export const sendSelfTestPush = onCall(callable({ secrets: [pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   requireAuth(request);
   const { endpoint, kind } = request.data ?? {};
   if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 1024) {

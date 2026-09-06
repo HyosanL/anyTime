@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { requireAdmin, invalid } from './lib/context.js';
+import { callable } from './lib/opts.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { catalogActions } from './admin/catalogActions.js';
 import { moderationActions } from './admin/moderationActions.js';
@@ -19,7 +20,7 @@ const actions = { ...catalogActions, ...moderationActions };
 
 // reply_app_report 가 리포트 작성자 기기에 푸시를 보낸다 — 그 한 액션 때문에 시크릿을
 // adminAction 전체에 바인딩한다(v2 시크릿은 함수 단위 바인딩, 핸들러 안에서 .value()).
-export const adminAction = onCall({ secrets: [pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+export const adminAction = onCall(callable({ secrets: [pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   const uid = requireAdmin(request);
   const { action, payload = {} } = request.data ?? {};
 

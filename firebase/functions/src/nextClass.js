@@ -4,6 +4,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { pushFanout } from './lib/pushFanout.js';
+import { callable } from './lib/opts.js';
 
 // "다음 수업" 알림 — 설계: docs/superpowers/specs/2026-09-01-next-class-alert-design.md (접근 B).
 // 익명 유지: 구독 문서(pushSubscriptions/{hash})에 과목·강의실은 저장하지 않는다. 기기가
@@ -28,7 +29,7 @@ function seoulMinuteOfWeek(now = new Date()) {
   return (isoDay - 1) * 1440 + kst.getUTCHours() * 60 + kst.getUTCMinutes();
 }
 
-export const setNextClassAlerts = onCall(async (request) => {
+export const setNextClassAlerts = onCall(callable(), async (request) => {
   // uid 는 남용 방지 게이트일 뿐 — pushSubscribe 와 같이 어디에도 저장하지 않는다.
   requireAuth(request);
   const { endpoint, lead, fireMinutes } = request.data ?? {};
@@ -66,7 +67,7 @@ export const setNextClassAlerts = onCall(async (request) => {
 // "오늘 수업 요약" 발동 시각 등록 — setNextClassAlerts 의 자매 함수. lead 개념이 없다(사용자가
 // 절대 시각을 직접 고른다). 요일당 최대 1개라 fireMinutes 상한을 60이 아니라 7로 좁힌다.
 // 설계: docs/superpowers/specs/2026-09-03-daily-brief-and-app-report-design.md.
-export const setTodaySummaryAlert = onCall(async (request) => {
+export const setTodaySummaryAlert = onCall(callable(), async (request) => {
   requireAuth(request);
   const { endpoint, fireMinutes } = request.data ?? {};
   if (typeof endpoint !== 'string' || !endpoint.startsWith('https://') || endpoint.length > 1024) {

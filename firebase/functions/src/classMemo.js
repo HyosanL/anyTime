@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
+import { callable } from './lib/opts.js';
 import { actorHashSalt, pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { actorHash } from './lib/hash.js';
 import { hashPassword, verifyPassword } from './lib/password.js';
@@ -16,7 +17,7 @@ import { adminPush } from './lib/adminNotify.js';
 // stays an onCall here too (design doc §3's stated exception), instead of
 // becoming a direct client Firestore read like reviews/examArchive did.
 
-export const createMemo = onCall(async (request) => {
+export const createMemo = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { courseCode, year, term, sectionNo, content, postPassword } = request.data ?? {};
 
@@ -52,7 +53,7 @@ export const createMemo = onCall(async (request) => {
   return { id: memoRef.id };
 });
 
-export const getMemos = onCall(async (request) => {
+export const getMemos = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { courseCode, year, term, sectionNo } = request.data ?? {};
   if (!courseCode) invalid('courseCode가 필요합니다.');
@@ -78,7 +79,7 @@ export const getMemos = onCall(async (request) => {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 });
 
-export const deleteMemo = onCall(async (request) => {
+export const deleteMemo = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { id, postPassword } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
@@ -105,7 +106,7 @@ export const deleteMemo = onCall(async (request) => {
   return { deleted: true };
 });
 
-export const reportMemo = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+export const reportMemo = onCall(callable({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   const uid = requireAuth(request);
   const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');

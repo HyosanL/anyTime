@@ -8,4 +8,10 @@
 // setGlobalOptions 가 다른 모든 함수 정의보다 먼저 실행되도록 순서가 보장된다.
 import { setGlobalOptions } from 'firebase-functions/v2';
 
-setGlobalOptions({ region: 'asia-northeast3' });
+// region: everything (Firestore + users) is in Korea.
+// maxInstances: hard ceiling on runaway cost — an onCall/trigger flood scales to
+// at most 10 parallel instances instead of the platform default. nextClassNotify
+// (every-minute cron) and the push triggers stay well under this. Raise per
+// function later if a genuine fan-out needs it (see the hardening runbook's
+// "비상: 비용 폭주" — lowering this to 1 is the manual cost brake).
+setGlobalOptions({ region: 'asia-northeast3', maxInstances: 10 });

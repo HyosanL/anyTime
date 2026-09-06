@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { onCall } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAuth, invalid } from './lib/context.js';
 import { pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
+import { callable } from './lib/opts.js';
 import { adminPush } from './lib/adminNotify.js';
 import { threadIdFor } from './lib/feedbackThread.js';
 
@@ -307,7 +308,7 @@ export async function applyCorrectionRowInternal(tx, db, id) {
 //  submitCorrection — port of submit_correction(). Anonymous by design: no
 //  author field is ever written (design doc §4).
 // =====================================================================
-export const submitCorrection = onCall({ secrets: [pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+export const submitCorrection = onCall(callable({ secrets: [pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   requireAuth(request);
   const { target, targetKey, label, field, suggested, note } = request.data ?? {};
 

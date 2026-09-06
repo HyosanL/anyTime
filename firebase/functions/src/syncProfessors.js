@@ -7,6 +7,7 @@
 import { onCall } from 'firebase-functions/v2/https';
 import { db, FieldValue, requireAdmin, invalid } from './lib/context.js';
 import { genCatalogCode } from './admin/catalogActions.js';
+import { callable } from './lib/opts.js';
 
 // ── 공사 홈페이지 교수소개 구조 (원본 그대로) ──────────────────────────
 const BASE = 'https://rokaf.airforce.mil.kr';
@@ -192,7 +193,7 @@ function diffProfessors(scraped, dbRows) {
 // (already wired client-side, was 404ing until this function existed).
 // payload: { mode: 'preview' | 'apply' }. No separate cron/secret path (the old
 // pg_cron trigger for this was already disabled before the Firebase migration).
-export const syncProfessors = onCall({ timeoutSeconds: 180 }, async (request) => {
+export const syncProfessors = onCall(callable({ timeoutSeconds: 180 }), async (request) => {
   requireAdmin(request);
   const mode = request.data?.mode === 'apply' ? 'apply' : 'preview';
 

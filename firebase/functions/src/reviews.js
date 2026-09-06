@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from './lib/password.js';
 import { archiveDeleted } from './lib/archive.js';
 import { inPrimaryTimetable, timetableHeldDays } from './lib/eligibility.js';
 import { adminPush } from './lib/adminNotify.js';
+import { callable } from './lib/opts.js';
 
 // Port of create_review()/delete_review()/like_review()/report_review()
 // (db/schema.sql) plus the course_professor_rating/professor_rating views,
@@ -17,7 +18,7 @@ function isValidScore(v) {
   return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5;
 }
 
-export const createReview = onCall(async (request) => {
+export const createReview = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const {
     courseCode, professorCode, year, term, sectionNo,
@@ -81,7 +82,7 @@ export const createReview = onCall(async (request) => {
   return { id: reviewRef.id };
 });
 
-export const deleteReview = onCall(async (request) => {
+export const deleteReview = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { id, postPassword } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
@@ -109,7 +110,7 @@ export const deleteReview = onCall(async (request) => {
   return { deleted: true };
 });
 
-export const likeReview = onCall(async (request) => {
+export const likeReview = onCall(callable(), async (request) => {
   requireAuth(request);
   const { id } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
@@ -125,7 +126,7 @@ export const likeReview = onCall(async (request) => {
   return { status: 'OK' };
 });
 
-export const reportReview = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+export const reportReview = onCall(callable({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   const uid = requireAuth(request);
   const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
@@ -236,7 +237,7 @@ export const onReviewWritten = onDocumentWritten('reviews/{id}', async (event) =
   const pairs = new Map();
   for (const d of [before, after]) {
     if (!d) continue;
-    const key = `${d.courseCode} ${d.professorCode ?? ''}`;
+    const key = `${d.courseCode}\u0000${d.professorCode ?? ''}`;
     pairs.set(key, { courseCode: d.courseCode, professorCode: d.professorCode ?? null });
   }
 

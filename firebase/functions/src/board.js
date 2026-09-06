@@ -3,6 +3,7 @@ import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
+import { callable } from './lib/opts.js';
 import { actorHashSalt, pushFanoutUrl, pushFanoutSecret } from './lib/secrets.js';
 import { actorHash } from './lib/hash.js';
 import { hashPassword, verifyPassword } from './lib/password.js';
@@ -54,7 +55,7 @@ async function deleteCommentTree(postRef, commentId) {
   await db.recursiveDelete(postRef.collection('comments').doc(commentId));
 }
 
-export const createBoard = onCall(async (request) => {
+export const createBoard = onCall(callable(), async (request) => {
   requireAuth(request);
   const { name } = request.data ?? {};
   const trimmed = typeof name === 'string' ? name.trim() : '';
@@ -75,7 +76,7 @@ export const createBoard = onCall(async (request) => {
   return { id };
 });
 
-export const createPost = onCall(async (request) => {
+export const createPost = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { boardId, title, content, imageKeys, postPassword } = request.data ?? {};
   if (!boardId) invalid('게시판을 지정하세요.');
@@ -125,7 +126,7 @@ export const createPost = onCall(async (request) => {
   return { id: postRef.id };
 });
 
-export const getPost = onCall(async (request) => {
+export const getPost = onCall(callable(), async (request) => {
   requireAuth(request);
   const { postId, view } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
@@ -141,7 +142,7 @@ export const getPost = onCall(async (request) => {
   return { id: snap.id, ...snap.data() };
 });
 
-export const boardReact = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }, async (request) => {
+export const boardReact = onCall(callable({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   const uid = requireAuth(request);
   const { postId, kind, endpoint } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
@@ -252,7 +253,7 @@ export const boardReact = onCall({ secrets: [actorHashSalt, pushFanoutUrl, pushF
   return { status: 'DELETED' };
 });
 
-export const createComment = onCall(async (request) => {
+export const createComment = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { postId, parentId, content, postPassword } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
@@ -286,7 +287,7 @@ export const createComment = onCall(async (request) => {
   return { id: commentRef.id };
 });
 
-export const deletePost = onCall(async (request) => {
+export const deletePost = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { postId, postPassword } = request.data ?? {};
   if (!postId) invalid('잘못된 요청입니다.');
@@ -312,7 +313,7 @@ export const deletePost = onCall(async (request) => {
   return { deleted: true };
 });
 
-export const deleteComment = onCall(async (request) => {
+export const deleteComment = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { postId, commentId, postPassword } = request.data ?? {};
   if (!postId || !commentId) invalid('잘못된 요청입니다.');

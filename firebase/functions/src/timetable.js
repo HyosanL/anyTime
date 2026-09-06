@@ -1,5 +1,6 @@
 import { onCall } from 'firebase-functions/v2/https';
 import { db, requireAuth, invalid, FieldValue } from './lib/context.js';
+import { callable } from './lib/opts.js';
 
 // Port of timetable/timetable_entry/custom_class + the four trigger functions
 // that enforced their invariants (timetable_set_guard, timetable_repromote,
@@ -34,7 +35,7 @@ function clockToMin(v) {
 // =====================================================================
 //  1. createTimetable — port of the INSERT half of timetable_set_guard()
 // =====================================================================
-export const createTimetable = onCall(async (request) => {
+export const createTimetable = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { year, term, name, isPrimary } = request.data || {};
   if (!Number.isInteger(year) || !Number.isInteger(term)) invalid('학기 정보가 올바르지 않습니다.');
@@ -71,7 +72,7 @@ export const createTimetable = onCall(async (request) => {
 // =====================================================================
 //  2. setPrimaryTimetable — explicit "make this the confirmed timetable"
 // =====================================================================
-export const setPrimaryTimetable = onCall(async (request) => {
+export const setPrimaryTimetable = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId } = request.data || {};
   if (!timetableId) invalid('시간표를 지정하세요.');
@@ -99,7 +100,7 @@ export const setPrimaryTimetable = onCall(async (request) => {
 // flow (Home.jsx/TimetableSwitcher.jsx/Wizard.jsx) expects it and
 // `timetables/{id}` is blanket `allow write: if false` in firestore.rules,
 // same reasoning as every other write in this file.
-export const renameTimetable = onCall(async (request) => {
+export const renameTimetable = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId, name } = request.data || {};
   const trimmed = String(name || '').trim();
@@ -116,7 +117,7 @@ export const renameTimetable = onCall(async (request) => {
 // =====================================================================
 //  3. deleteTimetable — port of timetable_repromote() + cascade delete
 // =====================================================================
-export const deleteTimetable = onCall(async (request) => {
+export const deleteTimetable = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId } = request.data || {};
   if (!timetableId) invalid('시간표를 지정하세요.');
@@ -169,7 +170,7 @@ async function checkEntryOverlap(tx, ttRef, newTimes) {
   }
 }
 
-export const addTimetableEntry = onCall(async (request) => {
+export const addTimetableEntry = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId, courseCode, year, term, sectionNo } = request.data || {};
   if (!timetableId) invalid('시간표를 지정하세요.');
@@ -213,7 +214,7 @@ export const addTimetableEntry = onCall(async (request) => {
   });
 });
 
-export const removeTimetableEntry = onCall(async (request) => {
+export const removeTimetableEntry = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId, courseCode, year, term, sectionNo } = request.data || {};
   if (!timetableId) invalid('시간표를 지정하세요.');
@@ -278,7 +279,7 @@ async function checkCustomClassOverlap(tx, ttRef, { day, startMin, endMin, exclu
   }
 }
 
-export const addCustomClass = onCall(async (request) => {
+export const addCustomClass = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId, title, day, startMin, endMin, room } = request.data || {};
   if (!timetableId) invalid('시간표를 지정하세요.');
@@ -304,7 +305,7 @@ export const addCustomClass = onCall(async (request) => {
   });
 });
 
-export const updateCustomClass = onCall(async (request) => {
+export const updateCustomClass = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId, customClassId, title, day, startMin, endMin, room } = request.data || {};
   if (!timetableId || !customClassId) invalid('직접추가 강의를 지정하세요.');
@@ -323,7 +324,7 @@ export const updateCustomClass = onCall(async (request) => {
   });
 });
 
-export const deleteCustomClass = onCall(async (request) => {
+export const deleteCustomClass = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const { timetableId, customClassId } = request.data || {};
   if (!timetableId || !customClassId) invalid('직접추가 강의를 지정하세요.');
@@ -334,7 +335,7 @@ export const deleteCustomClass = onCall(async (request) => {
 // =====================================================================
 //  7. searchSharedUsers — port of search_shared_users()
 // =====================================================================
-export const searchSharedUsers = onCall(async (request) => {
+export const searchSharedUsers = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
   const q = String(request.data?.q ?? '').trim();
   if (!q) return [];
@@ -426,7 +427,7 @@ async function galleryRowFor(uid, followDoc, current) {
   return row;
 }
 
-export const getSharedGallery = onCall(async (request) => {
+export const getSharedGallery = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
 
   const followSnap = await db.collection('users').doc(uid).collection('follows').get();

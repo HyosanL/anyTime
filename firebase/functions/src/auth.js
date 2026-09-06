@@ -12,6 +12,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { auth, db, FieldValue, requireAuth, requireAdmin, invalid } from './lib/context.js';
+import { callable } from './lib/opts.js';
 
 const REGION = 'asia-northeast3';
 
@@ -48,7 +49,7 @@ async function deleteUserFully(uid) {
 // so by definition it must be callable while signed out. App Check is
 // recommended at the Firebase project level (design doc §2) since this is
 // the only unauthenticated entry point left after the migration.
-export const signup = onCall({ region: REGION }, async (request) => {
+export const signup = onCall(callable({ region: REGION }), async (request) => {
   const data = request.data ?? {};
   const username = String(data.username ?? '').trim();
   const password = String(data.password ?? '');
@@ -136,7 +137,7 @@ export const signup = onCall({ region: REGION }, async (request) => {
 // live, unexpired ID token, so that check is dropped here; a client-side
 // reauthenticateWithCredential() immediately before this call is the standard
 // Firebase-native way to restore the "confirm password" UX if still wanted.
-export const deleteAccount = onCall({ region: REGION }, async (request) => {
+export const deleteAccount = onCall(callable({ region: REGION }), async (request) => {
   const uid = requireAuth(request);
   await deleteUserFully(uid);
   return { status: 'OK' };
@@ -145,7 +146,7 @@ export const deleteAccount = onCall({ region: REGION }, async (request) => {
 // geo_verify: unlike signup, "missing location" and "outside radius" were
 // distinct statuses (NO_LOCATION vs OUT_OF_AREA) — kept distinct here too
 // since the client already branches on them.
-export const geoVerify = onCall({ region: REGION }, async (request) => {
+export const geoVerify = onCall(callable({ region: REGION }), async (request) => {
   const uid = requireAuth(request);
   const data = request.data ?? {};
   const lat = typeof data.lat === 'number' ? data.lat : null;
@@ -170,7 +171,7 @@ export const geoVerify = onCall({ region: REGION }, async (request) => {
 // set_signup_code: admin-only, updates the plaintext code admins can see/copy
 // in the admin screen (matches app_setting.signup_code being stored in the
 // clear, not hashed — it's a shared campus-wide code, not a secret-per-user).
-export const setSignupCode = onCall({ region: REGION }, async (request) => {
+export const setSignupCode = onCall(callable({ region: REGION }), async (request) => {
   requireAdmin(request);
   const code = String(request.data?.code ?? '').trim();
   if (!code) invalid('가입 코드를 입력하세요.');
