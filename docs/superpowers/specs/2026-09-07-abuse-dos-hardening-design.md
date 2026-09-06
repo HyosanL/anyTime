@@ -57,8 +57,10 @@ Cloudflare로는 Firebase를 못 지킨다. App Check가 Firebase 측 방어의 
 9. **Cloudflare 존**: 레이트리밋/WAF 커스텀 규칙/봇 모드/Turnstile 전무.
 10. **Firebase Auth**: 비번 6자, 아이디 열거 가능(`<name>@anytime.app`), 이메일열거 보호
     off → Identity Toolkit 공개 엔드포인트 무차별 대입 표적.
-11. **`PUSH_SECRET` 1개 3역할**: `/api/push-fanout` + `/api/board-sweep` + `pushPrune` +
-    `boardReferencedKeys` 공용. 1회 유출 = 임의 웹푸시 발송 + R2 키 열거.
+11. **웹푸시/스윕 시크릿**: 인바운드 게이트는 이미 `PUSH_SECRET`(fanout) / `SWEEP_SECRET`
+    (sweep) 로 분리돼 있음(둘 다 미설정 시 fail-closed). 아웃바운드(`board-sweep` →
+    `boardReferencedKeys`, `push-fanout` → `pushPrune`)는 공유 `PUSH_SECRET` 사용 —
+    유출 시 R2 key 열거 + 임의 웹푸시. CF 레이트리밋/WAF 로 이 엔드포인트도 심층방어.
 
 ---
 
@@ -149,21 +151,18 @@ Cloudflare로는 Firebase를 못 지킨다. App Check가 Firebase 측 방어의 
 ### D. Cloudflare Pages Functions 하드닝
 
 1. **`functions/api/exam-upload.js`**:
-   - MIME allowlist: `application/pdf`, `image/(jpeg|png|webp|gif|heic|heif|avif)`,
-     `application/(msword|vnd.openxmlformats-officedocument.*|haansofthwp|x-hwp|zip|x-zip-compressed)`,
-     `text/plain`. 목록 밖이면 415.
+   - **확장자 allowlist**(1차 게이트 — `.hwp` 등은 브라우저가 MIME 를 빈 값/octet-stream 으로
+     주는 일이 잦아 MIME 만으론 부족): `.(pdf|hwp|hwpx|docx?|xlsx?|pptx?|jpe?g|png|webp|gif|
+     heic|heif|avif|zip|txt|md)$`. 밖이면 415.
    - 크기 상한 100MB → **25MB**.
-   - `courseCode` 정규화(이미 있음) 유지.
-2. **`functions/api/board-upload.js`**: 원본 12MB → **8MB**, 썸네일 4MB → **2MB** 유지.
-3. **`functions/api/_middleware.js` 시크릿 분리**:
-   - `/api/board-sweep` → `SWEEP_SECRET` (이미 참조하나 미설정) **또는** `PUSH_SECRET`
-     둘 다 허용 (전환기). 이후 `PUSH_SECRET` 분기 제거.
-   - `boardReferencedKeys`/`pushPrune` (Firebase 측)는 `pushFanoutSecret` 재사용 유지 —
-     이건 별개 이슈(CONVENTIONS.md가 `lib/secrets.js` 편집 금지). 전달 헤더만 문서화.
-4. **고아 스윕 크론 등록** — `board-sweep` 를 Cloud Scheduler(또는 Cloudflare Cron
-   Trigger)로 일 1회 `X-Sweep-Secret` 헤더 호출. GRACE 48h 유지.
-   - Cloudflare Pages는 Cron Trigger 미지원 → **Cloud Scheduler → HTTPS(`/api/board-sweep`)**
-     로 구성. 런북 단계.
+   - `courseCode` 정규화(이미 있음) 유지. exam-download 는 이미 `attachment` + `nosniff`.
+2. **`functions/api/board-upload.js`**: 원본 12MB → **8MB**, 썸네일 4MB → **2MB**.
+3. **`functions/api/_middleware.js`**: **변경 없음.** 재확인 결과 `/api/board-sweep` 는 이미
+   `SWEEP_SECRET`/`X-Sweep-Secret` 로, `/api/push-fanout` 는 `PUSH_SECRET`/`X-Push-Secret` 로
+   **이미 분리**돼 있고 둘 다 `env.X && ...` 로 미설정 시 fail-closed. 남은 건 스윕 크론을
+   붙일 때 `SWEEP_SECRET` Pages secret 을 실제로 **설정**하는 것(런북).
+4. **고아 스윕 크론 등록** — Cloudflare Pages 는 Cron Trigger 미지원 → **Cloud Scheduler →
+   HTTPS `POST /api/board-sweep` (`X-Sweep-Secret` 헤더)** 일 1회. GRACE 48h 유지. 런북 단계.
 
 ### E. Cloudflare 존 설정 (Terraform)
 
@@ -258,7 +257,7 @@ apply 후 대시보드 확인, 사이트키·시크릿 배포처. Terraform이 �
 - A: App Check 클라이언트 SDK (키 없으면 no-op), `callable()` 헬퍼, `ENFORCE_APP_CHECK=false` 상수
 - B: `maxInstances`, `rateLimit.js`, `likeReview` dedup, `getPost` 레이트리밋
 - C: `signup` 에 `createdAt`, 신고 계정연령 게이트
-- D: exam-upload MIME/크기, board-upload 크기, middleware 시크릿 하위호환
+- D: exam-upload 확장자/크기, board-upload 크기 (middleware 는 변경 없음)
 - H: Firestore 규칙 limit + `listComments` limit
 - E의 Terraform 파일 **작성** (apply는 사용자)
 - F3: 비밀번호 8자 (코드 부분)
@@ -281,7 +280,7 @@ apply 후 대시보드 확인, 사이트키·시크릿 배포처. Terraform이 �
 7. Cloud Billing: Pub/Sub 토픽 `billing-alerts` 생성 → `infra/gcp/budget.sh` 실행
    (결제 권한 필요, 예산+알림+토픽 연결) → `capBilling` 은 다음 `firebase/**` 배포에 포함
 8. Cloud Scheduler: `board-sweep` 일 1회 HTTPS 호출 job 생성 (`X-Sweep-Secret`)
-9. 시크릿 분리 마무리: `SWEEP_SECRET` 설정 확인 후 middleware의 `PUSH_SECRET` 하위호환 제거
+9. (8과 함께) `SWEEP_SECRET` Pages secret 설정 — `wrangler pages secret put SWEEP_SECRET`
 
 ### Turnstile in `signup` — 단계적
 
