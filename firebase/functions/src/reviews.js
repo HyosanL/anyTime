@@ -9,6 +9,7 @@ import { archiveDeleted } from './lib/archive.js';
 import { inPrimaryTimetable, timetableHeldDays } from './lib/eligibility.js';
 import { adminPush } from './lib/adminNotify.js';
 import { callable } from './lib/opts.js';
+import { assertUnderLimit } from './lib/rateLimit.js';
 
 // Port of create_review()/delete_review()/like_review()/report_review()
 // (db/schema.sql) plus the course_professor_rating/professor_rating views,
@@ -20,6 +21,7 @@ function isValidScore(v) {
 
 export const createReview = onCall(callable(), async (request) => {
   const uid = requireAuth(request);
+  await assertUnderLimit(uid, 'createReview');
   const {
     courseCode, professorCode, year, term, sectionNo,
     overall, workload, progress, difficulty, classTime,
@@ -110,26 +112,43 @@ export const deleteReview = onCall(callable(), async (request) => {
   return { deleted: true };
 });
 
-export const likeReview = onCall(callable(), async (request) => {
-  requireAuth(request);
-  const { id } = request.data ?? {};
+// Port of like_review(): the original RPC had no dedup. Superseded 2026-09-07
+// (docs/superpowers/specs/2026-09-07-abuse-dos-hardening-design.md §B.3) — 1
+// like per person via reviews/{id}/likes/{actorHash} (a separate subcollection
+// so `reactions` stays report-only for dismissReport / feedback.js), plus a
+// per-uid rate limit. `on:false` reverses a like.
+export const likeReview = onCall(callable({ secrets: [actorHashSalt] }), async (request) => {
+  const uid = requireAuth(request);
+  const { id, on } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
+  await assertUnderLimit(uid, 'likeReview');
 
-  // Port of like_review(): no dedup in the original RPC either — anyone can
-  // like the same review repeatedly. Do not add actor-hash dedup here.
-  try {
-    await db.collection('reviews').doc(id).update({ likeCount: FieldValue.increment(1) });
-  } catch (e) {
-    if (e.code === 5 || e.code === 'not-found') return { status: 'NOT_FOUND' };
-    throw e;
-  }
-  return { status: 'OK' };
+  const reviewRef = db.collection('reviews').doc(id);
+  const likeRef = reviewRef.collection('likes').doc(actorHash(actorHashSalt.value(), uid, 'review-like', id));
+  const want = on !== false;
+
+  const result = await db.runTransaction(async (tx) => {
+    const [reviewSnap, likeSnap] = await Promise.all([tx.get(reviewRef), tx.get(likeRef)]);
+    if (!reviewSnap.exists) return 'NOT_FOUND';
+    if (want === likeSnap.exists) return 'NOOP'; // already liked / already not liked
+    if (want) {
+      tx.set(likeRef, { createdAt: FieldValue.serverTimestamp() });
+      tx.update(reviewRef, { likeCount: FieldValue.increment(1) });
+    } else {
+      tx.delete(likeRef);
+      tx.update(reviewRef, { likeCount: FieldValue.increment(-1) });
+    }
+    return 'OK';
+  });
+
+  return { status: result === 'NOT_FOUND' ? 'NOT_FOUND' : 'OK' };
 });
 
 export const reportReview = onCall(callable({ secrets: [actorHashSalt, pushFanoutUrl, pushFanoutSecret] }), async (request) => {
   const uid = requireAuth(request);
   const { id, endpoint } = request.data ?? {};
   if (!id) invalid('id가 필요합니다.');
+  await assertUnderLimit(uid, 'reportContent');
 
   const subId = (typeof endpoint === 'string' && endpoint.startsWith('https://') && endpoint.length <= 1024)
     ? createHash('sha256').update(endpoint).digest('hex') : null;

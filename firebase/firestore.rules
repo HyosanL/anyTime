@@ -108,6 +108,7 @@ service cloud.firestore {
 
       match /_private/{doc} { allow read, write: if false; }
       match /reactions/{doc} { allow read, write: if false; }
+      match /likes/{doc} { allow read, write: if false; }
     }
 
     // ---- exam archive ----

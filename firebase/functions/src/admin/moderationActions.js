@@ -546,8 +546,8 @@ async function dismissReport(uid, payload) {
     batch.update(ref, { reportCount: 0, reportReviewedCount: 0, ...dismissMark });
     await batch.commit();
   } else {
-    // review/class_memo: 이 대상들엔 좋아요 중복방지가 없어 reactions/events 서브
-    // 컬렉션이 애초에 report 전용이다 — 통째로 지워도 안전하다.
+    // review/class_memo: reactions/events 는 report 전용이다(강의평 좋아요는 별도
+    // `likes/` 서브컬렉션, 메모는 좋아요 없음) — 통째로 지워도 안전하다.
     await db.recursiveDelete(ref.collection('reactions'));
     await db.recursiveDelete(ref.collection('events'));
     await ref.update({ reportCount: 0, reportReviewedCount: 0, ...dismissMark });
