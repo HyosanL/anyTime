@@ -12,14 +12,14 @@ export async function onRequestPost(context) {
   const file = form.get('file');
   if (!file || typeof file === 'string') return Response.json({ status: 'BAD_REQUEST' }, { status: 400 });
   if (!OK_IMAGE.test(file.type || '')) return Response.json({ status: 'BAD_TYPE' }, { status: 415 });
-  if (file.size > 12 * 1024 * 1024) return Response.json({ status: 'TOO_LARGE' }, { status: 413 });
+  if (file.size > 8 * 1024 * 1024) return Response.json({ status: 'TOO_LARGE' }, { status: 413 });
   const key = `board/${crypto.randomUUID()}${safeExt(file.name)}`;
   await env.EXAM_FILES.put(key, file.stream(), {
     httpMetadata: { contentType: file.type },
   });
   // 저화질 썸네일(선택) — 원본과 같은 key + '.thumb' 로 저장. 화이트리스트 + 크기 상한만 검사.
   const thumb = form.get('thumb');
-  if (thumb && typeof thumb !== 'string' && OK_IMAGE.test(thumb.type || '') && thumb.size <= 4 * 1024 * 1024) {
+  if (thumb && typeof thumb !== 'string' && OK_IMAGE.test(thumb.type || '') && thumb.size <= 2 * 1024 * 1024) {
     await env.EXAM_FILES.put(`${key}.thumb`, thumb.stream(), { httpMetadata: { contentType: thumb.type } });
   }
   return Response.json({ status: 'OK', key });

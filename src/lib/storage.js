@@ -34,7 +34,8 @@ export async function uploadExamFile(courseCode, file) {
     body: fd,
   });
   if (!res.ok) {
-    if (res.status === 413) throw new Error('파일이 너무 큽니다(100MB 이하).');
+    if (res.status === 413) throw new Error('파일이 너무 큽니다(25MB 이하).');
+    if (res.status === 415) throw new Error('지원하지 않는 파일 형식입니다. (pdf·hwp·office·이미지·zip 등)');
     throw new Error('업로드에 실패했습니다.');
   }
   return res.json();

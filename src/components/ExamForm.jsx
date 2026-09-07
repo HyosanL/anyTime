@@ -42,7 +42,7 @@ export default function ExamForm({ courseCode, onDone }) {
     if (!title.trim()) return setError('제목을 입력하세요.');
     if (files.length === 0) return setError('파일을 선택하세요.');
     if (files.length > MAX_FILES) return setError(`파일은 최대 ${MAX_FILES}개까지 첨부할 수 있습니다.`);
-    if (files.some((f) => f.size > 100 * 1024 * 1024)) return setError('각 파일은 100MB 이하여야 합니다.');
+    if (files.some((f) => f.size > 25 * 1024 * 1024)) return setError('각 파일은 25MB 이하여야 합니다.');
 
     setSubmitting(true);
     try {
@@ -116,7 +116,7 @@ export default function ExamForm({ courseCode, onDone }) {
       </label>
 
       <div className="field rev-form-field">
-        <span className="field-label">파일 (각 100MB 이하 · 최대 {MAX_FILES}개)</span>
+        <span className="field-label">파일 (각 25MB 이하 · 최대 {MAX_FILES}개)</span>
         <label className="exam-file-pick">
           <span className="exam-file-pick-label">＋ 파일 선택{files.length ? ` (${files.length})` : ''}</span>
           <input
