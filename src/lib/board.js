@@ -183,7 +183,13 @@ export async function getPost(id, view = false) {
   return { ...post, board: board ? { name: board.name } : null };
 }
 export async function listComments(postId) {
-  const snap = await getDocs(query(collection(db, 'boardPosts', postId, 'comments'), orderBy('createdAt')));
+  // limit(500) is required, not just prudent — the Firestore rule denies an
+  // unbounded list on comments. No real thread comes close.
+  const snap = await getDocs(query(
+    collection(db, 'boardPosts', postId, 'comments'),
+    orderBy('createdAt'),
+    limit(500),
+  ));
   return snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, createdAt: toIso(data.createdAt) }; });
 }
 export const react = (postId, kind, endpoint) =>

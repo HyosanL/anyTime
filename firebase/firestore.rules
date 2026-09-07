@@ -32,6 +32,10 @@ service cloud.firestore {
     match /config/secrets {
       allow read, write: if false; // Cloud Functions only, never client-readable
     }
+    match /config/ops {
+      allow read: if isAdmin();
+      allow write: if false; // capBilling (Admin SDK) only
+    }
 
     // ---- notices / banned words: old read_notice/read_banned_word RLS ----
     match /notices/{id} {
@@ -102,8 +106,11 @@ service cloud.firestore {
     }
 
     // ---- reviews (writes: Cloud Functions only, reads: any signed-in user) ----
+    // list is capped so a scraper can't pull the whole collection in one query
+    // (single-doc get() is unbounded; App Check is the outer gate).
     match /reviews/{id} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.query.limit <= 250;
       allow write: if false;
 
       match /_private/{doc} { allow read, write: if false; }
@@ -113,7 +120,8 @@ service cloud.firestore {
 
     // ---- exam archive ----
     match /examArchive/{id} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.query.limit <= 120;
       allow write: if false;
 
       match /_private/{doc} { allow read, write: if false; }
@@ -153,13 +161,15 @@ service cloud.firestore {
       allow write: if false;
     }
     match /boardPosts/{id} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.query.limit <= 30;
       allow write: if false;
 
       match /_private/{doc} { allow read, write: if false; }
 
       match /comments/{cid} {
-        allow read: if isSignedIn();
+        allow get: if isSignedIn();
+        allow list: if isSignedIn() && request.query.limit <= 500;
         allow write: if false;
 
         match /_private/{doc} { allow read, write: if false; }
@@ -168,6 +178,9 @@ service cloud.firestore {
       match /reactions/{aid} { allow read, write: if false; }
       match /watchers/{wid} { allow read, write: if false; }
     }
+
+    // ---- per-uid rate limit counters (Admin SDK only) ----
+    match /rateLimits/{id} { allow read, write: if false; }
 
     // ---- push notifications (fully anonymous by design — function-gated) ----
     match /pushSubscriptions/{id} { allow read, write: if false; }
