@@ -1,61 +1,51 @@
-# Cloudflare zone hardening (Terraform)
+# Cloudflare zone hardening
 
 Protects the Pages app + `/api/*` only. Firestore / Cloud Functions / Auth are
 protected by Firebase App Check, not here (their traffic never touches this zone).
 
 Full context: `docs/superpowers/specs/2026-09-07-abuse-dos-hardening-design.md` §E.
 
-## Apply
+## Status — APPLIED 2026-09-07 (via Cloudflare API, not Terraform)
 
-1. Create an API token: dash → My Profile → API Tokens → Create Token → Custom.
-   Permissions:
-   - **Zone → WAF → Edit**
-   - **Zone → Rate Limiting → Edit** (some accounts: under "Zone → Zone WAF")
-   - **Zone → Zone Settings → Edit**
-   - **Account → Turnstile → Edit**
-   Zone resources: the `anytime.rokafa.app` zone. Account resources: your account.
-2. `cp terraform.tfvars.example terraform.tfvars` and fill in.
-   - `cloudflare_zone_id`, `cloudflare_account_id`: zone Overview page, right sidebar.
-3. `terraform init`
-4. `terraform plan` — **this is the gate.** The provider's `rules = [{...}]`
-   object shape can drift between v5 patch releases. If plan errors on a field,
-   open the resolved provider version's docs for `cloudflare_ruleset` /
-   `cloudflare_zone_setting` / `cloudflare_turnstile_widget` and adjust, or use
-   the by-hand steps below (version-independent).
-5. `terraform apply`
-6. `terraform output turnstile_site_key` → paste into `.env.production` as
-   `VITE_TURNSTILE_SITE_KEY`, commit (Pages rebuilds).
-   `terraform output -raw turnstile_secret` →
-   `firebase functions:secrets:set TURNSTILE_SECRET` (paste when prompted).
+Live on zone `b4c035a5f9ac9b941be9b9c89455a020`:
 
-## Verify in the dashboard
+**Rate limiting** (`http_ratelimit` entrypoint, ruleset `e81b8ae547024de080a758ea8dae01fe`)
+- block IPs exceeding **10 POST `/api/*` per 10s** (free plan locks period + timeout to 10s)
 
-- Security → WAF → Rate limiting rules: 1 rule, "Block", `/api/*` POST, 20 per 60s.
-- Security → WAF → Custom rules: 4 rules, enabled.
-- Security → Bots: Bot Fight Mode = On.
-- Turnstile: one "anytime signup" widget, Managed, 3 domains.
+**WAF custom rules** (`http_request_firewall_custom` entrypoint, ruleset `cea4307af84943018ba1c2c490ffc7ba`)
+1. block `/api/*` POST with no `Authorization` header — `/api/board-sweep` and `/api/push-fanout` excluded (secret-gated)
+2. block non-`GET/POST/HEAD/OPTIONS` methods
+3. managed challenge for `cf.threat_score > 50` on top-level page loads (not `/api/*`, not assets) — so the earned `cf_clearance` cookie propagates to later fetches
 
-## By hand (if Terraform is blocked)
+Verified live: authenticated POST → passes (middleware 401 on bad token); no-auth
+POST → 403; `GET /`, `/assets/*` → 200; `/api/board-sweep` → 401 (middleware).
 
-Same rules, in the dashboard:
+## Still to do by hand (dashboard)
 
-**Rate limiting rule** (Security → WAF → Rate limiting rules → Create):
-- Expression: `(starts_with(http.request.uri.path, "/api/") and http.request.method eq "POST")`
-- When rate exceeds: 20 requests per 60 seconds; characteristics: IP + Colo
-- Action: Block, duration 60 seconds
+- **Bot Fight Mode**: Security → Bots → Bot Fight Mode → **On**. (Token lacks the
+  scope; the free toggle isn't cleanly API-exposed.)
+- **Turnstile widget**: deferred — the `hardening/turnstile` branch can't deploy
+  until the Firebase deploy service account gets `secretmanager.secrets.setIamPolicy`
+  (or Secret Manager Admin). Once it can: `main.tf`'s `cloudflare_turnstile_widget`
+  resource, or dash → Turnstile → Add widget ("anytime signup", Managed, domains
+  `anytime.rokafa.app` / `anytime-dzi.pages.dev` / `localhost`).
 
-**Custom rules** (Security → WAF → Custom rules → Create), in order:
-1. `(starts_with(http.request.uri.path, "/api/") and http.request.method eq "POST" and not any(http.request.headers.names[*] == "authorization") and not http.request.uri.path in {"/api/board-sweep" "/api/push-fanout"})` → Block
-2. `(not http.request.method in {"GET" "POST" "HEAD" "OPTIONS"})` → Block
-3. `(starts_with(http.request.uri.path, "/api/") and cf.threat_score gt 20)` → Managed Challenge
-4. `(starts_with(http.request.uri.path, "/api/") and ip.geoip.country ne "KR")` → Managed Challenge
+## Re-applying / editing the rules
 
-**Bot Fight Mode**: Security → Bots → toggle on.
+Same API, PUT the entrypoint ruleset (replaces all rules in that phase):
 
-**Turnstile**: Turnstile → Add widget → name "anytime signup", Managed, domains
-`anytime.rokafa.app`, `anytime-dzi.pages.dev`, `localhost`.
+```
+curl -X PUT "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/rulesets/phases/http_request_firewall_custom/entrypoint" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+  --data @waf.json
+```
 
-## State
+`waf.json` / `rl.json` request bodies: the `rules` arrays are transcribed in
+`main.tf`. Read them back with `GET .../entrypoint`.
 
-Local state only (`.gitignore`d). No remote backend — this config changes rarely
-and is a single operator's responsibility.
+## Adopting Terraform later
+
+The token needs **Zone → WAF → Edit** (covers both custom rules and rate limiting
+rules — there is no separate "Rate Limiting" permission on current Cloudflare).
+Import the existing rulesets before the first `apply` (IDs in `main.tf`), else
+Terraform creates duplicates.
