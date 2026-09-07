@@ -4,8 +4,6 @@ import { signup, login, getPosition } from '../lib/auth';
 import LocationHelp from '../components/LocationHelp';
 import Turnstile from '../components/Turnstile';
 
-const TURNSTILE_ON = !!import.meta.env.VITE_TURNSTILE_SITE_KEY;
-
 const STATUS_MSG = {
   INVALID_CODE: '가입코드가 올바르지 않습니다.',
   OUT_OF_AREA: '캠퍼스 범위 밖입니다. 위치 권한을 켜고 교내에서 다시 시도하세요.',
@@ -27,7 +25,6 @@ export default function Onboarding() {
   const [geoFailed, setGeoFailed] = useState(false); // 위치 실패 → 권한 안내 링크 노출
   const [showGeoHelp, setShowGeoHelp] = useState(false);
   const [tsToken, setTsToken] = useState('');
-  const [tsError, setTsError] = useState(false);
 
   function resetTurnstile() {
     setTsToken('');
@@ -119,13 +116,7 @@ export default function Onboarding() {
           />
         </label>
 
-        <Turnstile onToken={setTsToken} onError={setTsError} />
-        {tsError && (
-          <p className="error-msg">
-            자동가입 방지 확인이 로드되지 않았어요. 광고 차단·보안 확장 프로그램을 끄거나
-            새로고침한 뒤 다시 시도해 주세요.
-          </p>
-        )}
+        <Turnstile onToken={setTsToken} />
 
         <div className="auth-actions">
           {status && <p className="status-msg">{status}</p>}
@@ -136,12 +127,8 @@ export default function Onboarding() {
             </button>
           )}
 
-          <button
-            type="submit"
-            className="btn-add btn-block btn-lg"
-            disabled={submitting || (TURNSTILE_ON && !tsToken)}
-          >
-            {submitting ? '진행 중…' : TURNSTILE_ON && !tsToken ? '자동가입 방지 확인 중…' : '가입하기'}
+          <button type="submit" className="btn-add btn-block btn-lg" disabled={submitting}>
+            {submitting ? '진행 중…' : '가입하기'}
           </button>
         </div>
       </form>
