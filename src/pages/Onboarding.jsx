@@ -27,6 +27,7 @@ export default function Onboarding() {
   const [geoFailed, setGeoFailed] = useState(false); // 위치 실패 → 권한 안내 링크 노출
   const [showGeoHelp, setShowGeoHelp] = useState(false);
   const [tsToken, setTsToken] = useState('');
+  const [tsError, setTsError] = useState(false);
 
   function resetTurnstile() {
     setTsToken('');
@@ -118,7 +119,13 @@ export default function Onboarding() {
           />
         </label>
 
-        <Turnstile onToken={setTsToken} />
+        <Turnstile onToken={setTsToken} onError={setTsError} />
+        {tsError && (
+          <p className="error-msg">
+            자동가입 방지 확인이 로드되지 않았어요. 광고 차단·보안 확장 프로그램을 끄거나
+            새로고침한 뒤 다시 시도해 주세요.
+          </p>
+        )}
 
         <div className="auth-actions">
           {status && <p className="status-msg">{status}</p>}

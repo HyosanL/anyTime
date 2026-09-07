@@ -1,20 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldSkipTurnstile } from '../src/lib/turnstile.js';
+import { shouldSkipTurnstile, verifyTurnstile } from '../src/lib/turnstile.js';
 
-test('skip when no secret configured', () => {
-  assert.equal(shouldSkipTurnstile('', 'tok'), true);
+test('shouldSkipTurnstile: off when secret unset or "pending"', () => {
+  assert.equal(shouldSkipTurnstile(''), true);
+  assert.equal(shouldSkipTurnstile(undefined), true);
+  assert.equal(shouldSkipTurnstile('pending'), true);
 });
 
-test('skip when secret set but no token (client widget not deployed yet)', () => {
-  assert.equal(shouldSkipTurnstile('secret', ''), true);
-  assert.equal(shouldSkipTurnstile('secret', null), true);
+test('shouldSkipTurnstile: on when a real secret is set', () => {
+  assert.equal(shouldSkipTurnstile('0x4AAA...real'), false);
 });
 
-test('skip when secret is the "pending" placeholder even with a token', () => {
-  assert.equal(shouldSkipTurnstile('pending', 'tok'), true);
+test('verifyTurnstile: skips (allows) while off', async () => {
+  assert.equal(await verifyTurnstile('', 'anything'), true);
+  assert.equal(await verifyTurnstile('pending', null), true);
 });
 
-test('do not skip when a real secret and token are both present', () => {
-  assert.equal(shouldSkipTurnstile('secret', 'tok'), false);
+test('verifyTurnstile: real secret + no token -> reject', async () => {
+  assert.equal(await verifyTurnstile('realsecret', null), false);
+  assert.equal(await verifyTurnstile('realsecret', ''), false);
 });
