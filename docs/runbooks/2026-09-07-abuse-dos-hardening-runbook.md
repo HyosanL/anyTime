@@ -43,10 +43,19 @@ Firebase console → **App Check → 측정항목**. 클라이언트가 이제 �
 
 ### 2. ✅ Bot Fight Mode — 켜짐 (2026-09-07, 사용자가 대시보드에서)
 
-### 3. App Check ENFORCE — §1 관찰 통과 후에만
+### 3. App Check ENFORCE — 목표: 2026-10월경 (클라이언트 갱신 대기)
 
-각 단계 뒤 본인 기기 + 관리자 계정으로 실사용 확인. 문제 시 즉시 되돌린다.
+배포 직후 실측(Cloud Monitoring): `VALID` 은 즉시 올라오지만 `MISSING_OUTDATED_CLIENT`
+(옛 캐시 번들)가 대부분. PWA(특히 iOS 홈화면)는 앱을 완전히 닫았다 다시 열어야 새 SW 가
+활성화돼서 갱신이 며칠~몇 주 걸린다. 한 달이면 대부분 넘어옴.
 
+**enforce 전:**
+- **측정항목 확인 (blind 금지)**: Firebase console → App Check → 측정항목, 기간 "지난 24시간"
+  으로 `VALID` 비율이 충분히 높은지 (≈95%+) 확인. 어떤 기기는 옛 SW 가 껴서 안 갱신될 수 있음.
+- **(선택) 막판 강제 갱신**: enforce 1주 전 `vite.config.js` 의 `ASSET_EPOCH` 를 `e2`→`e3`
+  으로 올려 배포 → 전 청크 경로가 바뀌어 다음 방문 때 모두 새로 받음 → 잔여 옛 클라이언트 급감.
+
+**enforce (각 단계 뒤 본인 기기 + 관리자 계정으로 실사용 확인, 문제 시 즉시 되돌림):**
 1. Firebase console → App Check → **Firestore** → 적용(Enforce).
 2. `firebase/functions/src/lib/opts.js` → `const ENFORCE_APP_CHECK = true;` 커밋 → push →
    CI 재배포. 글 작성·반응·알림테스트 확인. 되돌리기: `false` 로 커밋.
