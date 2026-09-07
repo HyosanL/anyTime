@@ -1,7 +1,14 @@
 # 남용·DoS 하드닝 설계
 
 - 날짜: 2026-09-07
-- 상태: 승인됨 (사용자: "최대 강도 / Terraform+체크리스트 / 결정은 권장안대로 / 배포까지 진행")
+- 상태: **거의 전부 배포 완료** (2026-09-07). A~H 중 코드/인프라는 다 적용됨.
+  구현 상세·편차: `docs/superpowers/plans/2026-09-07-abuse-dos-hardening.md` 헤더.
+  남은 것(웹 UI 전용): reCAPTCHA v3 키 발급 → App Check enforce, Bot Fight Mode 토글.
+  운영 절차: `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md`.
+  E(Cloudflare)는 Terraform 대신 CF API로 적용, 무료 플랜 제약으로 레이트리밋 10초 고정 +
+  fetch 엔드포인트 managed_challenge 불가라 geo/threat challenge 규칙은 축소.
+- 승인 (사용자): "최대 강도 / Terraform+체크리스트 / 결정은 권장안대로 / 배포까지 진행 /
+  할 수 있는 건 다 알아서" (CF API 토큰·firebase CLI 제공)
 - 관련 메모: [[capacity-cost-800dau]], [[security-audit-2026-09-01]], [[security-review-decisions]],
   [[functions-deploy-via-gh-actions]], [[pages-deploy-model]], [[board-full-anonymity]],
   [[report-delete-archive]], [[supabase-rpc-anon-default-grant]]
