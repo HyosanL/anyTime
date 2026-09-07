@@ -80,3 +80,4 @@ export {
 
 export { setNextClassAlerts, setTodaySummaryAlert, nextClassNotify } from './src/nextClass.js';
 export { rolloverSemester } from './src/semester.js';
+export { capBilling } from './src/ops.js';
