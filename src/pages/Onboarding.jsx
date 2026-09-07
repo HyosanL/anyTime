@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signup, login, getPosition } from '../lib/auth';
 import LocationHelp from '../components/LocationHelp';
+import Turnstile from '../components/Turnstile';
+
+const TURNSTILE_ON = !!import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
 const STATUS_MSG = {
   INVALID_CODE: '가입코드가 올바르지 않습니다.',
@@ -9,6 +12,7 @@ const STATUS_MSG = {
   USERNAME_TAKEN: '이미 사용 중인 아이디입니다.',
   WEAK_PASSWORD: '비밀번호는 8자 이상이어야 합니다.',
   BAD_REQUEST: '입력값을 확인하세요. (아이디는 영문/숫자 3~20자)',
+  TURNSTILE: '자동가입 방지 확인에 실패했어요. 잠시 후 다시 시도해 주세요.',
   ERROR: '가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.',
 };
 
@@ -22,6 +26,12 @@ export default function Onboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [geoFailed, setGeoFailed] = useState(false); // 위치 실패 → 권한 안내 링크 노출
   const [showGeoHelp, setShowGeoHelp] = useState(false);
+  const [tsToken, setTsToken] = useState('');
+
+  function resetTurnstile() {
+    setTsToken('');
+    try { window.turnstile?.reset(); } catch { /* 위젯 없음 */ }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,9 +53,10 @@ export default function Onboarding() {
       }
 
       setStatus('🔐 가입 처리 중…');
-      const res = await signup({ username, password, code, lat, lng });
+      const res = await signup({ username, password, code, lat, lng, turnstileToken: tsToken });
       if (res.status !== 'OK') {
         setError(STATUS_MSG[res.status] || STATUS_MSG.ERROR);
+        resetTurnstile(); // 토큰은 1회용 — 재시도용으로 위젯을 새로 푼다
         return;
       }
 
@@ -107,6 +118,8 @@ export default function Onboarding() {
           />
         </label>
 
+        <Turnstile onToken={setTsToken} />
+
         <div className="auth-actions">
           {status && <p className="status-msg">{status}</p>}
           {error && <p className="error-msg">{error}</p>}
@@ -116,8 +129,12 @@ export default function Onboarding() {
             </button>
           )}
 
-          <button type="submit" className="btn-add btn-block btn-lg" disabled={submitting}>
-            {submitting ? '진행 중…' : '가입하기'}
+          <button
+            type="submit"
+            className="btn-add btn-block btn-lg"
+            disabled={submitting || (TURNSTILE_ON && !tsToken)}
+          >
+            {submitting ? '진행 중…' : TURNSTILE_ON && !tsToken ? '자동가입 방지 확인 중…' : '가입하기'}
           </button>
         </div>
       </form>

@@ -36,13 +36,19 @@ export function getPosition() {
 // INVALID_CODE/OUT_OF_AREA/USERNAME_TAKEN/WEAK_PASSWORD/BAD_REQUEST 세분화보다
 // 얕다. Onboarding.jsx 는 이 세분화된 문자열로 분기하므로(이번 작업 범위 밖이라
 // 못 고침), 서버가 고정으로 내려주는 한국어 메시지를 되짚어 옛 상태값으로 복원한다.
-export async function signup({ username, password, code, lat, lng }) {
-  const r = await callFn('signup', { username: username.trim(), password, code: code.trim(), lat, lng }, authFunctions);
+export async function signup({ username, password, code, lat, lng, turnstileToken }) {
+  const r = await callFn('signup', {
+    username: username.trim(), password, code: code.trim(), lat, lng,
+    ...(turnstileToken ? { turnstileToken } : {}),
+  }, authFunctions);
   if (r.ok) return { status: 'OK', username: r.data?.username };
   const msg = r.message || '';
   if (r.status === 'already-exists') return { status: 'USERNAME_TAKEN' };
   if (r.status === 'invalid-argument') return { status: msg.includes('비밀번호') ? 'WEAK_PASSWORD' : 'BAD_REQUEST' };
-  if (r.status === 'permission-denied') return { status: msg.includes('코드') ? 'INVALID_CODE' : 'OUT_OF_AREA' };
+  if (r.status === 'permission-denied') {
+    if (msg.includes('자동가입')) return { status: 'TURNSTILE' };
+    return { status: msg.includes('코드') ? 'INVALID_CODE' : 'OUT_OF_AREA' };
+  }
   return { status: 'ERROR' };
 }
 
