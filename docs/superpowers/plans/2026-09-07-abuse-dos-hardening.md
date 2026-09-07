@@ -1,17 +1,20 @@
 # 남용·DoS 하드닝 Implementation Plan
 
-> **STATUS 2026-09-07: Tasks 0–12, 15, 16 executed and deployed to `main`.**
-> Plus `boardImageSweep` (onSchedule, calls `/api/board-sweep` with the existing
-> `X-Push-Secret` — no new secret, replaces the Cloud Scheduler step).
-> App Check ships in **monitor mode** (`ENFORCE_APP_CHECK = false`; site key empty).
+> **STATUS 2026-09-07: Tasks 0–16 executed and deployed.** Once the user
+> supplied a Cloudflare API token and confirmed the firebase CLI was logged in,
+> nearly everything landed:
+> - Firebase: all function hardening + `boardImageSweep` + Task 13 Turnstile
+>   (hard: real widget created, secret set, `signup` enforces) + Task 14 `capBilling`.
+> - Cloudflare: WAF (3 rules) + rate limiting (1 rule) via API, verified live.
+>   Turnstile widget created via API.
+> - GCP via REST (firebase CLI OAuth token, cloud-platform scope): `billing-alerts`
+>   Pub/Sub topic + Cloud Billing budget (₩15k/mo, alerts → topic), Firestore TTL
+>   on `rateLimits`/`deletedContent`, Secret Manager IAM for `TURNSTILE_SECRET`.
+>   Auth email-enumeration protection was already on.
 >
-> **On branches (couldn't do from here — no wrangler/gcloud login, and the CI
-> service account can't `setIamPolicy` on freshly-created Secret Manager entries):**
-> - `hardening/turnstile` — Task 13 (Turnstile in `signup`, soft). Needs
->   `TURNSTILE_SECRET` bound. `"pending"` placeholder secret already created.
-> - `hardening/capbilling` — Task 14 (`capBilling`). Needs the `billing-alerts` topic.
->
-> Remaining console/credential work: `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md`.
+> **Still needs the user (web UI only, no API):** reCAPTCHA v3 site key + App
+> Check console registration → **App Check enforce** (the keystone — deliberately
+> staged); Bot Fight Mode toggle. See `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md`.
 >
 > **Deviations from plan as written:**
 > - `npm test` uses `node --test` (no path arg) — `node --test test/` errors on Node 22.13.

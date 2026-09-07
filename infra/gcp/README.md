@@ -1,16 +1,18 @@
 # GCP cost controls for anytime-rokafa
 
-`budget.sh [USD]` creates the `billing-alerts` Pub/Sub topic and a monthly
-budget ($10 default) with alerts at 50 / 90 / 100 %, published to that topic.
-The `capBilling` Cloud Function (`firebase/functions/src/ops.js`) consumes it:
-it records the breach in `config/ops` and pushes admins at ≥ 90 %.
+**Applied 2026-09-07 via the Cloud Billing Budget REST API:**
+- Pub/Sub topic `projects/anytime-rokafa/topics/billing-alerts`
+  (Cloud Billing auto-granted `billing-budget-alert@system.gserviceaccount.com`
+  the publisher role on it).
+- Budget "anytime monthly cap" — **₩15,000/month** (the billing account is KRW),
+  thresholds 50 / 90 / 100 %, notifications → the topic.
 
-**There is no hard spend cap on Blaze** (which this project is on only because
-Cloud Functions v2 requires it). If `capBilling` fires, the manual response is
-in `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md` → "비상: 비용 폭주":
-set `maxInstances` to 1 in `firebase/functions/src/lib/globalOptions.js`, commit,
-let CI redeploy.
+`capBilling` (`firebase/functions/src/ops.js`) consumes the topic: records the
+breach in `config/ops` and pushes admins at ≥ 90 %.
 
-Create the `billing-alerts` topic **before** merging `hardening/capbilling` to
-`main`, or that CI deploy fails (the function binds the topic). Console works
-too — see `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md` §3.
+`budget.sh [USD]` is the gcloud equivalent, kept for reference / other machines.
+Note it hardcodes USD — edit to your billing account's currency (KRW here).
+
+**There is no hard spend cap on Blaze.** If `capBilling` fires: set `maxInstances`
+to 1 in `firebase/functions/src/lib/globalOptions.js`, commit, let CI redeploy
+(see the hardening runbook → "비상: 비용 폭주").
