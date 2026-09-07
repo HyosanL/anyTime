@@ -11,6 +11,10 @@ test('skip when secret set but no token (client widget not deployed yet)', () =>
   assert.equal(shouldSkipTurnstile('secret', null), true);
 });
 
-test('do not skip when both present', () => {
+test('skip when secret is the "pending" placeholder even with a token', () => {
+  assert.equal(shouldSkipTurnstile('pending', 'tok'), true);
+});
+
+test('do not skip when a real secret and token are both present', () => {
   assert.equal(shouldSkipTurnstile('secret', 'tok'), false);
 });

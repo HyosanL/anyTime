@@ -6,11 +6,13 @@ export const turnstileSecret = defineSecret('TURNSTILE_SECRET');
 
 const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
-// Soft mode: skip verification unless BOTH the secret is configured AND the
-// client actually sent a token. Lets the server-side check ship before the
+// Soft mode: skip verification unless the secret is a real configured value AND
+// the client actually sent a token. Lets the server-side check ship before the
 // client widget exists, then tighten automatically once both are in place.
+// `"pending"` is the placeholder set at deploy time before the real widget
+// secret is known — treated as "not configured" so a stray token can't wedge signup.
 export function shouldSkipTurnstile(secret, token) {
-  return !secret || !token;
+  return !secret || secret === 'pending' || !token;
 }
 
 export async function verifyTurnstile(secret, token, remoteIp) {
