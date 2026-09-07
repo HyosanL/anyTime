@@ -23,6 +23,7 @@
 > - Password floor 6→8 also applied to Profile.jsx change-password (opt-in, consistent).
 > - Rebased twice onto concurrent PR #10/#11 push-notification fixes (clean auto-merge in push.js / Profile.jsx).
 > - Tasks 13/14 originally on `hardening/phase67`; split to two branches after the CI secret-IAM failure.
+> - CF WAF/rate-limiting applied via the CF API (user supplied a token), not Terraform. Free plan locks rate-limit period+timeout to 10s. Original WAF rules 3 (threat challenge on `/api/*`) and 4 (non-KR geo challenge) were DROPPED: `/api/*` is all fetch/XHR and a browser can't solve an inline `managed_challenge`, so those would permanently break image loading for flagged-IP / overseas users. Replaced with a single conservative `cf.threat_score>50` challenge on top-level page loads only. `boardImageSweep` reuses `pushFanoutSecret` (no new secret) so it shipped on `main`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
