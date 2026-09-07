@@ -32,10 +32,15 @@ export async function onRequest(context) {
   const { request, env, next, data } = context;
   if (request.method === 'OPTIONS') return next();
 
-  // 크론 전용 고아 스윕: 유저 토큰 대신 공유 시크릿.
+  // 크론 전용 고아 스윕: 유저 토큰 대신 공유 시크릿. 전용 SWEEP_SECRET(X-Sweep-Secret)
+  // 또는 팬아웃 시크릿(X-Push-Secret)을 받는다 — 후자는 Firebase boardImageSweep 크론이
+  // 새 Secret Manager 항목 없이 호출하려고 쓴다(스윕은 파괴적이지 않음: 48h 유예 지난
+  // 고아 R2 객체만 삭제). 둘 다 미설정이면 fail-closed.
   const path = new URL(request.url).pathname;
   if (path === '/api/board-sweep') {
-    if (env.SWEEP_SECRET && request.headers.get('X-Sweep-Secret') === env.SWEEP_SECRET) return next();
+    const h = request.headers;
+    if (env.SWEEP_SECRET && h.get('X-Sweep-Secret') === env.SWEEP_SECRET) return next();
+    if (env.PUSH_SECRET && h.get('X-Push-Secret') === env.PUSH_SECRET) return next();
     return unauth();
   }
 
