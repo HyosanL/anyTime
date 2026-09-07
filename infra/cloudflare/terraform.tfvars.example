@@ -1,0 +1,4 @@
+# cp terraform.tfvars.example terraform.tfvars  and fill in.
+cloudflare_api_token  = "..." # scopes: Zone.WAF, Zone.Rate Limiting, Zone Settings, Account.Turnstile (Edit)
+cloudflare_account_id = "..."
+cloudflare_zone_id    = "..." # zone for anytime.rokafa.app

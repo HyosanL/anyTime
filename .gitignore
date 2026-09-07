@@ -153,3 +153,11 @@ crawl/
 
 # 임시 작업 파일(라이브 적용용 SQL·ERD 캡처 등) — 로컬 전용, 커밋 안 함.
 scratchpad/
+
+# Terraform (infra/cloudflare) — local state + real tfvars never committed
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
