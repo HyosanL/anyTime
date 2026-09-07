@@ -13,6 +13,7 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { auth, db, FieldValue, requireAuth, requireAdmin, invalid } from './lib/context.js';
 import { callable } from './lib/opts.js';
+import { turnstileSecret, verifyTurnstile } from './lib/turnstile.js';
 
 const REGION = 'asia-northeast3';
 
@@ -49,7 +50,7 @@ async function deleteUserFully(uid) {
 // so by definition it must be callable while signed out. App Check is
 // recommended at the Firebase project level (design doc §2) since this is
 // the only unauthenticated entry point left after the migration.
-export const signup = onCall(callable({ region: REGION }), async (request) => {
+export const signup = onCall(callable({ region: REGION, secrets: [turnstileSecret] }), async (request) => {
   const data = request.data ?? {};
   const username = String(data.username ?? '').trim();
   const password = String(data.password ?? '');
@@ -60,6 +61,14 @@ export const signup = onCall(callable({ region: REGION }), async (request) => {
   if (!USERNAME_RE.test(username)) invalid('아이디는 영문/숫자/밑줄 3~20자여야 합니다.');
   if (!code) invalid('가입 코드를 입력하세요.');
   if (password.length < 8) invalid('비밀번호는 8자 이상이어야 합니다.');
+
+  // Turnstile — soft until BOTH the secret and a client token are present
+  // (verifyTurnstile handles that), then hard. rawRequest.ip is Cloud Functions'
+  // best-effort client IP.
+  const turnstileOk = await verifyTurnstile(
+    turnstileSecret.value(), data.turnstileToken ?? null, request.rawRequest?.ip,
+  );
+  if (!turnstileOk) throw new HttpsError('permission-denied', '자동가입 방지 확인에 실패했습니다. 다시 시도해 주세요.');
 
   // verify_gate: code match is checked before geofencing, both against the
   // one admin-configured row — ported here as /config/secrets since neither
