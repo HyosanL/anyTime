@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { defineSecret } from 'firebase-functions/params';
 import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { db, FieldValue, Timestamp, requireAuth, invalid } from './lib/context.js';
 import { callable } from './lib/opts.js';
@@ -399,6 +400,35 @@ export const boardReferencedKeys = onRequest({ secrets: [pushFanoutSecret] }, as
   });
   res.status(200).json([...keys]);
 });
+
+// Daily orphan-image sweep. Calls the Cloudflare Pages Function that diffs R2
+// `board/` objects against boardReferencedKeys and deletes the unreferenced
+// ones past a 48h grace. Ported from the never-activated schema.sql
+// 'board-image-sweep' cron; runs here as onSchedule rather than Cloud Scheduler.
+// Inert (logs a 401) until the SAME SWEEP_SECRET value is also set as a
+// Cloudflare Pages secret — functions/api/_middleware.js fails closed without it.
+const sweepSecret = defineSecret('SWEEP_SECRET');
+export const boardImageSweep = onSchedule(
+  { schedule: '23 3 * * *', timeZone: 'Asia/Seoul', secrets: [sweepSecret] },
+  async () => {
+    let res;
+    try {
+      res = await fetch('https://anytime.rokafa.app/api/board-sweep', {
+        method: 'POST',
+        headers: { 'X-Sweep-Secret': sweepSecret.value() },
+      });
+    } catch (e) {
+      console.error('[boardImageSweep] request failed', e);
+      return;
+    }
+    const body = await res.text().catch(() => '');
+    if (!res.ok) {
+      console.error('[boardImageSweep] /api/board-sweep', res.status, body.slice(0, 200));
+      return;
+    }
+    console.log('[boardImageSweep]', body.slice(0, 200));
+  },
+);
 
 // Daily cron, same wall-clock target as the old pg_cron 'purge-board' job
 // ('0 15 * * *' with no explicit timezone = UTC = KST midnight, per that

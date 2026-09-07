@@ -11,6 +11,6 @@ in `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md` → "비상: 비용
 set `maxInstances` to 1 in `firebase/functions/src/lib/globalOptions.js`, commit,
 let CI redeploy.
 
-Run `budget.sh` **before** the commit that adds `capBilling` reaches CI, or that
-deploy fails (the function binds the topic). `capBilling` is currently on the
-`hardening/phase67` branch.
+Create the `billing-alerts` topic **before** merging `hardening/capbilling` to
+`main`, or that CI deploy fails (the function binds the topic). Console works
+too — see `docs/runbooks/2026-09-07-abuse-dos-hardening-runbook.md` §3.

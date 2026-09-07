@@ -61,6 +61,7 @@ export {
   deletePost,
   deleteComment,
   boardReferencedKeys,
+  boardImageSweep,
   purgeBoard,
   onCommentCreatedPush,
   onPostHotChangedPush,
