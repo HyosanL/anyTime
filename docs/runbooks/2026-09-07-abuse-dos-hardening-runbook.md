@@ -7,17 +7,18 @@
 
 - App Check 클라이언트(monitor — 사이트 키 미설정이라 no-op), 함수 레이트리밋,
   `maxInstances:10`, 신고 계정연령 게이트, 업로드 하드닝, Firestore 리스트 상한, CSP, 비번 8자.
-- **Turnstile 검증(`signup`)** — `TURNSTILE_SECRET` = `"pending"` 로 배포됨. `shouldSkipTurnstile`
-  가 `"pending"` 을 "미설정" 취급하므로 지금은 검증을 건너뛴다(soft). 실제 위젯 시크릿으로
-  교체하면 자동으로 강제된다.
 - **`boardImageSweep`** — 매일 03:23 KST, `/api/board-sweep` 호출(고아 R2 이미지 정리).
-  Cloudflare Pages 에 `SWEEP_SECRET` 을 설정하기 전까지는 401 로 조용히 실패한다(무해).
+  기존 팬아웃 시크릿(`X-Push-Secret`)으로 인증하므로 **새로 설정할 것 없음** — 바로 동작한다.
 - **App Check enforce 플래그 = off** (`firebase/functions/src/lib/opts.js`).
 
-## 대기 브랜치
+## 대기 브랜치 (내가 만들 수 없어서 브랜치로 뺀 것)
 
+- `hardening/turnstile` — `signup` 의 Turnstile 검증(soft). 새 Secret Manager 항목
+  `TURNSTILE_SECRET` 이 필요한데 CI 서비스계정이 그 IAM 바인딩을 못 걸어 배포가 깨진다.
+  `wrangler`/`gcloud` 도 이 PC에서 로그인 안 됨. → §2b(위젯 세팅) 때 머지.
+  (`TURNSTILE_SECRET` = `"pending"` 은 이미 만들어 뒀음. 실제 위젯 시크릿으로 교체 필요.)
 - `hardening/capbilling` — `capBilling`(예산 경보). `billing-alerts` Pub/Sub 토픽이 있어야
-  배포되므로 브랜치에 대기. 아래 §3 후 머지.
+  배포된다. → §3 후 머지.
 
 ---
 
@@ -33,18 +34,9 @@
 
 ---
 
-## 2. Cloudflare
+## 2. Cloudflare (`wrangler`·API 토큰 없어서 전부 네 몫)
 
-### 2a. `SWEEP_SECRET` (필수 — 고아 이미지 스윕 활성화)
-
-`sweep-secret.txt` 로 전달한 값을 Cloudflare Pages 에 그대로 설정:
-- 대시보드: Workers & Pages → `anytime` → Settings → Variables and Secrets →
-  **Production** 에 `SWEEP_SECRET` 추가(Secret 타입), 저장 후 재배포.
-- 또는: `wrangler pages secret put SWEEP_SECRET --project-name anytime` (그 값 입력).
-
-Firebase 쪽엔 이미 같은 값이 `SWEEP_SECRET` 시크릿으로 들어가 있다(내가 설정함).
-
-### 2b. WAF / 레이트리밋 / 봇 / Turnstile (Terraform)
+### 2a. WAF / 레이트리밋 / 봇 / Turnstile (Terraform)
 
 `infra/cloudflare/README.md` 대로 `terraform init/plan/apply`. `terraform plan` 이 게이트.
 막히면 같은 README 의 "By hand" 절로 대시보드에서. apply 후:
