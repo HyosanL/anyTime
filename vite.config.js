@@ -20,7 +20,7 @@ export default defineConfig({
         // (재방문 사용자의 다운로드량 감소). 초기 총량은 비슷하되 캐시 효율이 오른다.
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
-          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/functions'],
+          firebase: ['firebase/app', 'firebase/app-check', 'firebase/auth', 'firebase/firestore', 'firebase/functions'],
         },
       },
     },

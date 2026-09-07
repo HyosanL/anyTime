@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
+import { initAppCheck } from './lib/appCheck';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,6 +14,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+// Must run before getAuth/getFirestore/getFunctions so their calls carry an
+// App Check token once a site key is configured. No-op until then.
+initAppCheck(app);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
