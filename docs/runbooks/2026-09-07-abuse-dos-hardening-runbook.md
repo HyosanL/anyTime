@@ -27,24 +27,21 @@
 - Firestore TTL: `rateLimits.expireAt`, `deletedContent.expireAt`
 - Firebase Auth **이메일 열거 보호** — 이미 켜져 있었음(확인함)
 - `TURNSTILE_SECRET` 런타임 SA 접근권한 (IAM) 부여됨 → CI 배포 정상
+- **App Check reCAPTCHA v3** — 사이트키 `.env.production`, 비밀키 App Check 에 API로 등록.
+  Firestore·Auth enforcement = **UNENFORCED (monitor)** 확인함. tokenTtl 1일, minValidScore 0.5.
 
 ---
 
-## 남은 것 (전부 웹 UI — 자동화 불가)
+## 남은 것 (웹 UI — 자동화 불가)
 
-### 1. reCAPTCHA v3 → App Check (monitor)  ← 가장 먼저
+### 1. App Check 측정항목 관찰  ← 지금
 
-1. https://www.google.com/recaptcha/admin/create → **reCAPTCHA v3**(점수 기반).
-   도메인: `anytime.rokafa.app`, `anytime-dzi.pages.dev`, `localhost`. **사이트 키** 복사.
-2. Firebase console → **App Check** → 웹 앱 → **reCAPTCHA v3** provider → 사이트 키 등록.
-3. `.env.production` 의 `VITE_APPCHECK_RECAPTCHA_V3_KEY=` 뒤에 붙여넣고 커밋 → Pages 재빌드.
-4. App Check → **측정항목**. **enforce 하지 말 것.** 며칠 관찰: "확인된 요청" 비율이 정상
-   트래픽에서 거의 100% 가 될 때까지(옛 앱 버전 기기가 빠질 시간).
+Firebase console → **App Check → 측정항목**. 클라이언트가 이제 토큰을 보낸다(monitor).
+정상 트래픽의 "확인된 요청" 비율이 거의 100% 가 될 때까지 **며칠** 관찰
+(옛 앱 버전 기기가 빠질 시간). 점수가 낮아 거부되는 게 많으면 App Check 웹앱 설정에서
+`minValidScore` 를 0.3 으로 낮춘다.
 
-### 2. Bot Fight Mode (대시보드 토글, 1클릭)
-
-Cloudflare 대시보드 → 존 → **Security → Bots → Bot Fight Mode → On**.
-(토큰 스코프 밖 + 무료 토글이라 API 미노출.)
+### 2. ✅ Bot Fight Mode — 켜짐 (2026-09-07, 사용자가 대시보드에서)
 
 ### 3. App Check ENFORCE — §1 관찰 통과 후에만
 
