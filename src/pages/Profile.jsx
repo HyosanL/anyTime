@@ -223,7 +223,7 @@ export default function Profile() {
   async function onChangePw(e) {
     e.preventDefault();
     setPwMsg('');
-    if (pw.length < 6) return setPwMsg('비밀번호는 6자 이상이어야 합니다.');
+    if (pw.length < 8) return setPwMsg('비밀번호는 8자 이상이어야 합니다.');
     if (pw !== pw2) return setPwMsg('두 비밀번호가 일치하지 않습니다.');
     setBusy(true);
     try {
@@ -336,7 +336,7 @@ export default function Profile() {
         <section className="card account-sec">
           <h3 className="account-sec-title">계정</h3>
           <form className="account-form" onSubmit={onChangePw}>
-            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="새 비밀번호(6자 이상)" autoComplete="new-password" />
+            <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="새 비밀번호(8자 이상)" autoComplete="new-password" />
             <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" autoComplete="new-password" />
             <button type="submit" className="btn-add btn-block" disabled={busy}>비밀번호 변경</button>
           </form>

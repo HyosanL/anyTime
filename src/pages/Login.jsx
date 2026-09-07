@@ -17,10 +17,17 @@ export default function Login() {
       await login(username, password);
       navigate('/', { replace: true });
     } catch (err) {
-      // Firebase 는 잘못된 자격증명에 auth/invalid-credential 류 메시지를 준다.
-      setError(/credential|invalid/i.test(err.message)
-        ? '아이디 또는 비밀번호가 올바르지 않습니다.'
-        : err.message || '로그인에 실패했습니다.');
+      // 실패 사유는 구분하지 않는다 — 아이디 존재 여부를 노출하지 않기 위해(이메일 열거
+      // 보호를 켜면 Firebase 도 no-such-user / wrong-password 를 auth/invalid-credential
+      // 하나로 합친다). rate limit / 네트워크만 별도 안내.
+      const code = err.code || '';
+      if (code === 'auth/too-many-requests') {
+        setError('시도가 너무 많습니다. 잠시 후 다시 시도하세요.');
+      } else if (code === 'auth/network-request-failed') {
+        setError('네트워크 오류입니다. 연결을 확인하고 다시 시도하세요.');
+      } else {
+        setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+      }
     } finally {
       setSubmitting(false);
     }

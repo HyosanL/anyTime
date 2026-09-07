@@ -59,7 +59,7 @@ export const signup = onCall(callable({ region: REGION }), async (request) => {
 
   if (!USERNAME_RE.test(username)) invalid('아이디는 영문/숫자/밑줄 3~20자여야 합니다.');
   if (!code) invalid('가입 코드를 입력하세요.');
-  if (password.length < 6) invalid('비밀번호는 6자 이상이어야 합니다.');
+  if (password.length < 8) invalid('비밀번호는 8자 이상이어야 합니다.');
 
   // verify_gate: code match is checked before geofencing, both against the
   // one admin-configured row — ported here as /config/secrets since neither

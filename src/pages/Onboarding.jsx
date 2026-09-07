@@ -7,7 +7,7 @@ const STATUS_MSG = {
   INVALID_CODE: '가입코드가 올바르지 않습니다.',
   OUT_OF_AREA: '캠퍼스 범위 밖입니다. 위치 권한을 켜고 교내에서 다시 시도하세요.',
   USERNAME_TAKEN: '이미 사용 중인 아이디입니다.',
-  WEAK_PASSWORD: '비밀번호는 6자 이상이어야 합니다.',
+  WEAK_PASSWORD: '비밀번호는 8자 이상이어야 합니다.',
   BAD_REQUEST: '입력값을 확인하세요. (아이디는 영문/숫자 3~20자)',
   ERROR: '가입 처리 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.',
 };
@@ -89,9 +89,9 @@ export default function Onboarding() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="6자 이상"
+            placeholder="8자 이상"
             autoComplete="new-password"
-            minLength={6}
+            minLength={8}
             required
           />
         </label>
